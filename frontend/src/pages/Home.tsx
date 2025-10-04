@@ -20,7 +20,10 @@ const Home = () => {
       <h1>Itens Cadastrados</h1>
       <ul>
         {items.map(item => (
-          <li key={item.id}>{item.tipo} - {item.descricao}</li>
+          <li key={item.id}>
+            <strong>{item.title}</strong>
+            {item.text ? ` - ${item.text}` : null}
+          </li>
         ))}
       </ul>
     </div>

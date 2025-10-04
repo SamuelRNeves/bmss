@@ -6,5 +6,5 @@ import com.bmss.backend.model.User;
 public interface UserRepository extends JpaRepository<User, Integer> {
     User findByEmail(String email);
 
-	Object getById(int id);
+    User getById(Integer id);
 }
