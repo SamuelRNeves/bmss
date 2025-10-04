@@ -1,9 +1,8 @@
-import { User } from "./User";
-
-export interface Item{
-    id:number;
-    tipo:string;
-    descricao:string;
-    dataCadastro:string;
-    user:User;
+export interface Item {
+  id: number;
+  title: string;
+  text: string;
+  url?: string;
+  publishedAt?: string;
+  createdAt?: string;
 }
