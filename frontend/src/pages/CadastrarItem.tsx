@@ -3,9 +3,9 @@ import api from "../api/api";
 import { useNavigate } from "react-router-dom";
 
 const CadastrarItem = () => {
-  const [tipo, setTipo] = useState("");
-  const [descricao, setDescricao] = useState("");
-  const [userId, setUserId] = useState<number>(1); // ajuste conforme o ID de teste
+  const [title, setTitle] = useState("");
+  const [text, setText] = useState("");
+  const [url, setUrl] = useState("");
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -13,9 +13,9 @@ const CadastrarItem = () => {
 
     try {
       await api.post("/items", {
-        tipo,
-        descricao,
-        user: { id: userId }
+        title,
+        text,
+        url: url || undefined
       });
 
       alert("Item cadastrado com sucesso!");
@@ -30,11 +30,14 @@ const CadastrarItem = () => {
     <div>
       <h1>Cadastrar Item</h1>
       <form onSubmit={handleSubmit}>
-        <label>Tipo:</label>
-        <input type="text" value={tipo} onChange={e => setTipo(e.target.value)} required />
+        <label>Título:</label>
+        <input type="text" value={title} onChange={e => setTitle(e.target.value)} required />
 
-        <label>Descrição:</label>
-        <input type="text" value={descricao} onChange={e => setDescricao(e.target.value)} required />
+        <label>Texto:</label>
+        <textarea value={text} onChange={e => setText(e.target.value)} required />
+
+        <label>URL (opcional):</label>
+        <input type="url" value={url} onChange={e => setUrl(e.target.value)} />
 
         <button type="submit">Salvar</button>
       </form>
