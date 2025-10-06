@@ -1,4 +1,4 @@
-package com.bmss.backend;
+package com.bmss.backend.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
