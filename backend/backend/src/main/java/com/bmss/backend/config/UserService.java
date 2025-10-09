@@ -1,4 +1,4 @@
-package service;
+package com.bmss.backend.config;
 
 import com.bmss.backend.model.User;
 import com.bmss.backend.repository.UserRepository;

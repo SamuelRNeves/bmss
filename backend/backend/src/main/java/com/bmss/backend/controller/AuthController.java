@@ -1,13 +1,14 @@
 package com.bmss.backend.controller;
 
 import com.bmss.backend.security.JwtUtil;
-import jakarta.servlet.http.HttpServletResponse;
-import lombok.Data;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.security.authentication.*;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
+import lombok.Data;
 
 @RestController
 @RequestMapping("/auth")
@@ -20,19 +21,20 @@ public class AuthController {
     private JwtUtil jwtUtil;
 
     @PostMapping("/login")
-    public String login(@RequestBody AuthRequest request) {
+    public ResponseEntity<String> login(@RequestBody AuthRequest request) {
         Authentication authentication = authManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
+                new UsernamePasswordAuthenticationToken(
+                        request.getEmail(), 
+                        request.getPassword()
+                )
         );
 
         var user = (UserDetails) authentication.getPrincipal();
-        return jwtUtil.generateToken(user.getUsername());
+        String token = jwtUtil.generateToken(user.getUsername());
+
+        return ResponseEntity.ok(token);
     }
 
-    @Data
-    static class AuthRequest {
-        private String email;
-        private String password;
-    }
+    
 }
 
