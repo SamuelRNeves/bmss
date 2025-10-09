@@ -10,4 +10,8 @@ public class Role {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     private String name;
+	public String getName() {
+		// TODO Auto-generated method stub
+		return null;
+	}
 }

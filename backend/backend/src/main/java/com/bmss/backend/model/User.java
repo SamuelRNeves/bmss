@@ -28,5 +28,20 @@ public class User {
 
     @Column(name = "created_at")
     private LocalDateTime createdAt = LocalDateTime.now();
+
+	public String getEmail() {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	public String getPasswordHash() {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	public Role getRole() {
+		// TODO Auto-generated method stub
+		return role;
+	}
 }
 
