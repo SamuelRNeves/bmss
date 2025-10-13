@@ -1,6 +1,6 @@
 package com.bmss.backend.dto;
 
-public class AuthenticationRequest {
+public class AuthRequest {
     private String email;
     private String password;
 

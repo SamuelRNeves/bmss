@@ -1,8 +1,7 @@
 package com.bmss.backend.service;
 
-import com.bmss.backend.dto.AuthenticationRequest;
-import com.bmss.backend.dto.AuthenticationResponse;
-import com.bmss.backend.model.User;
+import com.bmss.backend.dto.AuthRequest;
+import com.bmss.backend.dto.AuthResponse;
 import com.bmss.backend.repository.UserRepository;
 import com.bmss.backend.security.JwtService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,23 +17,23 @@ public class AuthService {
     private AuthenticationManager authenticationManager;
 
     @Autowired
-    private UserRepository userRepository;
-
-    @Autowired
     private JwtService jwtService;
 
-    public AuthenticationResponse authenticate(AuthenticationRequest request) {
+    @Autowired
+    private UserRepository userRepository;
+
+    public AuthResponse login(AuthRequest request) {
         try {
             authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
+                    new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
             );
+
+            var user = userRepository.findByEmail(request.getEmail());
+            var jwtToken = jwtService.generateToken(user.getEmail());
+
+            return new AuthResponse(jwtToken);
         } catch (AuthenticationException e) {
             throw new RuntimeException("Credenciais inválidas");
         }
-
-        User user = userRepository.findByEmail(request.getEmail());
-        String token = jwtService.generateToken(user.getEmail());
-
-        return new AuthenticationResponse(token);
     }
 }
