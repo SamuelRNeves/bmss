@@ -32,6 +32,10 @@ public class Item {
     @JoinColumn(name = "source_id")
     private Source source;
 
+    @Column(name = "source")
+    private String sourceName;
+
     @OneToMany(mappedBy = "item", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Comment> comments = new ArrayList<>();
 }
+
