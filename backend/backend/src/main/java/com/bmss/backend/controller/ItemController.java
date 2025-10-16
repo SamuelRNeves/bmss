@@ -2,6 +2,8 @@ package com.bmss.backend.controller;
 
 import com.bmss.backend.model.Item;
 import com.bmss.backend.repository.ItemRepository;
+import com.bmss.backend.service.NewsService;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -14,6 +16,16 @@ public class ItemController {
 
     @Autowired
     private ItemRepository itemRepository;
+
+    @Autowired
+    private NewsService newsService;
+
+    // ✅ Importar notícias da API externa
+    @GetMapping("/import-news")
+    public ResponseEntity<String> importNews(@RequestParam(defaultValue = "bitcoin") String keyword) {
+        newsService.fetchAndStoreNews(keyword);
+        return ResponseEntity.ok("Notícias importadas com sucesso!");
+    }
 
     // Listar todas as notícias
     @GetMapping
@@ -32,8 +44,8 @@ public class ItemController {
         Item saved = itemRepository.save(item);
         return ResponseEntity.ok(saved);
     }
-    
- // Atualizar um item existente
+
+    // Atualizar um item existente
     @PutMapping("/{id}")
     public ResponseEntity<Item> updateItem(@PathVariable Integer id, @RequestBody Item updatedItem) {
         return itemRepository.findById(id)
@@ -57,9 +69,4 @@ public class ItemController {
             })
             .orElse(ResponseEntity.notFound().build());
     }
-
-
-    
 }
-
-
