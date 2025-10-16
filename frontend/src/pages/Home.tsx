@@ -1,28 +1,45 @@
 import React, { useEffect, useState } from "react";
-import api from "../api/api";
+import { getItems, importNews } from "../api/api";
 import { Item } from "../models/Item";
 
 const Home = () => {
   const [items, setItems] = useState<Item[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const fetchItems = async () => {
+    const data = await getItems();
+    setItems(data);
+  };
+
+  const handleImport = async () => {
+    setLoading(true);
+    try {
+      await importNews(); // ou passe keyword ex: importNews("ethereum")
+      await fetchItems();
+    } catch (error) {
+      console.error("Erro ao importar:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    api.get("/items") 
-      .then(response => {
-        setItems(response.data);
-      })
-      .catch(error => {
-        console.error("Erro ao buscar itens:", error);
-      });
+    fetchItems();
   }, []);
 
   return (
-    <div>
-      <h1>Itens Cadastrados</h1>
+    <div style={{ padding: "2rem" }}>
+      <h1>Notícias Importadas</h1>
+      <button onClick={handleImport} disabled={loading}>
+        {loading ? "Importando..." : "Importar Notícias"}
+      </button>
+
       <ul>
-        {items.map(item => (
-          <li key={item.id}>
-            <strong>{item.title}</strong>
-            {item.text ? ` - ${item.text}` : null}
+        {items.map((item) => (
+          <li key={item.id} style={{ marginBottom: "1rem" }}>
+            <strong>{item.title}</strong> <br />
+            <span>Fonte: {item.source}</span> <br />
+            <a href={item.url} target="_blank" rel="noreferrer">Ler mais</a>
           </li>
         ))}
       </ul>
