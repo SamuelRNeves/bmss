@@ -1,5 +1,6 @@
+
 import React, { useState } from "react";
-import api from "../api/api";
+import { getItems, importNews } from "../api/api";
 import { useNavigate } from "react-router-dom";
 
 const CadastrarItem = () => {
