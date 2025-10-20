@@ -1,54 +1,37 @@
 package com.bmss.backend.service;
 
 import com.bmss.backend.dto.FeedDTO;
-import lombok.Data;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
-
-import java.util.List;
-import java.util.stream.Collectors;
+import org.springframework.http.ResponseEntity;
+import java.util.*;
 
 @Service
 public class FeedService {
 
-    private static final String API_KEY = "2397c71979b14eaea433a03179807359";
-    private static final String URL =
-        "https://newsapi.org/v2/everything?q=bitcoin&language=pt&sortBy=publishedAt&pageSize=10&apiKey=" + API_KEY;
+    private static final String NEWS_API_URL =
+        "https://newsapi.org/v2/everything?q=bitcoin&language=pt&sortBy=publishedAt&pageSize=5&apiKey=SEU_API_KEY";
 
     public List<FeedDTO> fetchNews() {
         RestTemplate restTemplate = new RestTemplate();
-        NewsApiResponse response = restTemplate.getForObject(URL, NewsApiResponse.class);
+        try {
+            ResponseEntity<Map> response = restTemplate.getForEntity(NEWS_API_URL, Map.class);
+            List<Map<String, Object>> articles = (List<Map<String, Object>>) response.getBody().get("articles");
 
-        if (response != null && response.getArticles() != null) {
-            return response.getArticles().stream().map(article -> new FeedDTO(
-                article.getTitle(),
-                article.getDescription(),
-                article.getUrl(),
-                article.getSource().getName(),
-                article.getPublishedAt()
-            )).collect(Collectors.toList());
+            List<FeedDTO> feedList = new ArrayList<>();
+            for (Map<String, Object> article : articles) {
+                FeedDTO dto = new FeedDTO();
+                dto.setTitle((String) article.get("title"));
+                dto.setDescription((String) article.get("description"));
+                dto.setUrl((String) article.get("url"));
+                dto.setSource(((Map<String, Object>) article.get("source")).get("name").toString());
+                dto.setPublishedAt((String) article.get("publishedAt"));
+                feedList.add(dto);
+            }
+            return feedList;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return Collections.emptyList();
         }
-
-        return List.of(); // vazio se der erro
-    }
-
-    // Classes internas para mapear a resposta JSON da NewsAPI
-    @Data
-    static class NewsApiResponse {
-        private List<Article> articles;
-    }
-
-    @Data
-    static class Article {
-        private String title;
-        private String description;
-        private String url;
-        private String publishedAt;
-        private Source source;
-    }
-
-    @Data
-    static class Source {
-        private String name;
     }
 }
