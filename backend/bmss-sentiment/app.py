@@ -3,7 +3,6 @@ from nltk.sentiment.vader import SentimentIntensityAnalyzer
 from datetime import datetime
 import nltk
 
-# baixar os dados do NLTK (somente na primeira execução)
 nltk.download('vader_lexicon')
 
 app = Flask(__name__)
@@ -12,9 +11,9 @@ analyzer = SentimentIntensityAnalyzer()
 @app.route('/analyze', methods=['POST'])
 def analyze_sentiment():
     data = request.get_json()
-    text = data.get("text", "")
+    text = data.get("text", "").strip()
 
-    if not text.strip():
+    if not text:
         return jsonify({"error": "O campo 'text' é obrigatório"}), 400
 
     result = analyzer.polarity_scores(text)

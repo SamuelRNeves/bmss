@@ -2,74 +2,53 @@
 
 import { Home, UserPlus } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { useState } from "react";
 
 export default function Sidebar() {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
-    <>
-      {/* Sidebar desktop */}
-      <aside className="hidden md:flex flex-col w-64 bg-neutral-900 border-r border-neutral-800 p-6">
-        <h1 className="text-xl font-bold text-yellow-400 mb-8">BMSS</h1>
+    <aside
+      className={`fixed lg:static top-0 left-0 h-full w-64 bg-neutral-950 border-r border-neutral-800 flex flex-col justify-between transition-transform duration-300 ${
+        isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+      }`}
+    >
+      <div className="flex flex-col p-6">
+        {/* Logo no topo */}
+        <div className="flex items-center gap-3 mb-10">
+          <Image
+            src="/bmss-logo.png"
+            alt="BMSS Logo"
+            width={38}
+            height={38}
+            className="drop-shadow-[0_0_10px_#facc15]"
+          />
+          <span className="text-yellow-400 font-semibold text-xl tracking-wide">
+            BMSS
+          </span>
+        </div>
 
         <nav className="flex flex-col gap-4">
-          <Link href="/" className="flex items-center gap-2 text-gray-300 hover:text-yellow-400">
-            <Home size={20} />
-            Home
+          <Link
+            href="/"
+            className="flex items-center gap-3 text-gray-300 hover:text-yellow-400 transition"
+          >
+            <Home size={18} /> Home
           </Link>
 
-          <Link href="/cadastrar" className="flex items-center gap-2 text-gray-300 hover:text-yellow-400">
-            <UserPlus size={20} />
-            Cadastrar
+          <Link
+            href="/cadastrar"
+            className="flex items-center gap-3 text-gray-300 hover:text-yellow-400 transition"
+          >
+            <UserPlus size={18} /> Cadastrar
           </Link>
         </nav>
+      </div>
 
-        <footer className="mt-auto text-sm text-gray-500">
-          Bitcoin Market Sentiment
-        </footer>
-      </aside>
-
-      {/* Botão mobile */}
-      <button
-        className="md:hidden fixed top-4 left-4 z-50 p-2 bg-neutral-900 border border-neutral-700 rounded-lg"
-        onClick={() => setIsOpen(!isOpen)}
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" className="w-6 h-6">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-        </svg>
-      </button>
-
-      {/* Sidebar mobile */}
-      {isOpen && (
-        <div className="md:hidden fixed inset-0 bg-black/70 z-40" onClick={() => setIsOpen(false)}>
-          <aside
-            className="absolute left-0 top-0 w-64 h-full bg-neutral-900 border-r border-neutral-800 p-6 flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h1 className="text-xl font-bold text-yellow-400 mb-8">BMSS</h1>
-            <nav className="flex flex-col gap-4">
-              <Link
-                href="/"
-                onClick={() => setIsOpen(false)}
-                className="flex items-center gap-2 text-gray-300 hover:text-yellow-400"
-              >
-                <Home size={20} />
-                Home
-              </Link>
-
-              <Link
-                href="/cadastrar"
-                onClick={() => setIsOpen(false)}
-                className="flex items-center gap-2 text-gray-300 hover:text-yellow-400"
-              >
-                <UserPlus size={20} />
-                Cadastrar
-              </Link>
-            </nav>
-          </aside>
-        </div>
-      )}
-    </>
+      <div className="p-4 text-xs text-gray-500 text-center border-t border-neutral-800">
+        Bitcoin Market Sentiment
+      </div>
+    </aside>
   );
 }
