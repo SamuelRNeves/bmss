@@ -29,6 +29,10 @@ public class AuthService {
             );
 
             var user = userRepository.findByEmail(request.getEmail());
+            if (user == null) {
+                throw new RuntimeException("Credenciais inválidas");
+            }
+
             var jwtToken = jwtService.generateToken(user.getEmail());
 
             return new AuthResponse(jwtToken);
