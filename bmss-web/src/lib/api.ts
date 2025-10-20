@@ -36,4 +36,10 @@ export async function cadastrarNoticia(payload: {
   return res.data;
 }
 
+// 5️⃣  Cadastrar usuário (Java → /usuarios)
+export async function cadastrarUsuario(payload: { nome: string; email: string }) {
+  const res = await api.post("/usuarios", payload);
+  return res.data;
+}
+
 export default api;
