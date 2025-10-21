@@ -2,35 +2,36 @@
 
 import React, { useEffect, useState } from "react";
 import { getUltimasNoticias } from "../lib/api";
-import { ExternalLink } from "lucide-react"; // 👈 Ícone de seta externa
+import { ExternalLink } from "lucide-react";
 
 interface NewsItem {
-    id?: string | number;
-    title: string;
-    description: string;
-    url?: string;
-    fonte?: string;
-    publishedAt?: string;
-    sentimento?: string;
-    score?: number;
-  }
-  
+  id?: string | number;
+  title: string;
+  description: string;
+  url?: string;
+  source?: string; // 🔹 Corrigido nome para alinhar com backend
+  publishedAt?: string;
+  sentimento?: string;
+  score?: number;
+}
 
 export default function NewsList() {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getUltimasNoticias()
-      .then((data) => {
-        if (Array.isArray(data)) setNews(data);
-        else {
-          console.error("Formato inesperado:", data);
-          setNews([]);
-        }
-      })
-      .catch((err) => console.error("Erro ao carregar notícias:", err))
-      .finally(() => setLoading(false));
+    async function fetchNoticias() {
+      try {
+        const data = await getUltimasNoticias(12, "bitcoin");
+        setNews(data || []);
+      } catch (err) {
+        console.error("❌ Erro ao carregar notícias:", err);
+      } finally {
+        setLoading(false); // 🔹 Garante que pare de carregar
+      }
+    }
+
+    fetchNoticias();
   }, []);
 
   if (loading) {
@@ -88,34 +89,35 @@ export default function NewsList() {
               </p>
             )}
 
-           {/* Rodapé */}
-<div className="flex flex-col sm:flex-row sm:justify-between text-xs text-gray-500 mt-2">
-  <span>
-    <span className="text-gray-400">Fonte:</span>{" "}
-    {item.fonte || "Desconhecida"}
-  </span>
+            {/* Rodapé */}
+            <div className="flex flex-col sm:flex-row sm:justify-between text-xs text-gray-500 mt-2">
+              <span>
+                <span className="text-gray-400">Fonte:</span>{" "}
+                {item.source || "Desconhecida"}
+              </span>
 
-  <span>
-    <span className="text-gray-400">Publicado:</span>{" "}
-    {item.publishedAt
-      ? new Date(item.publishedAt).toLocaleString("pt-BR", {
-          day: "2-digit",
-          month: "2-digit",
-          year: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        })
-      : "Data não informada"}
-  </span>
+              <span>
+                <span className="text-gray-400">Publicado:</span>{" "}
+                {item.publishedAt
+                  ? new Date(item.publishedAt).toLocaleString("pt-BR", {
+                      day: "2-digit",
+                      month: "2-digit",
+                      year: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })
+                  : "Data não informada"}
+              </span>
 
-  <span>
-    <span className="text-gray-400">Sentimento:</span>{" "}
-    <span className={style.text}>{item.sentimento || "neutro"}</span>
-  </span>
-</div>
+              <span>
+                <span className="text-gray-400">Sentimento:</span>{" "}
+                <span className={style.text}>
+                  {item.sentimento || "neutro"}
+                </span>
+              </span>
+            </div>
 
-
-            {/* Link com ícone ↗ */}
+            {/* Link */}
             {item.url && (
               <a
                 href={item.url}

@@ -1,2 +1,9 @@
-Flask==3.0.3
-nltk==3.9.1
+flask
+pydantic
+uvicorn[standard]
+python-dotenv
+transformers
+torch
+sentencepiece
+unidecode
+nltk

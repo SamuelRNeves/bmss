@@ -10,7 +10,8 @@ import java.util.Map;
 public class SentimentService {
 
     private final RestTemplate restTemplate = new RestTemplate();
-    private final String SENTIMENT_API_URL = "http://127.0.0.1:5000/analyze";
+    private static final String PYTHON_API_URL = "http://localhost:5000/analyze";
+
 
     public Map<String, Object> analyzeText(String text) {
         Map<String, Object> result = new HashMap<>();
@@ -24,7 +25,7 @@ public class SentimentService {
 
             HttpEntity<Map<String, String>> entity = new HttpEntity<>(request, headers);
 
-            ResponseEntity<Map> response = restTemplate.postForEntity(SENTIMENT_API_URL, entity, Map.class);
+            ResponseEntity<Map> response = restTemplate.postForEntity(PYTHON_API_URL, entity, Map.class);
 
             if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
                 result.put("status", "success");

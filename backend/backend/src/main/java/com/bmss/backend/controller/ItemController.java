@@ -2,7 +2,7 @@ package com.bmss.backend.controller;
 
 import com.bmss.backend.model.Item;
 import com.bmss.backend.repository.ItemRepository;
-import com.bmss.backend.service.NewsService;
+import com.bmss.backend.service.NoticiasService;
 import com.bmss.backend.service.SentimentService;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,17 +22,20 @@ public class ItemController {
     private ItemRepository itemRepository;
 
     @Autowired
-    private NewsService newsService;
+    private NoticiasService newsService;
 
     @Autowired
     private SentimentService sentimentService;
 
     // ✅ Importar notícias da API externa
-    @PostMapping("/import-news")
-    public ResponseEntity<String> importNews(@RequestParam(defaultValue = "bitcoin") String keyword) {
-        newsService.fetchAndStoreNews(keyword);
-        return ResponseEntity.ok("Notícias importadas com sucesso!");
-    }
+  
+
+@PostMapping("/import")
+public ResponseEntity<?> importNews(@RequestParam String keyword) {
+    newsService.fetchAndStoreNews(keyword); // ✅ CORRETO
+    return ResponseEntity.ok("Notícias importadas com sucesso!");
+}
+
 
     // ✅ Analisar sentimento de uma notícia específica
     @PostMapping("/{id}/analyze")
