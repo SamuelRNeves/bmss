@@ -7,3 +7,4 @@ torch
 sentencepiece
 unidecode
 nltk
+##source venv/Scripts/activate

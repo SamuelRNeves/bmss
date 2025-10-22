@@ -1,7 +1,9 @@
 package com.bmss.backend.service;
 
 import com.bmss.backend.dto.FeedDTO;
+import com.bmss.backend.model.Category;
 import com.bmss.backend.model.Item;
+import com.bmss.backend.repository.CategoryRepository;
 import com.bmss.backend.repository.ItemRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.*;
@@ -20,6 +22,9 @@ public class NoticiasService {
     @Autowired
     private ItemRepository itemRepository;
 
+    @Autowired
+    private CategoryRepository categoryRepository;
+
     private final String NEWS_API_KEY = "2397c71979b14eaea433a03179807359";
     private final String NEWS_API_URL = "https://newsapi.org/v2/everything";
     private final RestTemplate restTemplate = new RestTemplate();
@@ -32,7 +37,7 @@ public class NoticiasService {
     // ============================================================
     public List<FeedDTO> buscarNoticias(int limit, String keyword) {
         String cacheKey = keyword.toLowerCase();
-    
+
         // 🔹 1. Verifica cache
         if (cache.containsKey(cacheKey)) {
             CacheEntry entry = cache.get(cacheKey);
@@ -41,69 +46,121 @@ public class NoticiasService {
                 return entry.data.stream().limit(limit).collect(Collectors.toList());
             }
         }
-    
+
         // 🔹 2. Busca da API (com proteção)
         List<FeedDTO> noticias;
         try {
             noticias = Optional.ofNullable(fetchNewsFromApi(keyword))
-                               .orElse(Collections.emptyList());
+                    .orElse(Collections.emptyList());
         } catch (Exception e) {
             System.err.println("❌ Erro ao acessar a API NewsAPI: " + e.getMessage());
             noticias = Collections.emptyList();
         }
-    
+
         // 🔹 3. Fallback garantido
         if (noticias.isEmpty()) {
             System.out.println("⚠️ Usando fallback local de notícias.");
             noticias = getFallbackNoticias();
         }
-    
+
         // 🔹 4. Armazena no cache
         cache.put(cacheKey, new CacheEntry(noticias, System.currentTimeMillis()));
         return noticias.stream().limit(limit).collect(Collectors.toList());
     }
-    
 
     // ============================================================
-    // 🔹 Busca notícias reais na NewsAPI
+    // 🔹 Busca notícias reais na NewsAPI (com tratamento inteligente)
     // ============================================================
     private List<FeedDTO> fetchNewsFromApi(String keyword) {
-        String query = keyword + " OR bitcoin OR criptomoeda OR mercado financeiro";
-
+        String query = keyword + " OR bitcoin OR criptomoeda OR economia OR geopolítica OR política OR mercado financeiro OR tecnologia";
+    
         UriComponentsBuilder builder = UriComponentsBuilder.fromHttpUrl(NEWS_API_URL)
                 .queryParam("q", query)
                 .queryParam("language", "pt")
                 .queryParam("sortBy", "publishedAt")
-                .queryParam("pageSize", 12)
+                .queryParam("pageSize", 50)
                 .queryParam("apiKey", NEWS_API_KEY);
-
+    
         ResponseEntity<Map> response = restTemplate.exchange(
                 builder.toUriString(),
                 HttpMethod.GET,
                 null,
                 Map.class
         );
-
+    
         if (response.getBody() == null || response.getBody().get("articles") == null)
             return Collections.emptyList();
-
+    
         List<Map<String, Object>> articles = (List<Map<String, Object>>) response.getBody().get("articles");
-
-        return articles.stream().map(a -> {
-            FeedDTO dto = new FeedDTO();
-            dto.setTitle((String) a.get("title"));
-            dto.setDescription((String) a.get("description"));
-            dto.setUrl((String) a.get("url"));
-
-            Map<String, Object> src = (Map<String, Object>) a.get("source");
-            dto.setSource(src != null ? (String) src.get("name") : "Desconhecida");
-
-            dto.setPublishedAt((String) a.get("publishedAt"));
-            dto.setSentimento("neutral");
-            dto.setScore(0.0);
-            return dto;
-        }).collect(Collectors.toList());
+    
+        List<FeedDTO> mapped = articles.stream()
+                .map(a -> {
+                    FeedDTO dto = new FeedDTO();
+    
+                    String title = sanitizeText((String) a.get("title"));
+                    String desc = sanitizeText((String) a.get("description"));
+                    String url = (String) a.get("url");
+    
+                    Map<String, Object> src = (Map<String, Object>) a.get("source");
+                    String sourceName = (src != null) ? (String) src.get("name") : "Desconhecida";
+    
+                    // ❌ Filtra fontes spam tipo itiny.xyz
+                    if (url == null || url.isBlank() ||
+                        url.contains("itiny.xyz") ||
+                        url.contains("rssing.com") ||
+                        url.contains("feedproxy") ||
+                        url.contains("news.google")) {
+                        return null;
+                    }
+    
+                    dto.setTitle(
+                            (title != null && !title.isBlank())
+                                    ? title
+                                    : "Notícia recente sobre " + keyword
+                    );
+    
+                    dto.setDescription(
+                            (desc != null && !desc.isBlank())
+                                    ? desc
+                                    : "Resumo não disponível — clique no link para ler na fonte original."
+                    );
+    
+                    dto.setUrl(url);
+                    dto.setSource(sourceName);
+                    dto.setPublishedAt((String) a.get("publishedAt"));
+                    dto.setSentimento("neutral");
+                    dto.setScore(0.0);
+    
+                    return dto;
+                })
+                .filter(Objects::nonNull)
+                // 🔹 Remove duplicadas por URL
+                .collect(Collectors.collectingAndThen(
+                        Collectors.toCollection(() -> new TreeSet<>(Comparator.comparing(FeedDTO::getUrl))),
+                        ArrayList::new
+                ));
+    
+        // 🔹 Se filtrou demais e ficou vazio, usa fallback
+        if (mapped.isEmpty()) {
+            System.out.println("⚠️ Nenhuma notícia válida retornada da API. Usando fallback local.");
+            return getFallbackNoticias();
+        }
+    
+        return mapped;
     }
+    
+    
+    
+    
+    // 🔹 Remove tags HTML e espaços quebrados
+    private String sanitizeText(String text) {
+        if (text == null) return null;
+        return text.replaceAll("<[^>]*>", "") // remove HTML
+                   .replaceAll("&[^;]+;", "") // remove entidades &amp; etc
+                   .trim();
+    }
+    
+    
 
     // ============================================================
     // 🔹 Fallback local (3 notícias de exemplo)
@@ -153,8 +210,16 @@ public class NoticiasService {
     // 🔹 Fetch + análise + persistência (para botão “Analisar últimas”)
     // ============================================================
     public void fetchAndStoreNews(String keyword) {
-        List<FeedDTO> noticias = buscarNoticias(10, keyword);
+        List<FeedDTO> noticias = buscarNoticias(30, keyword);
         if (noticias.isEmpty()) return;
+
+        // Cria ou busca a categoria
+        Category categoria = categoryRepository.findByName(keyword)
+                .orElseGet(() -> {
+                    Category nova = new Category();
+                    nova.setName(keyword);
+                    return categoryRepository.save(nova);
+                });
 
         List<String> textos = noticias.stream()
                 .map(n -> n.getTitle() + ". " + n.getDescription())
@@ -168,6 +233,7 @@ public class NoticiasService {
             item.setText(dto.getDescription());
             item.setUrl(dto.getUrl());
             item.setSourceName(dto.getSource());
+            item.setCategory(categoria); // 🔹 Associação com categoria
 
             try {
                 item.setPublishedAt(LocalDateTime.parse(dto.getPublishedAt().replace("Z", "")));
@@ -188,7 +254,27 @@ public class NoticiasService {
             itemRepository.save(item);
         }
 
-        System.out.println("✅ Notícias importadas e analisadas com sucesso!");
+        System.out.println("✅ Notícias de " + keyword + " importadas e analisadas com sucesso!");
+    }
+
+    // ============================================================
+    // 🔹 Agendador automático de coleta e análise de notícias
+    // ============================================================
+    @org.springframework.scheduling.annotation.Scheduled(fixedRate = 300000) // a cada 5 min
+    public void atualizarNoticiasPeriodicamente() {
+        List<String> topicos = List.of("bitcoin", "política", "economia", "geopolítica", "mercado financeiro", "tecnologia");
+
+        System.out.println("🕒 Iniciando atualização automática de notícias...");
+        for (String topico : topicos) {
+            try {
+                System.out.println("🔍 Coletando notícias sobre: " + topico);
+                fetchAndStoreNews(topico);
+                Thread.sleep(2000);
+            } catch (Exception e) {
+                System.err.println("⚠️ Erro ao atualizar notícias de " + topico + ": " + e.getMessage());
+            }
+        }
+        System.out.println("✅ Atualização automática concluída às " + java.time.LocalTime.now());
     }
 
     private static class CacheEntry {
