@@ -1,6 +1,12 @@
 package com.bmss.backend.repository;
 
-import org.springframework.data.jpa.repository.JpaRepository;
 import com.bmss.backend.model.Item;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.JpaRepository;
 
-public interface ItemRepository extends JpaRepository<Item, Integer> {}
+import java.util.List;
+
+public interface ItemRepository extends JpaRepository<Item, Integer> {
+    List<Item> findAllByOrderByPublishedAtDesc(Pageable pageable);
+    List<Item> findAllByOrderByCreatedAtDesc(Pageable pageable);
+}

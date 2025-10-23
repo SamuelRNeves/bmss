@@ -1,52 +1,108 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { getUltimasNoticias } from "../lib/api";
+import React, { useEffect, useMemo, useState } from "react";
 import { ExternalLink } from "lucide-react";
-
-interface NewsItem {
-  id?: string | number;
-  title: string;
-  description: string;
-  url?: string;
-  source?: string; // 🔹 Corrigido nome para alinhar com backend
-  publishedAt?: string;
-  sentimento?: string;
-  score?: number;
-}
+import {
+  NoticiasResponse,
+  NewsItem,
+  getUltimasNoticias,
+} from "../lib/api";
 
 export default function NewsList() {
-  const [news, setNews] = useState<NewsItem[]>([]);
+  const [response, setResponse] = useState<NoticiasResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchNoticias() {
       try {
+        setLoading(true);
         const data = await getUltimasNoticias(12, "bitcoin");
-        setNews(data || []);
+        setResponse(data);
+        setError(null);
       } catch (err) {
         console.error("❌ Erro ao carregar notícias:", err);
+        setError(err instanceof Error ? err.message : "Erro ao carregar notícias.");
+        setResponse(null);
       } finally {
-        setLoading(false); // 🔹 Garante que pare de carregar
+        setLoading(false);
       }
     }
 
     fetchNoticias();
   }, []);
 
+  const news: NewsItem[] = useMemo(
+    () => response?.items ?? [],
+    [response]
+  );
+
+  const statusBanners = useMemo(() => {
+    if (!response) return null;
+
+    return (
+      <div className="space-y-3">
+        {response.message && (
+          <div className="rounded-md border border-amber-500/60 bg-amber-500/10 p-3 text-sm text-amber-100">
+            {response.message}
+          </div>
+        )}
+
+        {response.fromCache && (
+          <div className="rounded-md border border-sky-500/60 bg-sky-500/10 p-3 text-xs text-sky-100">
+            Dados servidos do cache. Atualizações podem levar até 5 minutos para refletir novas buscas.
+          </div>
+        )}
+
+        {response.warnings?.length ? (
+          <div className="rounded-md border border-yellow-500/60 bg-yellow-500/10 p-3 text-xs text-yellow-100">
+            <p className="font-medium text-sm">Avisos</p>
+            <ul className="mt-1 space-y-1 list-disc list-inside">
+              {response.warnings.map((warn, index) => (
+                <li key={`warn-${index}`}>{warn}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        {response.errors?.length ? (
+          <div className="rounded-md border border-red-500/60 bg-red-500/10 p-3 text-xs text-red-100">
+            <p className="font-medium text-sm">Problemas detectados</p>
+            <ul className="mt-1 space-y-1 list-disc list-inside">
+              {response.errors.map((errMsg, index) => (
+                <li key={`err-${index}`}>{errMsg}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </div>
+    );
+  }, [response]);
+
   if (loading) {
     return (
-      <div className="text-gray-400 text-center py-4">
-        Carregando notícias...
-      </div>
+      <div className="text-gray-400 text-center py-4">Carregando notícias...</div>
+    );
+  }
+
+  if (error) {
+    return (
+      <section className="space-y-4">
+        <div className="rounded-md border border-red-500/60 bg-red-500/10 p-3 text-sm text-red-100">
+          {error}
+        </div>
+      </section>
     );
   }
 
   if (!news.length) {
     return (
-      <div className="text-gray-400 text-center py-4">
-        Nenhuma notícia encontrada.
-      </div>
+      <section className="space-y-4">
+        {statusBanners}
+        <div className="text-gray-400 text-center py-4">
+          {response?.message || "Nenhuma notícia encontrada."}
+        </div>
+      </section>
     );
   }
 
@@ -64,6 +120,8 @@ export default function NewsList() {
 
   return (
     <section className="space-y-4">
+      {statusBanners}
+
       {news.map((item, index) => {
         const style = getSentimentStyle(item.sentimento);
 

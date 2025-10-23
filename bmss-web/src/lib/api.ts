@@ -1,8 +1,29 @@
 import axios from "axios";
 
+export interface NewsItem {
+  id?: string | number;
+  title: string;
+  description: string;
+  url?: string;
+  source?: string;
+  publishedAt?: string;
+  sentimento?: string;
+  score?: number;
+}
+
+export interface NoticiasResponse {
+  items: NewsItem[];
+  fromCache: boolean;
+  usingFallback: boolean;
+  fallbackSource?: string | null;
+  partial: boolean;
+  message?: string | null;
+  warnings: string[];
+  errors: string[];
+}
 
 const api = axios.create({
-  baseURL: "http://localhost:8080/api/v1", 
+  baseURL: "http://localhost:8080/api/v1",
   timeout: 5000,
 });
 
@@ -22,13 +43,22 @@ export async function getTendencias() {
 
 export async function getUltimasNoticias(limit = 12, q = "bitcoin") {
   try {
-    const res = await api.get(`/noticias/ultimas`, { params: { limit, q } });
-    if (res.status === 200) return res.data;
-    console.error("⚠️ Resposta inesperada:", res.status, res.data);
-    return [];
+    const res = await api.get<NoticiasResponse>(`/noticias/ultimas`, {
+      params: { limit, q },
+    });
+    if (res.status === 200) {
+      return res.data;
+    }
+    throw new Error(`Resposta inesperada do servidor (${res.status}).`);
   } catch (err) {
-    console.error("❌ Erro ao buscar notícias:", err);
-    return [];
+    if (axios.isAxiosError(err)) {
+      const status = err.response?.status ?? "erro";
+      const detail =
+        (err.response?.data && (err.response.data.message || err.response.data.error)) ||
+        err.message;
+      throw new Error(`Falha ao buscar notícias (${status}): ${detail}`);
+    }
+    throw err;
   }
 }
 
