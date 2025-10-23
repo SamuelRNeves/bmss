@@ -3,11 +3,9 @@ import axios from "axios";
 
 const api = axios.create({
   baseURL: "http://localhost:8080/api/v1",
-  // A coleta de notícias consulta a NewsAPI e envia os textos para o serviço
-  // Flask realizar a análise de sentimento. Esse fluxo pode levar vários
-  // segundos (principalmente na primeira execução, quando o modelo de NLP é
-  // carregado), por isso aumentamos o timeout padrão para evitar que o
-  // frontend aborte a requisição prematuramente.
+  // O backend consulta a NewsAPI e chama o serviço Flask para calcular sentimento.
+  // Esse fluxo pode levar alguns segundos na primeira requisição, então
+  // ampliamos o timeout para evitar abortar a chamada prematuramente.
   timeout: 15000,
 });
 
@@ -34,7 +32,7 @@ export async function getUltimasNoticias(limit = 12, q = "bitcoin") {
   } catch (err) {
     if (axios.isAxiosError(err) && err.code === "ECONNABORTED") {
       console.error(
-        "⏳ Requisição de notícias expirou antes do backend responder. Considere verificar o serviço Flask/NewsAPI.",
+        "⏳ A requisição de notícias expirou. Verifique se o backend/Flask está processando as análises.",
       );
     } else {
       console.error("❌ Erro ao buscar notícias:", err);

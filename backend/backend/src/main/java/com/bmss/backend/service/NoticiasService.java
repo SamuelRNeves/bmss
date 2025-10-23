@@ -22,11 +22,13 @@ import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
@@ -50,14 +52,12 @@ public class NoticiasService {
     public List<FeedDTO> buscarNoticias(int limit, String keyword) {
         String cacheKey = keyword.toLowerCase();
 
-        // 🔹 1. Verifica cache
         CacheEntry cacheEntry = cache.get(cacheKey);
         if (cacheEntry != null && System.currentTimeMillis() - cacheEntry.timestamp < CACHE_DURATION_MS) {
             System.out.println("⚡ Retornando notícias do cache para: " + keyword);
             return cacheEntry.data.stream().limit(limit).map(this::copyDto).collect(Collectors.toList());
         }
 
-        // 🔹 2. Busca da API (com proteção)
         List<FeedDTO> noticias;
         try {
             noticias = Optional.ofNullable(fetchNewsFromApi(keyword)).orElse(Collections.emptyList());
@@ -66,7 +66,6 @@ public class NoticiasService {
             noticias = Collections.emptyList();
         }
 
-        // 🔹 3. Fallback garantido
         if (noticias.isEmpty()) {
             System.out.println("⚠️ Usando fallback local de notícias.");
             noticias = getFallbackNoticias();
@@ -74,7 +73,6 @@ public class NoticiasService {
             enrichWithSentiment(noticias);
         }
 
-        // 🔹 4. Armazena no cache com cópia para evitar mutações externas
         List<FeedDTO> cachedCopy = noticias.stream().map(this::copyDto).collect(Collectors.toList());
         cache.put(cacheKey, new CacheEntry(cachedCopy, System.currentTimeMillis()));
         return cachedCopy.stream().limit(limit).map(this::copyDto).collect(Collectors.toList());
@@ -94,10 +92,14 @@ public class NoticiasService {
                 .queryParam("pageSize", 12)
                 .queryParam("apiKey", NEWS_API_KEY);
 
+        HttpHeaders headers = new HttpHeaders();
+        headers.set(HttpHeaders.USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36");
+        headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
+
         ResponseEntity<Map> response = restTemplate.exchange(
                 builder.toUriString(),
                 HttpMethod.GET,
-                null,
+                new HttpEntity<>(headers),
                 Map.class
         );
 
@@ -116,7 +118,7 @@ public class NoticiasService {
             String description = trimToNull((String) article.get("description"));
 
             if (title == null && description == null) {
-                continue; // ignora entradas completamente vazias
+                continue;
             }
 
             String rawUrl = article.get("url") != null ? article.get("url").toString() : null;
@@ -134,7 +136,7 @@ public class NoticiasService {
             dto.setSentimento("neutral");
             dto.setScore(0.0);
 
-            String dedupKey = normalizedUrl != null ? normalizedUrl : UUID.randomUUID().toString();
+            String dedupKey = normalizedUrl != null ? normalizedUrl : (title != null ? title : UUID.randomUUID().toString());
             deduplicated.putIfAbsent(dedupKey, dto);
         }
 
@@ -273,10 +275,14 @@ public class NoticiasService {
         return combined.isBlank() ? title : combined;
     }
 
+    private static final Set<String> REDIRECT_PARAM_KEYS = Set.of("u", "url", "r", "target", "link", "newsurl", "newsUrl");
+
     private String normalizeUrl(String rawUrl) {
         if (rawUrl == null || rawUrl.isBlank()) {
             return null;
         }
+
+        String candidate = rawUrl;
 
         try {
             URI uri = URI.create(rawUrl);
@@ -286,10 +292,11 @@ public class NoticiasService {
                 if (query != null) {
                     for (String param : query.split("&")) {
                         String[] parts = param.split("=", 2);
-                        if (parts.length == 2 && ("u".equals(parts[0]) || "url".equals(parts[0]))) {
+                        if (parts.length == 2 && REDIRECT_PARAM_KEYS.contains(parts[0].toLowerCase())) {
                             String decoded = URLDecoder.decode(parts[1], StandardCharsets.UTF_8);
                             if (!decoded.isBlank()) {
-                                return decoded;
+                                candidate = decoded;
+                                break;
                             }
                         }
                     }
@@ -298,7 +305,11 @@ public class NoticiasService {
         } catch (IllegalArgumentException ignored) {
         }
 
-        return rawUrl;
+        if (candidate.contains("itiny.xyz") && !candidate.equals(rawUrl)) {
+            return normalizeUrl(candidate);
+        }
+
+        return stripTrackingParameters(candidate);
     }
 
     private String trimToNull(String value) {
@@ -307,6 +318,40 @@ public class NoticiasService {
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private String stripTrackingParameters(String url) {
+        try {
+            URI uri = URI.create(url);
+            String query = uri.getQuery();
+            if (query == null || query.isBlank()) {
+                return url;
+            }
+
+            String filtered = Arrays.stream(query.split("&"))
+                    .filter(param -> {
+                        String lower = param.toLowerCase();
+                        return !(lower.startsWith("utm_")
+                                || lower.startsWith("ref=")
+                                || lower.startsWith("fbclid=")
+                                || lower.startsWith("gclid="));
+                    })
+                    .collect(Collectors.joining("&"));
+
+            if (filtered.equals(query)) {
+                return url;
+            }
+
+            return new URI(
+                    uri.getScheme(),
+                    uri.getAuthority(),
+                    uri.getPath(),
+                    filtered.isBlank() ? null : filtered,
+                    uri.getFragment()
+            ).toString();
+        } catch (Exception ignored) {
+            return url;
+        }
     }
 
     private LocalDateTime parsePublishedAt(String publishedAt) {
