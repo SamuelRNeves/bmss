@@ -1,56 +1,78 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import { getUltimasNoticias } from "../lib/api";
 import { ExternalLink } from "lucide-react";
+import axios from "axios";
 
 interface NewsItem {
   id?: string | number;
   title: string;
   description: string;
   url?: string;
-  source?: string; // 🔹 Corrigido nome para alinhar com backend
+  fonte?: string;
   publishedAt?: string;
   sentimento?: string;
   score?: number;
+  category?: { name: string };
 }
 
 export default function NewsList() {
   const [news, setNews] = useState<NewsItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const loaderRef = useRef<HTMLDivElement | null>(null);
+
+  const categorias = [
+    "bitcoin",
+    "política",
+    "economia",
+    "geopolítica",
+    "mercado financeiro",
+    "tecnologia",
+  ];
+
+  // 🔹 Busca do backend local paginado
+  const fetchLocalNews = async (pageNum: number) => {
+    try {
+      setLoading(true);
+      const res = await axios.get(
+        `http://localhost:8080/api/v1/noticias/todas?page=${pageNum}&size=10`
+      );
+      if (res.data.length === 0) {
+        setHasMore(false);
+      } else {
+        setNews((prev) => [...prev, ...res.data]);
+      }
+    } catch (error) {
+      console.error("Erro ao buscar notícias locais:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 🔹 Scroll infinito
+  const handleObserver = useCallback(
+    (entries: IntersectionObserverEntry[]) => {
+      const target = entries[0];
+      if (target.isIntersecting && hasMore && !loading) {
+        setPage((prev) => prev + 1);
+      }
+    },
+    [hasMore, loading]
+  );
 
   useEffect(() => {
-    async function fetchNoticias() {
-      try {
-        const data = await getUltimasNoticias(12, "bitcoin");
-        setNews(data || []);
-      } catch (err) {
-        console.error("❌ Erro ao carregar notícias:", err);
-      } finally {
-        setLoading(false); // 🔹 Garante que pare de carregar
-      }
-    }
+    const observer = new IntersectionObserver(handleObserver, { threshold: 1 });
+    if (loaderRef.current) observer.observe(loaderRef.current);
+    return () => observer.disconnect();
+  }, [handleObserver]);
 
-    fetchNoticias();
-  }, []);
+  useEffect(() => {
+    fetchLocalNews(page);
+  }, [page]);
 
-  if (loading) {
-    return (
-      <div className="text-gray-400 text-center py-4">
-        Carregando notícias...
-      </div>
-    );
-  }
-
-  if (!news.length) {
-    return (
-      <div className="text-gray-400 text-center py-4">
-        Nenhuma notícia encontrada.
-      </div>
-    );
-  }
-
-  // Define a cor da borda e do texto conforme o sentimento
   const getSentimentStyle = (sentimento?: string) => {
     switch (sentimento) {
       case "positive":
@@ -64,14 +86,25 @@ export default function NewsList() {
 
   return (
     <section className="space-y-4">
+      <h2 className="text-xl font-semibold text-gray-200 text-center mb-4">
+        📰 Últimas Notícias de Todas as Categorias
+      </h2>
+
       {news.map((item, index) => {
         const style = getSentimentStyle(item.sentimento);
-
         return (
           <div
-            key={item.id || index}
+          key={`${item.url || item.title || "sem-url"}-${index}`}
+
             className={`p-4 bg-neutral-900 border-2 ${style.border} rounded-lg hover:bg-neutral-800 transition-colors`}
           >
+            {/* Categoria */}
+            {item.category?.name && (
+              <span className="inline-block mb-2 px-2 py-0.5 text-xs font-medium rounded-full bg-neutral-800 text-yellow-400 uppercase">
+                {item.category.name}
+              </span>
+            )}
+
             {/* Título */}
             <h3 className="text-lg font-semibold text-gray-100 mb-1">
               {item.title || "Título não informado"}
@@ -82,7 +115,7 @@ export default function NewsList() {
               {item.description || "Sem descrição disponível."}
             </p>
 
-            {/* Pontuação */}
+            {/* Score */}
             {typeof item.score === "number" && (
               <p className="text-gray-500 text-xs mb-1">
                 Score: {item.score.toFixed(3)}
@@ -93,9 +126,8 @@ export default function NewsList() {
             <div className="flex flex-col sm:flex-row sm:justify-between text-xs text-gray-500 mt-2">
               <span>
                 <span className="text-gray-400">Fonte:</span>{" "}
-                {item.source || "Desconhecida"}
+                {item.fonte || "Desconhecida"}
               </span>
-
               <span>
                 <span className="text-gray-400">Publicado:</span>{" "}
                 {item.publishedAt
@@ -108,12 +140,9 @@ export default function NewsList() {
                     })
                   : "Data não informada"}
               </span>
-
               <span>
                 <span className="text-gray-400">Sentimento:</span>{" "}
-                <span className={style.text}>
-                  {item.sentimento || "neutro"}
-                </span>
+                <span className={style.text}>{item.sentimento || "neutro"}</span>
               </span>
             </div>
 
@@ -132,6 +161,11 @@ export default function NewsList() {
           </div>
         );
       })}
+
+      {/* Loader infinito */}
+      <div ref={loaderRef} className="text-center py-6 text-gray-400">
+        {loading ? "Carregando mais notícias..." : hasMore ? "..." : "✅ Fim das notícias."}
+      </div>
     </section>
   );
 }
