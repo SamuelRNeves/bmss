@@ -45,6 +45,12 @@ public class NoticiasService {
 
     private static final Map<String, CacheEntry> cache = new ConcurrentHashMap<>();
     private static final long CACHE_DURATION_MS = 5 * 60 * 1000;
+    private static final Set<String> BLOCKED_HOST_KEYWORDS = Set.of(
+            "itiny.xyz",
+            "rssing.com",
+            "feedproxy",
+            "news.google"
+    );
 
     // ============================================================
     // 🔹 Busca notícias para o controller (com cache + fallback)
@@ -83,13 +89,13 @@ public class NoticiasService {
     // 🔹 Busca notícias reais na NewsAPI
     // ============================================================
     private List<FeedDTO> fetchNewsFromApi(String keyword) {
-        String query = keyword + " OR bitcoin OR criptomoeda OR mercado financeiro";
+        String query = keyword + " OR bitcoin OR criptomoeda OR economia OR geopolítica OR política OR mercado financeiro OR tecnologia";
 
         UriComponentsBuilder builder = UriComponentsBuilder.fromHttpUrl(NEWS_API_URL)
                 .queryParam("q", query)
                 .queryParam("language", "pt")
                 .queryParam("sortBy", "publishedAt")
-                .queryParam("pageSize", 12)
+                .queryParam("pageSize", 50)
                 .queryParam("apiKey", NEWS_API_KEY);
 
         HttpHeaders headers = new HttpHeaders();
@@ -114,8 +120,8 @@ public class NoticiasService {
         Map<String, FeedDTO> deduplicated = new LinkedHashMap<>();
 
         for (Map<String, Object> article : articles) {
-            String title = trimToNull((String) article.get("title"));
-            String description = trimToNull((String) article.get("description"));
+            String title = sanitizeText((String) article.get("title"));
+            String description = sanitizeText((String) article.get("description"));
 
             if (title == null && description == null) {
                 continue;
@@ -124,10 +130,14 @@ public class NoticiasService {
             String rawUrl = article.get("url") != null ? article.get("url").toString() : null;
             String normalizedUrl = normalizeUrl(rawUrl);
 
+            if (shouldSkipUrl(normalizedUrl, rawUrl)) {
+                continue;
+            }
+
             FeedDTO dto = new FeedDTO();
-            dto.setTitle(title);
+            dto.setTitle(title != null ? title : Optional.ofNullable(description).orElse("Notícia recente sobre " + keyword));
             dto.setDescription(description);
-            dto.setUrl(normalizedUrl);
+            dto.setUrl(normalizedUrl != null ? normalizedUrl : rawUrl);
 
             Map<String, Object> src = (Map<String, Object>) article.get("source");
             dto.setSource(src != null ? trimToNull((String) src.get("name")) : "Desconhecida");
@@ -136,7 +146,7 @@ public class NoticiasService {
             dto.setSentimento("neutral");
             dto.setScore(0.0);
 
-            String dedupKey = normalizedUrl != null ? normalizedUrl : (title != null ? title : UUID.randomUUID().toString());
+            String dedupKey = dto.getUrl() != null ? dto.getUrl() : (dto.getTitle() != null ? dto.getTitle() : UUID.randomUUID().toString());
             deduplicated.putIfAbsent(dedupKey, dto);
         }
 
@@ -191,7 +201,7 @@ public class NoticiasService {
     // 🔹 Fetch + análise + persistência (para botão “Analisar últimas”)
     // ============================================================
     public void fetchAndStoreNews(String keyword) {
-        List<FeedDTO> noticias = buscarNoticias(10, keyword);
+        List<FeedDTO> noticias = buscarNoticias(30, keyword);
         if (noticias.isEmpty()) return;
 
         for (FeedDTO dto : noticias) {
@@ -320,6 +330,20 @@ public class NoticiasService {
         return trimmed.isEmpty() ? null : trimmed;
     }
 
+    private String sanitizeText(String text) {
+        if (text == null) {
+            return null;
+        }
+
+        String sanitized = text
+                .replaceAll("<[^>]*>", " ")
+                .replaceAll("&[^;]+;", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+
+        return sanitized.isEmpty() ? null : sanitized;
+    }
+
     private String stripTrackingParameters(String url) {
         try {
             URI uri = URI.create(url);
@@ -352,6 +376,32 @@ public class NoticiasService {
         } catch (Exception ignored) {
             return url;
         }
+    }
+
+    private boolean shouldSkipUrl(String normalizedUrl, String rawUrl) {
+        String candidate = normalizedUrl != null ? normalizedUrl : rawUrl;
+        if (candidate == null || candidate.isBlank()) {
+            return true;
+        }
+
+        try {
+            URI uri = URI.create(candidate);
+            String host = uri.getHost();
+            if (host == null) {
+                return true;
+            }
+
+            String hostLower = host.toLowerCase();
+            for (String blocked : BLOCKED_HOST_KEYWORDS) {
+                if (hostLower.contains(blocked)) {
+                    return true;
+                }
+            }
+        } catch (IllegalArgumentException ignored) {
+            return true;
+        }
+
+        return false;
     }
 
     private LocalDateTime parsePublishedAt(String publishedAt) {
