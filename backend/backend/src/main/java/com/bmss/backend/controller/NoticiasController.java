@@ -20,4 +20,16 @@ public class NoticiasController {
         List<FeedDTO> noticias = noticiasService.getLatestNews();
         return ResponseEntity.ok(noticias);
     }
+
+    @PostMapping("/atualizar")
+    public ResponseEntity<List<FeedDTO>> atualizarNoticias() {
+        List<FeedDTO> noticias = noticiasService.refreshLatestNews();
+        return ResponseEntity.ok(noticias);
+    }
+
+    @PostMapping("/reanalisar")
+    public ResponseEntity<List<FeedDTO>> reanalisarNoticias() {
+        List<FeedDTO> noticias = noticiasService.reanalyzeCachedNews();
+        return ResponseEntity.ok(noticias);
+    }
 }

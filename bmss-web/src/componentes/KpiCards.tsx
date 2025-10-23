@@ -1,7 +1,7 @@
 "use client";
 
 import { getSentimentos } from "../lib/api";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { CircularProgressbar, buildStyles } from "react-circular-progressbar";
 import "react-circular-progressbar/dist/styles.css";
 import { motion, AnimatePresence } from "framer-motion";
@@ -12,6 +12,12 @@ type SentimentKpi = {
   color: string;
 };
 
+type SentimentResponse = {
+  positive?: number | string;
+  neutral?: number | string;
+  negative?: number | string;
+};
+
 export default function KpiCards() {
   const [kpis, setKpis] = useState<SentimentKpi[]>([
     { label: "Positivo", value: 0, color: "#22c55e" },
@@ -19,29 +25,75 @@ export default function KpiCards() {
     { label: "Negativo", value: 0, color: "#ef4444" },
   ]);
 
-  const fetchData = async () => {
+  const aplicarSentimentos = useCallback((dados: unknown) => {
+    if (!dados || typeof dados !== "object") {
+      return;
+    }
+
+    const { positive, neutral, negative } = dados as SentimentResponse;
+
+    const parse = (value?: number | string) => {
+      if (typeof value === "number") {
+        return value;
+      }
+
+      if (typeof value === "string") {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : undefined;
+      }
+
+      return undefined;
+    };
+
+    const positivo = parse(positive);
+    const neutro = parse(neutral);
+    const negativo = parse(negative);
+
+    if (
+      positivo === undefined ||
+      neutro === undefined ||
+      negativo === undefined
+    ) {
+      return;
+    }
+
+    setKpis([
+      { label: "Positivo", value: Math.round(positivo * 100), color: "#22c55e" },
+      { label: "Neutro", value: Math.round(neutro * 100), color: "#facc15" },
+      { label: "Negativo", value: Math.round(negativo * 100), color: "#ef4444" },
+    ]);
+  }, []);
+
+  const fetchData = useCallback(async () => {
     try {
       const data = await getSentimentos();
-      setKpis([
-        { label: "Positivo", value: Math.round(data.positive * 100), color: "#22c55e" },
-        { label: "Neutro", value: Math.round(data.neutral * 100), color: "#facc15" },
-        { label: "Negativo", value: Math.round(data.negative * 100), color: "#ef4444" },
-      ]);
+      aplicarSentimentos(data);
     } catch (error) {
-      console.error("Erro ao carregar sentimentos");
+      console.error("Erro ao carregar sentimentos", error);
     }
-  };
+  }, [aplicarSentimentos]);
 
   useEffect(() => {
     fetchData();
     const intervalo = setInterval(fetchData, 60000); // atualiza a cada 60s
-    return () => clearInterval(intervalo);
-  }, []);
+
+    const listener = (event: Event) => {
+      const customEvent = event as CustomEvent<unknown>;
+      aplicarSentimentos(customEvent.detail);
+    };
+
+    window.addEventListener("sentiments-updated", listener as EventListener);
+
+    return () => {
+      window.removeEventListener("sentiments-updated", listener as EventListener);
+      clearInterval(intervalo);
+    };
+  }, [aplicarSentimentos, fetchData]);
 
   return (
     <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
       <AnimatePresence>
-        {kpis.map((kpi, index) => (
+        {kpis.map((kpi) => (
           <motion.div
             key={kpi.label}
             initial={{ opacity: 0, scale: 0.9 }}

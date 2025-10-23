@@ -26,6 +26,16 @@ export async function getUltimasNoticias() {
   return res.data; // [{id, titulo, fonte, resumo, sentimento}, ...]
 }
 
+export async function atualizarNoticias() {
+  const res = await api.post("/noticias/atualizar");
+  return res.data;
+}
+
+export async function reanalisarNoticias() {
+  const res = await api.post("/noticias/reanalisar");
+  return res.data;
+}
+
 // 4️⃣  Cadastrar notícia (Java → /noticias)
 export async function cadastrarNoticia(payload: {
   titulo: string;

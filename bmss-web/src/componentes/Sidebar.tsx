@@ -6,7 +6,7 @@ import Image from "next/image";
 import { useState } from "react";
 
 export default function Sidebar() {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen] = useState(false);
 
   return (
     <aside

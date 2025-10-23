@@ -1,45 +1,82 @@
 "use client";
 
 import { RefreshCcw, Search } from "lucide-react";
-import { getUltimasNoticias, getSentimentos } from "../lib/api";
-import { useState, useEffect } from "react";
+import {
+  atualizarNoticias,
+  getSentimentos,
+  reanalisarNoticias,
+} from "../lib/api";
+import { useState, useEffect, useCallback } from "react";
+
+const broadcastNews = (data: unknown) => {
+  window.dispatchEvent(new CustomEvent("news-updated", { detail: data }));
+};
+
+const broadcastSentiments = (data: unknown) => {
+  window.dispatchEvent(new CustomEvent("sentiments-updated", { detail: data }));
+};
 
 export default function Header() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
-  const atualizarDashboard = async (mensagemInicio: string, mensagemSucesso: string) => {
-    try {
-      setLoading(true);
-      setMessage(mensagemInicio);
+  const atualizarDashboard = useCallback(
+    async (
+      mensagemInicio: string,
+      mensagemSucesso: string,
+      acaoNoticias: () => Promise<unknown>
+    ) => {
+      try {
+        setLoading(true);
+        setMessage(mensagemInicio);
 
-      await Promise.all([getSentimentos(), getUltimasNoticias()]);
+        const [sentimentos, noticias] = await Promise.all([
+          getSentimentos(),
+          acaoNoticias(),
+        ]);
 
-      setMessage(mensagemSucesso);
-    } catch (error) {
-      console.error(error);
-      setMessage("❌ Falha ao atualizar o dashboard");
-    } finally {
-      setLoading(false);
-      setTimeout(() => setMessage(""), 5000);
-    }
-  };
+        broadcastSentiments(sentimentos);
+        broadcastNews(noticias);
+
+        setMessage(mensagemSucesso);
+      } catch (error) {
+        console.error(error);
+        setMessage("❌ Falha ao atualizar o dashboard");
+      } finally {
+        setLoading(false);
+        setTimeout(() => setMessage(""), 5000);
+      }
+    },
+    []
+  );
 
   // 🔄 Atualização manual
   const handleUpdate = () =>
-    atualizarDashboard("Atualizando dados...", "✅ Dashboard atualizado com sucesso!");
+    atualizarDashboard(
+      "Atualizando dados...",
+      "✅ Dashboard atualizado com sucesso!",
+      atualizarNoticias
+    );
 
   const handleAnalyzeLast5 = () =>
-    atualizarDashboard("Analisando as últimas 5 notícias...", "✅ Análise concluída com sucesso!");
+    atualizarDashboard(
+      "Analisando as últimas notícias...",
+      "✅ Análise concluída com sucesso!",
+      reanalisarNoticias
+    );
 
   // ⏱ Atualização automática a cada 60 segundos
   useEffect(() => {
     const intervalo = setInterval(() => {
-      atualizarDashboard("⏱ Atualização automática...", "✅ Dashboard sincronizado!");
+      atualizarDashboard(
+        "⏱ Atualização automática...",
+        "✅ Dashboard sincronizado!",
+        atualizarNoticias
+      );
     }, 60000); // 60.000 ms = 60 segundos
 
     return () => clearInterval(intervalo); // limpa o timer ao desmontar
-  }, []);
+  }, [atualizarDashboard]);
 
   return (
     <header className="flex flex-col md:flex-row md:items-center md:justify-between mb-8 gap-4">
