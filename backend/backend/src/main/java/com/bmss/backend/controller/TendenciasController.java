@@ -1,25 +1,38 @@
 package com.bmss.backend.controller;
 
-import org.springframework.web.bind.annotation.*;
+import com.bmss.backend.dto.FeedDTO;
+import com.bmss.backend.service.NoticiasService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
-import java.util.*;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1")
 @CrossOrigin(origins = "http://localhost:3000")
 public class TendenciasController {
 
+    @Autowired
+    private NoticiasService noticiasService;
+
     @GetMapping("/tendencias")
-    public ResponseEntity<List<Map<String, Object>>> getTendencias() {
-        List<Map<String, Object>> tendencias = new ArrayList<>();
+    public ResponseEntity<List<Map<String, Object>>> getTendencias(
+            @RequestParam(defaultValue = "bitcoin") String q,
+            @RequestParam(defaultValue = "30") int limit) {
 
-        // 🔹 Mock de dados — substitua depois por lógica real
-        tendencias.add(Map.of("day", "Dia 1", "positive", 45, "neutral", 30, "negative", 25));
-        tendencias.add(Map.of("day", "Dia 2", "positive", 48, "neutral", 29, "negative", 23));
-        tendencias.add(Map.of("day", "Dia 3", "positive", 50, "neutral", 28, "negative", 22));
-        tendencias.add(Map.of("day", "Dia 4", "positive", 52, "neutral", 30, "negative", 18));
-        tendencias.add(Map.of("day", "Dia 5", "positive", 40, "neutral", 27, "negative", 33));
+        List<FeedDTO> noticias = noticiasService.buscarNoticias(limit, q);
+        if (noticias.isEmpty()) {
+            return ResponseEntity.ok(Collections.emptyList());
+        }
 
+        List<Map<String, Object>> tendencias = noticiasService.calcularTendenciaPorDia(noticias);
         return ResponseEntity.ok(tendencias);
     }
 }

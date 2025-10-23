@@ -4,11 +4,13 @@ import com.bmss.backend.dto.FeedDTO;
 import com.bmss.backend.service.NoticiasService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-import java.util.List;
-import java.util.stream.Collectors;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Map;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/noticias")
@@ -20,26 +22,12 @@ public class NoticiasController {
 
     // 🔹 Lista as últimas notícias
     @GetMapping("/ultimas")
-public ResponseEntity<List<FeedDTO>> ultimas(
-        @RequestParam(defaultValue = "12") int limit,
-        @RequestParam(defaultValue = "bitcoin") String q) {
+    public ResponseEntity<List<FeedDTO>> ultimas(
+            @RequestParam(defaultValue = "12") int limit,
+            @RequestParam(defaultValue = "bitcoin") String q) {
 
-    List<FeedDTO> noticias = noticiasService.buscarNoticias(limit, q);
-
-    // 🔹 Envia os títulos e descrições para análise rápida
-    List<String> textos = noticias.stream()
-            .map(n -> n.getTitle() + ". " + n.getDescription())
-            .collect(Collectors.toList());
-
-    List<Map<String, Object>> analises = noticiasService.analyzeBatch(textos);
-
-    for (int i = 0; i < noticias.size() && i < analises.size(); i++) {
-        Map<String, Object> analise = analises.get(i);
-        noticias.get(i).setSentimento((String) analise.getOrDefault("label", "neutral"));
-        noticias.get(i).setScore(Double.valueOf(analise.getOrDefault("score", 0.0).toString()));
+        List<FeedDTO> noticias = noticiasService.buscarNoticias(limit, q);
+        return ResponseEntity.ok(noticias);
     }
-
-    return ResponseEntity.ok(noticias);
-}
 
 }

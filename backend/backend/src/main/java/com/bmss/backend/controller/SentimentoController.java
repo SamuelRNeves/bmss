@@ -1,11 +1,18 @@
 package com.bmss.backend.controller;
 
-import com.bmss.backend.service.SentimentService;
+import com.bmss.backend.dto.FeedDTO;
+import com.bmss.backend.service.NoticiasService;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.*;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1")
@@ -13,36 +20,48 @@ import java.util.*;
 public class SentimentoController {
 
     @Autowired
-    private SentimentService sentimentService;
+    private NoticiasService noticiasService;
 
     @GetMapping("/sentimento")
-    public ResponseEntity<Map<String, Double>> calcularSentimentoGeral() {
-        List<String> noticias = List.of(
-                "Bitcoin rompe resistência dos 70 mil dólares",
-                "ETF de Bitcoin atrai fluxo recorde em outubro",
-                "Hashrate do Bitcoin atinge novo pico histórico",
-                "Empresas adotam BTC como reserva de valor",
-                "Mercado prevê corte de juros e impacto no BTC"
-        );
+    public ResponseEntity<Map<String, Double>> calcularSentimentoGeral(
+            @RequestParam(defaultValue = "12") int limit,
+            @RequestParam(defaultValue = "bitcoin") String q) {
+
+        List<FeedDTO> noticias = noticiasService.buscarNoticias(limit, q);
+        if (noticias.isEmpty()) {
+            return ResponseEntity.ok(Map.of(
+                    "positive", 0.0,
+                    "neutral", 0.0,
+                    "negative", 0.0
+            ));
+        }
 
         int positivos = 0, neutros = 0, negativos = 0;
 
-        for (String texto : noticias) {
-            Map<String, Object> analise = sentimentService.analyzeText(texto);
-            String label = (String) analise.get("label");
-
-            if ("positive".equalsIgnoreCase(label)) positivos++;
-            else if ("neutral".equalsIgnoreCase(label)) neutros++;
-            else if ("negative".equalsIgnoreCase(label)) negativos++;
+        for (FeedDTO feed : noticias) {
+            String label = feed.getSentimento() != null ? feed.getSentimento().toLowerCase() : "neutral";
+            switch (label) {
+                case "positive":
+                    positivos++;
+                    break;
+                case "negative":
+                    negativos++;
+                    break;
+                default:
+                    neutros++;
+                    break;
+            }
         }
 
-        int total = positivos + neutros + negativos;
-        if (total == 0) total = 1; // evita divisão por zero
+        double total = positivos + neutros + negativos;
+        if (total == 0) {
+            total = 1;
+        }
 
         Map<String, Double> resultado = new HashMap<>();
-        resultado.put("positive", positivos / (double) total);
-        resultado.put("neutral", neutros / (double) total);
-        resultado.put("negative", negativos / (double) total);
+        resultado.put("positive", positivos / total);
+        resultado.put("neutral", neutros / total);
+        resultado.put("negative", negativos / total);
 
         return ResponseEntity.ok(resultado);
     }
