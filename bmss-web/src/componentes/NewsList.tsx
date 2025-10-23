@@ -1,37 +1,102 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { getUltimasNoticias } from "../lib/api";
 import { ExternalLink } from "lucide-react"; // 👈 Ícone de seta externa
 
 interface NewsItem {
-    id?: string | number;
-    title: string;
-    description: string;
-    url?: string;
-    fonte?: string;
-    publishedAt?: string;
-    sentimento?: string;
-    score?: number;
+  id?: string | number;
+  title: string;
+  description: string;
+  url?: string;
+  source?: string;
+  publishedAt?: string;
+  sentimento?: string;
+  score?: number;
+}
+
+const normalizeNewsList = (payload: unknown): NewsItem[] => {
+  if (!Array.isArray(payload)) {
+    return [];
   }
-  
+
+  return payload
+    .map((item) => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+
+      const record = item as Record<string, unknown>;
+      const rawScore = record.score;
+      let score: number | undefined;
+
+      if (typeof rawScore === "number") {
+        score = rawScore;
+      } else if (typeof rawScore === "string") {
+        const parsed = Number(rawScore);
+        score = Number.isFinite(parsed) ? parsed : undefined;
+      }
+
+      const title = typeof record.title === "string" ? record.title : "";
+      const description =
+        typeof record.description === "string" ? record.description : "";
+
+      if (!title && !description) {
+        return null;
+      }
+
+      return {
+        id: record.id as string | number | undefined,
+        title,
+        description,
+        url: typeof record.url === "string" ? record.url : undefined,
+        source: typeof record.source === "string" ? record.source : undefined,
+        publishedAt:
+          typeof record.publishedAt === "string"
+            ? record.publishedAt
+            : undefined,
+        sentimento:
+          typeof record.sentimento === "string"
+            ? record.sentimento
+            : undefined,
+        score,
+      } as NewsItem;
+    })
+    .filter((item): item is NewsItem => Boolean(item))
+    .sort((a, b) => {
+      const dateA = a.publishedAt ? Date.parse(a.publishedAt) : 0;
+      const dateB = b.publishedAt ? Date.parse(b.publishedAt) : 0;
+      return dateB - dateA;
+    });
+};
 
 export default function NewsList() {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const updateNews = useCallback((payload: unknown) => {
+    const normalized = normalizeNewsList(payload);
+    setNews(normalized);
+  }, []);
+
   useEffect(() => {
     getUltimasNoticias()
-      .then((data) => {
-        if (Array.isArray(data)) setNews(data);
-        else {
-          console.error("Formato inesperado:", data);
-          setNews([]);
-        }
-      })
+      .then((data) => updateNews(data))
       .catch((err) => console.error("Erro ao carregar notícias:", err))
       .finally(() => setLoading(false));
-  }, []);
+  }, [updateNews]);
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const customEvent = event as CustomEvent<unknown>;
+      updateNews(customEvent.detail);
+      setLoading(false);
+    };
+
+    window.addEventListener("news-updated", handler as EventListener);
+    return () =>
+      window.removeEventListener("news-updated", handler as EventListener);
+  }, [updateNews]);
 
   if (loading) {
     return (
@@ -92,7 +157,7 @@ export default function NewsList() {
 <div className="flex flex-col sm:flex-row sm:justify-between text-xs text-gray-500 mt-2">
   <span>
     <span className="text-gray-400">Fonte:</span>{" "}
-    {item.fonte || "Desconhecida"}
+    {item.source || "Desconhecida"}
   </span>
 
   <span>
