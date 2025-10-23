@@ -10,7 +10,7 @@ import java.util.*;
 public class FeedService {
 
     private static final String NEWS_API_URL =
-        "https://newsapi.org/v2/everything?q=bitcoin&language=pt&sortBy=publishedAt&pageSize=5&apiKey=SEU_API_KEY";
+        "https://newsapi.org/v2/everything?q=bitcoin&language=pt&sortBy=publishedAt&pageSize=5&apiKey=397c71979b14eaea433a03179807359";
 
     public List<FeedDTO> fetchNews() {
         RestTemplate restTemplate = new RestTemplate();

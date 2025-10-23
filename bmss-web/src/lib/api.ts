@@ -1,6 +1,6 @@
 import axios from "axios";
 
-// 👉 base URL — ajusta conforme o endereço do teu backend Java
+
 const api = axios.create({
   baseURL: "http://localhost:8080/api/v1", 
   timeout: 5000,
@@ -20,11 +20,19 @@ export async function getTendencias() {
   return res.data; // [{ day:"2025-10-01", positive:45, neutral:30, negative:25 }, ...]
 }
 
-// 3️⃣  Últimas 5 notícias (Java → /noticias/top5)
-export async function getUltimasNoticias() {
-  const res = await api.get("/noticias/top5");
-  return res.data; // [{id, titulo, fonte, resumo, sentimento}, ...]
+export async function getUltimasNoticias(limit = 12, q = "bitcoin") {
+  try {
+    const res = await api.get(`/noticias/ultimas`, { params: { limit, q } });
+    if (res.status === 200) return res.data;
+    console.error("⚠️ Resposta inesperada:", res.status, res.data);
+    return [];
+  } catch (err) {
+    console.error("❌ Erro ao buscar notícias:", err);
+    return [];
+  }
 }
+
+
 
 // 4️⃣  Cadastrar notícia (Java → /noticias)
 export async function cadastrarNoticia(payload: {
