@@ -84,6 +84,8 @@ export async function getUltimasNoticias(limit = 12, q = "bitcoin"): Promise<Api
   }
 }
 
+
+
 // =====================================================
 // 👤 Cadastrar usuário
 // =====================================================
@@ -98,6 +100,22 @@ export async function cadastrarUsuario(payload: {
     console.error("❌ Erro ao cadastrar usuário:", err.message);
     return { data: null, error: err.message, isFallback: true };
   }
+
+  
 }
+
+// 🔹 Disparar análise de sentimento
+// 🔹 Disparar análise de sentimento via backend
+export async function analisarNoticias(limit = 5, q = "bitcoin"): Promise<ApiResponse<any>> {
+  try {
+    const res = await api.post(`/noticias/analisar`, null, { params: { limit, q } });
+    return { data: res.data, error: null, isFallback: false };
+  } catch (err: any) {
+    console.error("❌ Erro ao analisar notícias:", err.message);
+    return { data: null, error: err.message, isFallback: true };
+  }
+}
+
+
 
 export default api;

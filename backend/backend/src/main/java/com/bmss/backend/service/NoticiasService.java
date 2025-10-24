@@ -2,7 +2,10 @@ package com.bmss.backend.service;
 
 import com.bmss.backend.dto.FeedDTO;
 import com.bmss.backend.model.Item;
+import com.bmss.backend.model.Sentiment;
 import com.bmss.backend.repository.ItemRepository;
+import com.bmss.backend.repository.SentimentRepository;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.*;
@@ -10,6 +13,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 import org.w3c.dom.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -27,6 +32,11 @@ public class NoticiasService {
 
     @Autowired
     private ItemRepository itemRepository;
+    private SentimentRepository sentimentRepository;
+
+
+        private static final Logger log = LoggerFactory.getLogger(NoticiasService.class);
+
 
     private final String NEWS_API_KEY = "2397c71979b14eaea433a03179807359";
     private final String NEWS_API_URL = "https://newsapi.org/v2/everything";
@@ -156,19 +166,25 @@ public class NoticiasService {
         return BLOCKED_DOMAINS.stream().anyMatch(url::contains);
     }
 
-    // ============================================================
-// 🔹 Integração com IA (Flask) — análise em lote (corrigida)
+ 
+// ============================================================
+// 🔹 Integração com IA (Flask) — análise em lote 
 // ============================================================
 public List<Map<String, Object>> analyzeBatch(List<String> textos) {
+    if (textos == null || textos.isEmpty()) {
+        log.warn("⚠️ Nenhum texto enviado para o Flask.");
+        return Collections.emptyList();
+    }
+
     try {
-        String flaskUrl = UriComponentsBuilder
-                .fromHttpUrl("http://127.0.0.1:5000/analyze-batch")
-                .build()
-                .toUriString(); // garante que não haja \n ou espaços
+        String flaskUrl = "http://localhost:5000/analyze-batch"; // ou 192.168.18.2 se estiver na mesma rede
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
+
+        // 🔹 Loga o payload antes do envio
+        log.info("📦 Enviando payload ao Flask: {}", textos);
 
         HttpEntity<List<String>> request = new HttpEntity<>(textos, headers);
 
@@ -179,21 +195,28 @@ public List<Map<String, Object>> analyzeBatch(List<String> textos) {
                 new ParameterizedTypeReference<List<Map<String, Object>>>() {}
         );
 
-        List<Map<String, Object>> body = response.getBody();
-
-        if (body == null || body.isEmpty()) {
-            System.err.println("⚠️ Flask retornou corpo vazio ou nulo.");
+        if (response.getStatusCode() != HttpStatus.OK) {
+            log.warn("⚠️ Flask retornou status HTTP {}", response.getStatusCode());
             return Collections.emptyList();
         }
 
-        System.out.println("🧠 Recebido do Flask → " + body.size() + " análises.");
+        List<Map<String, Object>> body = response.getBody();
+
+        if (body == null || body.isEmpty()) {
+            log.warn("⚠️ Corpo do Flask vazio!");
+            return Collections.emptyList();
+        }
+
+        log.info("✅ Recebido do Flask: {} análises. Exemplo: {}", body.size(), body.get(0));
         return body;
 
     } catch (Exception e) {
-        System.err.println("❌ Erro ao comunicar com Flask: " + e.getMessage());
+        log.error("❌ Erro ao chamar Flask: {}", e.getMessage(), e);
         return Collections.emptyList();
     }
 }
+
+
 
     
     
@@ -224,42 +247,52 @@ public void fetchAndStoreNews(String keyword) {
     }
 
     // Processa e salva notícia por notícia
-    for (int i = 0; i < noticias.size(); i++) {
-        FeedDTO dto = noticias.get(i);
-        Map<String, Object> analise = (i < analises.size()) ? analises.get(i) : null;
+   for (int i = 0; i < noticias.size(); i++) {
+    FeedDTO dto = noticias.get(i);
+    Map<String, Object> analise = (i < analises.size()) ? analises.get(i) : null;
 
-        String label = "neutral";
-        double score = 0.0;
+    String label = "neutral";
+    double score = 0.0;
 
-        if (analise != null) {
-            Object lbl = analise.get("label");
-            Object scr = analise.get("score");
-            if (lbl != null) label = lbl.toString();
-            if (scr != null) {
-                try {
-                    score = Double.parseDouble(scr.toString());
-                } catch (NumberFormatException ignored) {}
-            }
+    if (analise != null) {
+        Object lbl = analise.get("label");
+        Object scr = analise.get("score");
+        if (lbl != null) label = lbl.toString();
+        if (scr != null) {
+            try {
+                score = Double.parseDouble(scr.toString());
+            } catch (NumberFormatException ignored) {}
         }
-
-        dto.setSentimento(label);
-        dto.setScore(score);
-
-        // Converte DTO para entidade Item e salva no banco
-        Item item = new Item();
-        item.setTitle(dto.getTitle());
-        item.setText(dto.getDescription());
-        item.setUrl(dto.getUrl());
-        item.setSourceName(dto.getSource());
-        item.setSentimentLabel(label);
-        item.setSentimentScore(score);
-        item.setPublishedAt(LocalDateTime.now());
-        item.setAnalyzedAt(LocalDateTime.now());
-
-        itemRepository.save(item);
     }
 
-    System.out.println("✅ " + noticias.size() + " notícias analisadas e salvas com sucesso!");
+    dto.setSentimento(label);
+    dto.setScore(score);
+
+    // 🔹 Cria e salva o Item
+    Item item = new Item();
+    item.setTitle(dto.getTitle());
+    item.setText(dto.getDescription());
+    item.setUrl(dto.getUrl());
+    item.setSourceName(dto.getSource());
+    item.setSentimentLabel(label);
+    item.setSentimentScore(score);
+    item.setPublishedAt(LocalDateTime.now());
+    item.setAnalyzedAt(LocalDateTime.now());
+    itemRepository.save(item);
+
+    // 🔹 Cria e salva o registro de Sentimento vinculado ao Item
+    Sentiment sentiment = Sentiment.builder()
+            .item(item)
+            .label(label)
+            .score(score)
+            .model("pysentimiento/robertuito-sentiment-analysis")
+            .createdAt(LocalDateTime.now())
+            .build();
+    sentimentRepository.save(sentiment);
+}
+
+System.out.println("✅ " + noticias.size() + " notícias analisadas e salvas com sucesso!");
+
 }
 
     

@@ -17,7 +17,7 @@ public class NoticiasController {
     private NoticiasService noticiasService;
 
     // ============================================================
-    // 🔹 Endpoint principal usado pelo frontend
+    // 🔹 Endpoint principal usado pelo frontend (apenas leitura)
     // ============================================================
     @GetMapping("/ultimas")
     public ResponseEntity<Map<String, Object>> ultimas(
@@ -41,7 +41,7 @@ public class NoticiasController {
     }
 
     // ============================================================
-    // 🔹 Endpoint de debug para testar manualmente no navegador
+    // 🔹 Endpoint de debug para testes manuais
     // ============================================================
     @GetMapping("/debug")
     public ResponseEntity<Map<String, Object>> debugNoticias(
@@ -68,5 +68,24 @@ public class NoticiasController {
 
         return ResponseEntity.ok(resposta);
     }
+
+    // ============================================================
+    // 🧠 NOVO: Endpoint para executar análise e salvar no banco
+    // ============================================================
+    // ============================================================
+// 🔹 Endpoint para analisar e salvar no banco
+// ============================================================
+@GetMapping("/analisar")
+public ResponseEntity<Map<String, Object>> analisarNoticias(
+        @RequestParam(defaultValue = "bitcoin") String q
+) {
+    System.out.println("🧠 Analisando e salvando notícias para: " + q);
+
+    noticiasService.fetchAndStoreNews(q);
+
+    Map<String, Object> resposta = new LinkedHashMap<>();
+    resposta.put("message", "✅ Análise concluída e dados salvos no banco!");
+    return ResponseEntity.ok(resposta);
+}
 
 }

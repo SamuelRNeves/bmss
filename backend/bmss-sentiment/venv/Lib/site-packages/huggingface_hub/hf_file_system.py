@@ -59,13 +59,10 @@ class HfFileSystem(fsspec.AbstractFileSystem):
     """
     Access a remote Hugging Face Hub repository as if were a local file system.
 
-    <Tip warning={true}>
-
-        [`HfFileSystem`] provides fsspec compatibility, which is useful for libraries that require it (e.g., reading
-        Hugging Face datasets directly with `pandas`). However, it introduces additional overhead due to this compatibility
-        layer. For better performance and reliability, it's recommended to use `HfApi` methods when possible.
-
-    </Tip>
+    > [!WARNING]
+    > [`HfFileSystem`] provides fsspec compatibility, which is useful for libraries that require it (e.g., reading
+    >     Hugging Face datasets directly with `pandas`). However, it introduces additional overhead due to this compatibility
+    >     layer. For better performance and reliability, it's recommended to use `HfApi` methods when possible.
 
     Args:
         token (`str` or `bool`, *optional*):
@@ -104,18 +101,22 @@ class HfFileSystem(fsspec.AbstractFileSystem):
         *args,
         endpoint: Optional[str] = None,
         token: Union[bool, str, None] = None,
+        block_size: Optional[int] = None,
         **storage_options,
     ):
         super().__init__(*args, **storage_options)
         self.endpoint = endpoint or constants.ENDPOINT
         self.token = token
         self._api = HfApi(endpoint=endpoint, token=token)
+        self.block_size = block_size
         # Maps (repo_type, repo_id, revision) to a 2-tuple with:
         #  * the 1st element indicating whether the repositoy and the revision exist
         #  * the 2nd element being the exception raised if the repository or revision doesn't exist
         self._repo_and_revision_exists_cache: Dict[
             Tuple[str, str, Optional[str]], Tuple[bool, Optional[Exception]]
         ] = {}
+        # Maps parent directory path to path infos
+        self.dircache: Dict[str, List[Dict[str, Any]]] = {}
 
     def _repo_and_revision_exist(
         self, repo_type: str, repo_id: str, revision: Optional[str]
@@ -267,12 +268,15 @@ class HfFileSystem(fsspec.AbstractFileSystem):
         block_size: Optional[int] = None,
         **kwargs,
     ) -> "HfFileSystemFile":
+        block_size = block_size if block_size is not None else self.block_size
+        if block_size is not None:
+            kwargs["block_size"] = block_size
         if "a" in mode:
             raise NotImplementedError("Appending to remote files is not yet supported.")
         if block_size == 0:
-            return HfFileSystemStreamFile(self, path, mode=mode, revision=revision, block_size=block_size, **kwargs)
+            return HfFileSystemStreamFile(self, path, mode=mode, revision=revision, **kwargs)
         else:
-            return HfFileSystemFile(self, path, mode=mode, revision=revision, block_size=block_size, **kwargs)
+            return HfFileSystemFile(self, path, mode=mode, revision=revision, **kwargs)
 
     def _rm(self, path: str, revision: Optional[str] = None, **kwargs) -> None:
         resolved_path = self.resolve_path(path, revision=revision)
@@ -300,11 +304,8 @@ class HfFileSystem(fsspec.AbstractFileSystem):
 
         For more details, refer to [fsspec documentation](https://filesystem-spec.readthedocs.io/en/latest/api.html#fsspec.spec.AbstractFileSystem.rm).
 
-        <Tip warning={true}>
-
-            Note: When possible, use `HfApi.delete_file()` for better performance.
-
-        </Tip>
+        > [!WARNING]
+        > Note: When possible, use `HfApi.delete_file()` for better performance.
 
         Args:
             path (`str`):
@@ -344,11 +345,8 @@ class HfFileSystem(fsspec.AbstractFileSystem):
 
         For more details, refer to [fsspec documentation](https://filesystem-spec.readthedocs.io/en/latest/api.html#fsspec.spec.AbstractFileSystem.ls).
 
-        <Tip warning={true}>
-
-            Note: When possible, use `HfApi.list_repo_tree()` for better performance.
-
-        </Tip>
+        > [!WARNING]
+        > Note: When possible, use `HfApi.list_repo_tree()` for better performance.
 
         Args:
             path (`str`):
@@ -447,7 +445,7 @@ class HfFileSystem(fsspec.AbstractFileSystem):
                     common_path_depth = common_path[len(path) :].count("/")
                     maxdepth -= common_path_depth
                 out = [o for o in out if not o["name"].startswith(common_path + "/")]
-                for cached_path in self.dircache:
+                for cached_path in list(self.dircache):
                     if cached_path.startswith(common_path + "/"):
                         self.dircache.pop(cached_path, None)
                 self.dircache.pop(common_path, None)
@@ -596,11 +594,8 @@ class HfFileSystem(fsspec.AbstractFileSystem):
         """
         Copy a file within or between repositories.
 
-        <Tip warning={true}>
-
-            Note: When possible, use `HfApi.upload_file()` for better performance.
-
-        </Tip>
+        > [!WARNING]
+        > Note: When possible, use `HfApi.upload_file()` for better performance.
 
         Args:
             path1 (`str`):
@@ -673,11 +668,8 @@ class HfFileSystem(fsspec.AbstractFileSystem):
 
         For more details, refer to [fsspec documentation](https://filesystem-spec.readthedocs.io/en/latest/api.html#fsspec.spec.AbstractFileSystem.info).
 
-        <Tip warning={true}>
-
-            Note: When possible, use `HfApi.get_paths_info()` or `HfApi.repo_info()`  for better performance.
-
-        </Tip>
+        > [!WARNING]
+        > Note: When possible, use `HfApi.get_paths_info()` or `HfApi.repo_info()`  for better performance.
 
         Args:
             path (`str`):
@@ -774,11 +766,8 @@ class HfFileSystem(fsspec.AbstractFileSystem):
 
         For more details, refer to [fsspec documentation](https://filesystem-spec.readthedocs.io/en/latest/api.html#fsspec.spec.AbstractFileSystem.exists).
 
-        <Tip warning={true}>
-
-            Note: When possible, use `HfApi.file_exists()` for better performance.
-
-        </Tip>
+        > [!WARNING]
+        > Note: When possible, use `HfApi.file_exists()` for better performance.
 
         Args:
             path (`str`):
@@ -859,11 +848,8 @@ class HfFileSystem(fsspec.AbstractFileSystem):
         """
         Copy single remote file to local.
 
-        <Tip warning={true}>
-
-            Note: When possible, use `HfApi.hf_hub_download()` for better performance.
-
-        </Tip>
+        > [!WARNING]
+        > Note: When possible, use `HfApi.hf_hub_download()` for better performance.
 
         Args:
             rpath (`str`):
@@ -942,6 +928,18 @@ class HfFileSystem(fsspec.AbstractFileSystem):
         # Taken from https://github.com/fsspec/filesystem_spec/blob/3fbb6fee33b46cccb015607630843dea049d3243/fsspec/spec.py#L241
         # See https://github.com/huggingface/huggingface_hub/issues/1733
         raise NotImplementedError("Transactional commits are not supported.")
+
+    def __reduce__(self):
+        # re-populate the instance cache at HfFileSystem._cache and re-populate the cache attributes of every instance
+        return make_instance, (
+            type(self),
+            self.storage_args,
+            self.storage_options,
+            {
+                "dircache": self.dircache,
+                "_repo_and_revision_exists_cache": self._repo_and_revision_exists_cache,
+            },
+        )
 
 
 class HfFileSystemFile(fsspec.spec.AbstractBufferedFile):
@@ -1143,3 +1141,10 @@ def _raise_file_not_found(path: str, err: Optional[Exception]) -> NoReturn:
 
 def reopen(fs: HfFileSystem, path: str, mode: str, block_size: int, cache_type: str):
     return fs.open(path, mode=mode, block_size=block_size, cache_type=cache_type)
+
+
+def make_instance(cls, args, kwargs, instance_cache_attributes_dict):
+    fs = cls(*args, **kwargs)
+    for attr, cached_value in instance_cache_attributes_dict.items():
+        setattr(fs, attr, cached_value)
+    return fs

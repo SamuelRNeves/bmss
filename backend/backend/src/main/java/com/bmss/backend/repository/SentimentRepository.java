@@ -1,6 +1,9 @@
 package com.bmss.backend.repository;
 
-import org.springframework.data.jpa.repository.JpaRepository;
 import com.bmss.backend.model.Sentiment;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
 
-public interface SentimentRepository extends JpaRepository<Sentiment, Integer> {}
+@Repository
+public interface SentimentRepository extends JpaRepository<Sentiment, Integer> {
+}

@@ -1,8 +1,7 @@
-"use client";
-
 import { RefreshCcw, Search } from "lucide-react";
-import { getUltimasNoticias, getSentimentos } from "../lib/api";
+import { getUltimasNoticias, getSentimentos, analisarNoticias } from "../lib/api"; // 👈 importa o novo endpoint
 import { useState, useEffect } from "react";
+import axios from "axios";
 
 export default function Header() {
   const [loading, setLoading] = useState(false);
@@ -25,20 +24,33 @@ export default function Header() {
     }
   };
 
-  // 🔄 Atualização manual
   const handleUpdate = () =>
     atualizarDashboard("Atualizando dados...", "✅ Dashboard atualizado com sucesso!");
 
-  const handleAnalyzeLast5 = () =>
-    atualizarDashboard("Analisando as últimas 5 notícias...", "✅ Análise concluída com sucesso!");
+  // 🚀 Novo: faz o backend realmente chamar o Flask e atualizar sentimentos
+  const handleAnalyzeLast5 = async () => {
+  try {
+    setLoading(true);
+    setMessage("Analisando as últimas 5 notícias...");
 
-  // ⏱ Atualização automática a cada 60 segundos
+    await axios.get("http://localhost:8080/api/v1/noticias/analisar?q=bitcoin");
+
+    setMessage("✅ Análise concluída e salva no banco!");
+  } catch (error) {
+    console.error(error);
+    setMessage("❌ Erro ao analisar notícias");
+  } finally {
+    setLoading(false);
+    setTimeout(() => setMessage(""), 5000);
+  }
+};
+
+
   useEffect(() => {
     const intervalo = setInterval(() => {
       atualizarDashboard("⏱ Atualização automática...", "✅ Dashboard sincronizado!");
-    }, 60000); // 60.000 ms = 60 segundos
-
-    return () => clearInterval(intervalo); // limpa o timer ao desmontar
+    }, 60000);
+    return () => clearInterval(intervalo);
   }, []);
 
   return (
@@ -47,7 +59,6 @@ export default function Header() {
         Dashboard de Sentimento
       </h1>
 
-      {/* Botões de ação */}
       <div className="flex flex-wrap gap-3">
         <button
           onClick={handleUpdate}
@@ -64,11 +75,10 @@ export default function Header() {
           className="flex items-center gap-2 bg-green-600 hover:bg-green-500 text-white font-medium px-4 py-2 rounded-lg transition disabled:opacity-60"
         >
           <Search size={18} />
-          Analisar Últimas 5
+          {loading ? "Analisando..." : "Analisar Últimas 5"}
         </button>
       </div>
 
-      {/* Mensagem de status */}
       {message && (
         <p className="text-sm text-gray-400 animate-fadeIn text-right">
           {message}
