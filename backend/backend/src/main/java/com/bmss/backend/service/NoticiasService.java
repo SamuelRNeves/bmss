@@ -9,9 +9,9 @@ import com.bmss.backend.repository.SentimentRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.*;
+import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
-import org.springframework.web.util.UriComponentsBuilder;
 import org.w3c.dom.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,28 +25,18 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
-
-
 @Service
 public class NoticiasService {
 
-@Autowired
-private ItemRepository itemRepository;
+    @Autowired
+    private ItemRepository itemRepository;
 
-@Autowired
-private SentimentRepository sentimentRepository;
+    @Autowired
+    private SentimentRepository sentimentRepository;
 
+    private static final Logger log = LoggerFactory.getLogger(NoticiasService.class);
 
-
-
-
-        private static final Logger log = LoggerFactory.getLogger(NoticiasService.class);
-
-
-    private final String NEWS_API_KEY = "2397c71979b14eaea433a03179807359";
-    private final String NEWS_API_URL = "https://newsapi.org/v2/everything";
     private final RestTemplate restTemplate = new RestTemplate();
-
     private static final Map<String, CacheEntry> cache = new ConcurrentHashMap<>();
     private static final long CACHE_DURATION_MS = 5 * 60 * 1000;
 
@@ -57,30 +47,30 @@ private SentimentRepository sentimentRepository;
     );
 
     // ============================================================
-    // 🔹 Busca notícias reais com cache e fallback
+    // 🔹 Busca notícias com cache, GNews principal e fallback RSS
     // ============================================================
     public List<FeedDTO> buscarNoticias(int limit, String keyword) {
         String cacheKey = keyword.toLowerCase();
 
-        // 🔹 1. Verifica cache
+        // 🔹 1. Cache local (5 min)
         if (cache.containsKey(cacheKey)) {
             CacheEntry entry = cache.get(cacheKey);
             if (System.currentTimeMillis() - entry.timestamp < CACHE_DURATION_MS) {
-                System.out.println("⚡ Retornando notícias do cache para: " + keyword);
+                log.info("⚡ Retornando notícias do cache para: {}", keyword);
                 return entry.data.stream().limit(limit).collect(Collectors.toList());
             }
         }
 
-        // 🔹 2. Busca na NewsAPI
-        List<FeedDTO> noticias = fetchFromNewsApi(keyword);
+        // 🔹 2. Tenta GNews primeiro
+        List<FeedDTO> noticias = fetchFromGNews(keyword);
 
-        // 🔹 3. Fallback via RSS
+        // 🔹 3. Se GNews falhar → usa RSS como fallback
         if (noticias.isEmpty()) {
-            System.out.println("⚠️ Nenhuma notícia encontrada na NewsAPI. Usando fallback RSS...");
+            log.warn("⚠️ Nenhuma notícia encontrada na GNews. Ativando fallback via RSS...");
             noticias = fetchFromGoogleNewsRSS(keyword);
         }
 
-        // 🔹 4. Cacheia se houver resultado
+        // 🔹 4. Armazena no cache
         if (!noticias.isEmpty()) {
             cache.put(cacheKey, new CacheEntry(noticias, System.currentTimeMillis()));
         }
@@ -89,27 +79,33 @@ private SentimentRepository sentimentRepository;
     }
 
     // ============================================================
-    // 🔹 Busca na NewsAPI.org com a sua chave real
+    // 🔹 Fonte principal: GNews API
     // ============================================================
-    private List<FeedDTO> fetchFromNewsApi(String keyword) {
-        String GNEWS_API_KEY = "c413eaed68da399c2ef9fa585fe591aa"; // crie em https://gnews.io
+    private List<FeedDTO> fetchFromGNews(String keyword) {
+        String GNEWS_API_KEY = "c413eaed68da399c2ef9fa585fe591aa";
         String query = keyword + " OR bitcoin OR criptomoeda OR economia OR política";
         String url = "https://gnews.io/api/v4/search?q=" + query +
                 "&lang=pt&country=br&max=20&apikey=" + GNEWS_API_KEY;
-    
-        System.out.println("🌍 [GNews] Buscando notícias: " + url);
-    
+
+        log.info("🌍 [GNews] Buscando notícias: {}", url);
+
         try {
             ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.GET, null, Map.class);
-    
-            if (response.getBody() == null || response.getBody().get("articles") == null) {
-                System.out.println("⚠️ Nenhum artigo retornado pela GNews");
+
+            // Verifica erros retornados pela API
+            if (response.getBody() != null && response.getBody().containsKey("errors")) {
+                log.warn("⚠️ Erro GNews: {}", response.getBody().get("errors"));
                 return Collections.emptyList();
             }
-    
+
+            if (response.getBody() == null || response.getBody().get("articles") == null) {
+                log.warn("⚠️ Nenhum artigo retornado pela GNews.");
+                return Collections.emptyList();
+            }
+
             List<Map<String, Object>> articles = (List<Map<String, Object>>) response.getBody().get("articles");
-    
-            List<FeedDTO> list = articles.stream()
+
+            return articles.stream()
                     .filter(a -> a.get("title") != null && a.get("url") != null)
                     .map(a -> {
                         FeedDTO dto = new FeedDTO();
@@ -122,18 +118,13 @@ private SentimentRepository sentimentRepository;
                         dto.setScore(0.0);
                         return dto;
                     })
-                    .limit(30)
                     .collect(Collectors.toList());
-    
-            System.out.println("✅ GNews retornou " + list.size() + " notícias reais.");
-            return list;
-    
+
         } catch (Exception e) {
-            System.err.println("❌ Erro ao acessar GNews: " + e.getMessage());
+            log.error("❌ Erro ao acessar GNews: {}", e.getMessage());
             return Collections.emptyList();
         }
     }
-    
 
     // ============================================================
     // 🔹 Fallback via RSS do Google News
@@ -141,7 +132,8 @@ private SentimentRepository sentimentRepository;
     private List<FeedDTO> fetchFromGoogleNewsRSS(String keyword) {
         List<FeedDTO> list = new ArrayList<>();
         try {
-            String rssUrl = "https://news.google.com/rss/search?q=" + keyword + "+bitcoin+mercado+financeiro&hl=pt-BR&gl=BR&ceid=BR:pt-419";
+            String rssUrl = "https://news.google.com/rss/search?q=" + keyword +
+                    "+bitcoin+mercado+financeiro&hl=pt-BR&gl=BR&ceid=BR:pt-419";
             URL url = new URL(rssUrl);
             InputStream stream = url.openStream();
             DocumentBuilder builder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
@@ -157,39 +149,40 @@ private SentimentRepository sentimentRepository;
                 list.add(new FeedDTO(title, "", link, "Google News", LocalDateTime.now().toString(), "neutral", 0.0));
             }
 
-            System.out.println("🪶 Fallback RSS retornou " + list.size() + " notícias.");
+            log.info("🪶 Fallback RSS retornou {} notícias.", list.size());
         } catch (Exception e) {
-            System.err.println("❌ Erro no fallback RSS: " + e.getMessage());
+            log.error("❌ Erro no fallback RSS: {}", e.getMessage());
         }
         return list;
     }
 
-    // ============================================================
-    // 🔹 Bloqueia domínios indesejados
-    // ============================================================
     private boolean isBlockedDomain(String url) {
         return BLOCKED_DOMAINS.stream().anyMatch(url::contains);
     }
 
- 
-// ============================================================
-// 🔹 Integração com IA (Flask) — análise em lote 
-// ============================================================
-public List<Map<String, Object>> analyzeBatch(List<String> textos) {
+    // ============================================================
+    // 🔹 Chamada ao Flask (análise em lote)
+    // ============================================================
+   public List<Map<String, Object>> analyzeBatch(List<String> textos) {
     if (textos == null || textos.isEmpty()) {
         log.warn("⚠️ Nenhum texto enviado para o Flask.");
         return Collections.emptyList();
     }
 
+    String flaskUrl = "http://192.168.253.92:5000/analyze-batch";
+
     try {
-        String flaskUrl = "http://localhost:5000/analyze-batch"; // ou 192.168.18.2 se estiver na mesma rede
+        // 🔧 Configura o RestTemplate com timeout e logging detalhado
+        HttpComponentsClientHttpRequestFactory factory = new HttpComponentsClientHttpRequestFactory();
+        factory.setConnectTimeout(4000);
+        factory.setReadTimeout(8000);
+        RestTemplate restTemplate = new RestTemplate(factory);
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
 
-        // 🔹 Loga o payload antes do envio
-        log.info("📦 Enviando payload ao Flask: {}", textos);
+        log.info("📦 Enviando {} textos para Flask em {}", textos.size(), flaskUrl);
 
         HttpEntity<List<String>> request = new HttpEntity<>(textos, headers);
 
@@ -199,114 +192,116 @@ public List<Map<String, Object>> analyzeBatch(List<String> textos) {
                 request,
                 new ParameterizedTypeReference<List<Map<String, Object>>>() {}
         );
-        
-        //REMOVER DEPOIS
-        System.out.println("📩 RAW Response do Flask: " + response.getBody());
 
-
+        log.info("📩 Código HTTP do Flask: {}", response.getStatusCode());
+        log.info("📩 Corpo do Flask: {}", response.getBody());
 
         if (response.getStatusCode() != HttpStatus.OK) {
-            log.warn("⚠️ Flask retornou status HTTP {}", response.getStatusCode());
+            log.error("❌ Flask retornou status {}", response.getStatusCode());
             return Collections.emptyList();
         }
 
         List<Map<String, Object>> body = response.getBody();
-
         if (body == null || body.isEmpty()) {
-            log.warn("⚠️ Corpo do Flask vazio!");
+            log.warn("⚠️ Flask respondeu corpo vazio.");
             return Collections.emptyList();
         }
 
-        log.info("✅ Recebido do Flask: {} análises. Exemplo: {}", body.size(), body.get(0));
+        log.info("✅ Recebido {} análises do Flask.", body.size());
         return body;
 
     } catch (Exception e) {
-        log.error("❌ Erro ao chamar Flask: {}", e.getMessage(), e);
+        log.error("❌ Falha ao contatar Flask em {}: {}", flaskUrl, e.getMessage(), e);
+        e.printStackTrace();
         return Collections.emptyList();
     }
 }
 
 
 
-    
-    
-
     // ============================================================
-    // 🔹 Buscar, analisar e salvar no banco
+    // 🔹 Busca, análise e persistência no banco
     // ============================================================
-    // ============================================================
-// 🔹 Buscar, analisar e salvar no banco
-// ============================================================
-public void fetchAndStoreNews(String keyword) {
+    public void fetchAndStoreNews(String keyword) {
     List<FeedDTO> noticias = buscarNoticias(20, keyword);
     if (noticias == null || noticias.isEmpty()) {
         System.out.println("⚠️ Nenhuma notícia para importar.");
         return;
     }
 
-    // Junta título + descrição para análise
+    // 🔹 Junta título + descrição para enviar ao Flask
     List<String> textos = noticias.stream()
-            .map(n -> (n.getTitle() != null ? n.getTitle() : "") + ". " +
-                      (n.getDescription() != null ? n.getDescription() : ""))
+            .map(n -> (Optional.ofNullable(n.getTitle()).orElse("")) + ". " +
+                      (Optional.ofNullable(n.getDescription()).orElse("")))
             .collect(Collectors.toList());
 
+    // 🔹 Chama o Flask
     List<Map<String, Object>> analises = analyzeBatch(textos);
 
     if (analises == null || analises.isEmpty()) {
         System.out.println("⚠️ Nenhuma análise recebida do Flask. Mantendo sentimento neutro.");
+    } else {
+        System.out.println("✅ Flask retornou " + analises.size() + " análises válidas!");
     }
 
-    // Processa e salva notícia por notícia
-   for (int i = 0; i < noticias.size(); i++) {
-    FeedDTO dto = noticias.get(i);
-    Map<String, Object> analise = (i < analises.size()) ? analises.get(i) : null;
+    // 🔹 Salva notícia por notícia
+    for (int i = 0; i < noticias.size(); i++) {
+        FeedDTO dto = noticias.get(i);
 
-    String label = "neutral";
-    double score = 0.0;
+        String label = "neutral";
+        double score = 0.0;
 
-    if (analise != null) {
-        Object lbl = analise.get("label");
-        Object scr = analise.get("score");
-        if (lbl != null) label = lbl.toString();
-        if (scr != null) {
-            try {
-                score = Double.parseDouble(scr.toString());
-            } catch (NumberFormatException ignored) {}
+        if (analises != null && i < analises.size() && analises.get(i) != null) {
+            Map<String, Object> analise = analises.get(i);
+            Object lbl = analise.get("label");
+            Object scr = analise.get("score");
+
+            if (lbl != null) label = lbl.toString().toLowerCase();
+            if (scr != null) {
+                try {
+                    score = Double.parseDouble(scr.toString());
+                } catch (NumberFormatException ignored) {}
+            }
         }
+
+        dto.setSentimento(label);
+        dto.setScore(score);
+
+        // 🔹 Evita duplicatas no banco (URL)
+        if (itemRepository.existsByUrl(dto.getUrl())) {
+            System.out.println("⏩ Pulando notícia já existente: " + dto.getUrl());
+            continue;
+        }
+
+        // 🔹 Salva o Item
+        Item item = new Item();
+        item.setTitle(dto.getTitle());
+        item.setText(dto.getDescription());
+        item.setUrl(dto.getUrl());
+        item.setSourceName(dto.getSource());
+        item.setSentimentLabel(label);
+        item.setSentimentScore(score);
+        item.setPublishedAt(LocalDateTime.now());
+        item.setAnalyzedAt(LocalDateTime.now());
+        itemRepository.save(item);
+
+        // 🔹 Salva o Sentimento vinculado
+        Sentiment sentiment = Sentiment.builder()
+                .item(item)
+                .label(label)
+                .score(score)
+                .model("Adilmar/caramelo-smile-2")
+                .createdAt(LocalDateTime.now())
+                .build();
+        sentimentRepository.save(sentiment);
+
+        System.out.println("💾 Salvo: " + label.toUpperCase() + " (" + score + ") → " + dto.getTitle());
     }
 
-    dto.setSentimento(label);
-    dto.setScore(score);
-
-    // 🔹 Cria e salva o Item
-    Item item = new Item();
-    item.setTitle(dto.getTitle());
-    item.setText(dto.getDescription());
-    item.setUrl(dto.getUrl());
-    item.setSourceName(dto.getSource());
-    item.setSentimentLabel(label);
-    item.setSentimentScore(score);
-    item.setPublishedAt(LocalDateTime.now());
-    item.setAnalyzedAt(LocalDateTime.now());
-    itemRepository.save(item);
-
-    // 🔹 Cria e salva o registro de Sentimento vinculado ao Item
-    Sentiment sentiment = Sentiment.builder()
-            .item(item)
-            .label(label)
-            .score(score)
-            .model("pysentimiento/robertuito-sentiment-analysis")
-            .createdAt(LocalDateTime.now())
-            .build();
-    sentimentRepository.save(sentiment);
+    System.out.println("🏁 " + noticias.size() + " notícias analisadas e persistidas com sucesso!");
 }
 
-System.out.println("✅ " + noticias.size() + " notícias analisadas e salvas com sucesso!");
 
-}
-
-    
-    
     private static class CacheEntry {
         List<FeedDTO> data;
         long timestamp;
