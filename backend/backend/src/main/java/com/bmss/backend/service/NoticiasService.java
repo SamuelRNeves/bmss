@@ -4,9 +4,11 @@ import com.bmss.backend.dto.FeedDTO;
 import com.bmss.backend.model.Item;
 import com.bmss.backend.repository.ItemRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
 import org.w3c.dom.*;
 
 import javax.xml.parsers.DocumentBuilder;
@@ -17,6 +19,8 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
+
+
 
 @Service
 public class NoticiasService {
@@ -153,91 +157,111 @@ public class NoticiasService {
     }
 
     // ============================================================
-    // 🔹 Integração com Flask (análise de sentimento)
-    // ============================================================
-    public List<Map<String, Object>> analyzeBatch(List<String> textos) {
-        try {
-            String url = "http://127.0.0.1:5000/analyze-batch"; // 🔹 URL limpa, sem espaços nem quebras
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-    
-            HttpEntity<List<String>> req = new HttpEntity<>(textos, headers);
-            ResponseEntity<List> resp = restTemplate.exchange(url, HttpMethod.POST, req, List.class);
-    
-            if (resp.getBody() != null && !resp.getBody().isEmpty()) {
-                System.out.println("✅ " + resp.getBody().size() + " análises recebidas do Flask");
-                for (Object o : resp.getBody()) {
-                    System.out.println("🧠 Retorno Flask → " + o);
-                }
-                return resp.getBody();
-            } else {
-                System.out.println("⚠️ Flask retornou corpo vazio!");
-                return Collections.emptyList();
-            }
-    
-        } catch (Exception e) {
-            System.err.println("❌ Erro ao enviar para Flask: " + e.getMessage());
+// 🔹 Integração com IA (Flask) — análise em lote (corrigida)
+// ============================================================
+public List<Map<String, Object>> analyzeBatch(List<String> textos) {
+    try {
+        String flaskUrl = UriComponentsBuilder
+                .fromHttpUrl("http://127.0.0.1:5000/analyze-batch")
+                .build()
+                .toUriString(); // garante que não haja \n ou espaços
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
+
+        HttpEntity<List<String>> request = new HttpEntity<>(textos, headers);
+
+        ResponseEntity<List<Map<String, Object>>> response = restTemplate.exchange(
+                flaskUrl,
+                HttpMethod.POST,
+                request,
+                new ParameterizedTypeReference<List<Map<String, Object>>>() {}
+        );
+
+        List<Map<String, Object>> body = response.getBody();
+
+        if (body == null || body.isEmpty()) {
+            System.err.println("⚠️ Flask retornou corpo vazio ou nulo.");
             return Collections.emptyList();
         }
+
+        System.out.println("🧠 Recebido do Flask → " + body.size() + " análises.");
+        return body;
+
+    } catch (Exception e) {
+        System.err.println("❌ Erro ao comunicar com Flask: " + e.getMessage());
+        return Collections.emptyList();
     }
+}
+
     
     
 
     // ============================================================
     // 🔹 Buscar, analisar e salvar no banco
     // ============================================================
-    public void fetchAndStoreNews(String keyword) {
-        List<FeedDTO> noticias = buscarNoticias(20, keyword);
-        if (noticias == null || noticias.isEmpty()) {
-            System.out.println("⚠️ Nenhuma notícia para importar.");
-            return;
-        }
-    
-        List<String> textos = noticias.stream()
-                .map(n -> (n.getTitle() != null ? n.getTitle() : "") + ". " +
-                          (n.getDescription() != null ? n.getDescription() : ""))
-                .collect(Collectors.toList());
-    
-        List<Map<String, Object>> analises = analyzeBatch(textos);
-    
-        for (int i = 0; i < noticias.size(); i++) {
-            FeedDTO dto = noticias.get(i);
-            Item item = new Item();
-            item.setText(dto.getDescription());
-            item.setUrl(dto.getUrl());
-            item.setSourceName(dto.getSource());
-    
-            try {
-                String iso = dto.getPublishedAt();
-                item.setPublishedAt(iso != null
-                    ? LocalDateTime.parse(iso.replace("Z", ""))
-                    : LocalDateTime.now());
-            } catch (Exception e) {
-                item.setPublishedAt(LocalDateTime.now());
-            }
-    
-            if (i < analises.size() && analises.get(i) != null) {
-                Map<String, Object> a = analises.get(i);
-    
-                String label = String.valueOf(a.getOrDefault("label", "neutral"));
-                double score = 0.0;
-                try {
-                    score = Double.parseDouble(a.get("score").toString());
-                } catch (Exception ignored) {}
-    
-                item.setSentimentLabel(label);
-                item.setSentimentScore(score);
-            } else {
-                item.setSentimentLabel("neutral");
-                item.setSentimentScore(0.0);
-            }
-    
-            item.setAnalyzedAt(LocalDateTime.now());
-            itemRepository.save(item);
-        }
-    
-        System.out.println("✅ " + noticias.size() + " notícias analisadas e persistidas com sucesso!");
+    // ============================================================
+// 🔹 Buscar, analisar e salvar no banco
+// ============================================================
+public void fetchAndStoreNews(String keyword) {
+    List<FeedDTO> noticias = buscarNoticias(20, keyword);
+    if (noticias == null || noticias.isEmpty()) {
+        System.out.println("⚠️ Nenhuma notícia para importar.");
+        return;
     }
+
+    // Junta título + descrição para análise
+    List<String> textos = noticias.stream()
+            .map(n -> (n.getTitle() != null ? n.getTitle() : "") + ". " +
+                      (n.getDescription() != null ? n.getDescription() : ""))
+            .collect(Collectors.toList());
+
+    List<Map<String, Object>> analises = analyzeBatch(textos);
+
+    if (analises == null || analises.isEmpty()) {
+        System.out.println("⚠️ Nenhuma análise recebida do Flask. Mantendo sentimento neutro.");
+    }
+
+    // Processa e salva notícia por notícia
+    for (int i = 0; i < noticias.size(); i++) {
+        FeedDTO dto = noticias.get(i);
+        Map<String, Object> analise = (i < analises.size()) ? analises.get(i) : null;
+
+        String label = "neutral";
+        double score = 0.0;
+
+        if (analise != null) {
+            Object lbl = analise.get("label");
+            Object scr = analise.get("score");
+            if (lbl != null) label = lbl.toString();
+            if (scr != null) {
+                try {
+                    score = Double.parseDouble(scr.toString());
+                } catch (NumberFormatException ignored) {}
+            }
+        }
+
+        dto.setSentimento(label);
+        dto.setScore(score);
+
+        // Converte DTO para entidade Item e salva no banco
+        Item item = new Item();
+        item.setTitle(dto.getTitle());
+        item.setText(dto.getDescription());
+        item.setUrl(dto.getUrl());
+        item.setSourceName(dto.getSource());
+        item.setSentimentLabel(label);
+        item.setSentimentScore(score);
+        item.setPublishedAt(LocalDateTime.now());
+        item.setAnalyzedAt(LocalDateTime.now());
+
+        itemRepository.save(item);
+    }
+
+    System.out.println("✅ " + noticias.size() + " notícias analisadas e salvas com sucesso!");
+}
+
     
     
     private static class CacheEntry {
