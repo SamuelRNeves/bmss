@@ -1,64 +1,90 @@
-import axios from "axios";
+import axios, { AxiosError } from "axios";
 
-
+// =====================================================
+// 🔧 Configuração global do Axios
+// =====================================================
 const api = axios.create({
-  baseURL: "http://localhost:8080/api/v1",
-  // A coleta de notícias consulta a NewsAPI e envia os textos para o serviço
-  // Flask realizar a análise de sentimento. Esse fluxo pode levar vários
-  // segundos (principalmente na primeira execução, quando o modelo de NLP é
-  // carregado), por isso aumentamos o timeout padrão para evitar que o
-  // frontend aborte a requisição prematuramente.
+  baseURL: process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080/api/v1",
   timeout: 15000,
 });
 
-// ========== ENDPOINTS ==========
+// =====================================================
+// 🧱 Interceptores globais
+// =====================================================
+api.interceptors.request.use((config) => {
+  console.info(`➡️ [API] ${config.method?.toUpperCase()} ${config.url}`);
+  return config;
+});
 
-// 1️⃣  KPIs de sentimento (Java → /sentimento)
-export async function getSentimentos() {
-  const res = await api.get("/sentimento");
-  return res.data; // { positive: 0.47, neutral: 0.33, negative: 0.20 }
-}
-
-// 2️⃣  Tendências semanais (Java → /tendencias)
-export async function getTendencias() {
-  const res = await api.get("/tendencias");
-  return res.data; // [{ day:"2025-10-01", positive:45, neutral:30, negative:25 }, ...]
-}
-
-export async function getUltimasNoticias(limit = 12, q = "bitcoin") {
-  try {
-    const res = await api.get(`/noticias/ultimas`, { params: { limit, q } });
-    if (res.status === 200) return res.data;
-    console.error("⚠️ Resposta inesperada:", res.status, res.data);
-    return [];
-  } catch (err) {
-    if (axios.isAxiosError(err) && err.code === "ECONNABORTED") {
-      console.error(
-        "⏳ Requisição de notícias expirou antes do backend responder. Considere verificar o serviço Flask/NewsAPI.",
-      );
+api.interceptors.response.use(
+  (res) => res,
+  (error: AxiosError) => {
+    if (error.response) {
+      console.error(`❌ [API] ${error.response.status}: ${error.response.statusText}`);
+    } else if (error.code === "ECONNABORTED") {
+      console.warn("⏳ Timeout: backend demorou para responder.");
     } else {
-      console.error("❌ Erro ao buscar notícias:", err);
+      console.error("⚠️ Erro desconhecido:", error.message);
     }
-    return [];
+    return Promise.reject(error);
+  }
+);
+
+// =====================================================
+// 📦 Tipo de retorno padrão
+// =====================================================
+interface ApiResponse<T> {
+  data: T | null;
+  error: string | null;
+  isFallback: boolean;
+}
+
+// =====================================================
+// 🧩 Endpoints
+// =====================================================
+
+export async function getSentimentos(): Promise<ApiResponse<any>> {
+  try {
+    const res = await api.get("/sentimento");
+    return { data: res.data, error: null, isFallback: false };
+  } catch (err: any) {
+    return { data: { positive: 0, neutral: 0, negative: 0 }, error: err.message, isFallback: true };
   }
 }
 
-
-
-// 4️⃣  Cadastrar notícia (Java → /noticias)
-export async function cadastrarNoticia(payload: {
-  titulo: string;
-  conteudo: string;
-  fonte: string;
-}) {
-  const res = await api.post("/noticias", payload);
-  return res.data;
+export async function getTendencias(): Promise<ApiResponse<any>> {
+  try {
+    const res = await api.get("/tendencias");
+    return { data: res.data, error: null, isFallback: false };
+  } catch (err: any) {
+    return { data: [], error: err.message, isFallback: true };
+  }
 }
 
-// 5️⃣  Cadastrar usuário (Java → /usuarios)
-export async function cadastrarUsuario(payload: { nome: string; email: string }) {
-  const res = await api.post("/usuarios", payload);
-  return res.data;
+export async function getUltimasNoticias(limit = 12, q = "bitcoin"): Promise<ApiResponse<any[]>> {
+  try {
+    const res = await api.get(`/noticias/ultimas`, { params: { limit, q } });
+    return { data: res.data, error: null, isFallback: false };
+  } catch (err: any) {
+    return { data: [], error: err.message, isFallback: true };
+  }
 }
+
+// =====================================================
+// 👤 Cadastrar usuário
+// =====================================================
+export async function cadastrarUsuario(payload: {
+  nome: string;
+  email: string;
+}): Promise<{ data: any; error: string | null; isFallback: boolean }> {
+  try {
+    const res = await api.post("/usuarios", payload);
+    return { data: res.data, error: null, isFallback: false };
+  } catch (err: any) {
+    console.error("❌ Erro ao cadastrar usuário:", err.message);
+    return { data: null, error: err.message, isFallback: true };
+  }
+}
+
 
 export default api;

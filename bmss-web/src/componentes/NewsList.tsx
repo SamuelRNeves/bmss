@@ -9,7 +9,7 @@ interface NewsItem {
   title: string;
   description: string;
   url?: string;
-  source?: string; // 🔹 Corrigido nome para alinhar com backend
+  source?: string;
   publishedAt?: string;
   sentimento?: string;
   score?: number;
@@ -18,17 +18,15 @@ interface NewsItem {
 export default function NewsList() {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isFallback, setIsFallback] = useState(false);
 
   useEffect(() => {
     async function fetchNoticias() {
-      try {
-        const data = await getUltimasNoticias(12, "bitcoin");
-        setNews(data || []);
-      } catch (err) {
-        console.error("❌ Erro ao carregar notícias:", err);
-      } finally {
-        setLoading(false); // 🔹 Garante que pare de carregar
-      }
+      const { data, isFallback } = await getUltimasNoticias(30, "bitcoin");
+
+      setNews(data || []);
+      setIsFallback(isFallback);
+      setLoading(false);
     }
 
     fetchNoticias();
@@ -50,7 +48,6 @@ export default function NewsList() {
     );
   }
 
-  // Define a cor da borda e do texto conforme o sentimento
   const getSentimentStyle = (sentimento?: string) => {
     switch (sentimento) {
       case "positive":
@@ -72,43 +69,30 @@ export default function NewsList() {
             key={item.id || index}
             className={`p-4 bg-neutral-900 border-2 ${style.border} rounded-lg hover:bg-neutral-800 transition-colors`}
           >
-            {/* Título */}
             <h3 className="text-lg font-semibold text-gray-100 mb-1">
               {item.title || "Título não informado"}
             </h3>
-
-            {/* Descrição */}
             <p className="text-gray-400 text-sm mb-2 line-clamp-3">
               {item.description || "Sem descrição disponível."}
             </p>
 
-            {/* Pontuação */}
             {typeof item.score === "number" && (
               <p className="text-gray-500 text-xs mb-1">
                 Score: {item.score.toFixed(3)}
               </p>
             )}
 
-            {/* Rodapé */}
             <div className="flex flex-col sm:flex-row sm:justify-between text-xs text-gray-500 mt-2">
               <span>
                 <span className="text-gray-400">Fonte:</span>{" "}
                 {item.source || "Desconhecida"}
               </span>
-
               <span>
                 <span className="text-gray-400">Publicado:</span>{" "}
                 {item.publishedAt
-                  ? new Date(item.publishedAt).toLocaleString("pt-BR", {
-                      day: "2-digit",
-                      month: "2-digit",
-                      year: "numeric",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })
+                  ? new Date(item.publishedAt).toLocaleString("pt-BR")
                   : "Data não informada"}
               </span>
-
               <span>
                 <span className="text-gray-400">Sentimento:</span>{" "}
                 <span className={style.text}>
@@ -117,7 +101,6 @@ export default function NewsList() {
               </span>
             </div>
 
-            {/* Link */}
             {item.url && (
               <a
                 href={item.url}
@@ -132,6 +115,13 @@ export default function NewsList() {
           </div>
         );
       })}
+
+      {isFallback && (
+        <p className="text-yellow-400 text-xs text-center mt-3">
+          ⚠️ Exibindo dados de cache (modo offline)
+        </p>
+      )}
     </section>
   );
+  
 }

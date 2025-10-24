@@ -13,30 +13,45 @@ type SentimentKpi = {
 };
 
 export default function KpiCards() {
-  const [kpis, setKpis] = useState<SentimentKpi[]>([
-    { label: "Positivo", value: 0, color: "#22c55e" },
-    { label: "Neutro", value: 0, color: "#facc15" },
-    { label: "Negativo", value: 0, color: "#ef4444" },
-  ]);
+  const [kpis, setKpis] = useState<SentimentKpi[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isFallback, setIsFallback] = useState(false);
 
   const fetchData = async () => {
-    try {
-      const data = await getSentimentos();
+    setLoading(true);
+    const { data, isFallback } = await getSentimentos();
+    setIsFallback(isFallback);
+    if (data) {
       setKpis([
         { label: "Positivo", value: Math.round(data.positive * 100), color: "#22c55e" },
         { label: "Neutro", value: Math.round(data.neutral * 100), color: "#facc15" },
         { label: "Negativo", value: Math.round(data.negative * 100), color: "#ef4444" },
       ]);
-    } catch (error) {
-      console.error("Erro ao carregar sentimentos");
     }
+    setLoading(false);
   };
 
   useEffect(() => {
     fetchData();
-    const intervalo = setInterval(fetchData, 60000); // atualiza a cada 60s
+    const intervalo = setInterval(fetchData, 60000);
     return () => clearInterval(intervalo);
   }, []);
+
+  if (loading) {
+    return (
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        {["Positivo", "Neutro", "Negativo"].map((label) => (
+          <div
+            key={label}
+            className="flex flex-col items-center justify-center bg-neutral-900 border border-neutral-800 rounded-xl p-6 animate-pulse"
+          >
+            <div className="w-28 h-28 bg-neutral-800 rounded-full mb-4" />
+            <span className="text-gray-500">{label}</span>
+          </div>
+        ))}
+      </section>
+    );
+  }
 
   return (
     <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -48,10 +63,10 @@ export default function KpiCards() {
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.9 }}
             transition={{ duration: 0.5, ease: "easeOut" }}
-            className="flex flex-col items-center justify-center bg-neutral-900 border border-neutral-800 rounded-xl p-6 shadow-inner hover:shadow-lg transition-shadow"
+            className="flex flex-col items-center justify-center bg-neutral-900 border border-neutral-800 rounded-xl p-6 shadow-inner"
           >
             <motion.div
-              key={kpi.value} // anima quando o valor muda
+              key={kpi.value}
               initial={{ scale: 0.9, opacity: 0.6 }}
               animate={{ scale: 1, opacity: 1 }}
               transition={{ duration: 0.6 }}
@@ -81,6 +96,12 @@ export default function KpiCards() {
           </motion.div>
         ))}
       </AnimatePresence>
+
+      {isFallback && (
+        <p className="col-span-3 text-center text-yellow-400 mt-2">
+          ⚠️ Exibindo dados em modo offline (cache/fallback)
+        </p>
+      )}
     </section>
   );
 }

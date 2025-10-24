@@ -49,4 +49,6 @@ public class Item {
 
     @Column(name = "analyzed_at")
     private LocalDateTime analyzedAt; // Data/hora da análise
+
+    
 }

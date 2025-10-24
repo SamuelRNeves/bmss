@@ -23,15 +23,16 @@ type SentimentTrend = {
 
 export default function SentimentTrends() {
   const [data, setData] = useState<SentimentTrend[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isFallback, setIsFallback] = useState(false);
 
   useEffect(() => {
     async function fetchData() {
-      try {
-        const result = await getTendencias();
-        setData(result);
-      } catch {
-        console.error("Erro ao carregar tendências");
-      }
+      setLoading(true);
+      const { data, isFallback } = await getTendencias();
+      if (data) setData(data);
+      setIsFallback(isFallback);
+      setLoading(false);
     }
     fetchData();
     const intervalo = setInterval(fetchData, 60000);
@@ -49,9 +50,13 @@ export default function SentimentTrends() {
         Tendência de Sentimento (5 dias)
       </h2>
 
-      {data.length === 0 ? (
+      {loading ? (
         <p className="text-gray-500 text-sm text-center py-8">
           Carregando gráfico...
+        </p>
+      ) : data.length === 0 ? (
+        <p className="text-gray-500 text-sm text-center py-8">
+          Nenhum dado disponível.
         </p>
       ) : (
         <ResponsiveContainer width="100%" height={300}>
@@ -68,38 +73,17 @@ export default function SentimentTrends() {
               labelStyle={{ color: "#fff" }}
             />
             <Legend wrapperStyle={{ color: "#fff", paddingTop: "10px" }} />
-            <Line
-              type="monotone"
-              dataKey="positive"
-              stroke="#22c55e"
-              strokeWidth={2}
-              dot={{ r: 4 }}
-              isAnimationActive={true}
-              animationDuration={900}
-              name="Positivo"
-            />
-            <Line
-              type="monotone"
-              dataKey="neutral"
-              stroke="#facc15"
-              strokeWidth={2}
-              dot={{ r: 4 }}
-              isAnimationActive={true}
-              animationDuration={900}
-              name="Neutro"
-            />
-            <Line
-              type="monotone"
-              dataKey="negative"
-              stroke="#ef4444"
-              strokeWidth={2}
-              dot={{ r: 4 }}
-              isAnimationActive={true}
-              animationDuration={900}
-              name="Negativo"
-            />
+            <Line type="monotone" dataKey="positive" stroke="#22c55e" strokeWidth={2} dot={{ r: 4 }} />
+            <Line type="monotone" dataKey="neutral" stroke="#facc15" strokeWidth={2} dot={{ r: 4 }} />
+            <Line type="monotone" dataKey="negative" stroke="#ef4444" strokeWidth={2} dot={{ r: 4 }} />
           </LineChart>
         </ResponsiveContainer>
+      )}
+
+      {isFallback && (
+        <p className="text-yellow-400 text-xs text-center mt-3">
+          ⚠️ Exibindo gráfico com dados em cache
+        </p>
       )}
     </motion.section>
   );
