@@ -1,45 +1,40 @@
 from flask import Flask, request, jsonify
-from transformers import pipeline, AutoTokenizer, AutoModelForSequenceClassification
-from deep_translator import GoogleTranslator
+from transformers import pipeline
 import torch
 
 app = Flask(__name__)
 
 # ============================================================
-# 🔹 Carrega modelo multilíngue (funciona em PT/EN)
+# 🔹 Modelo otimizado para Português (sem precisar traduzir)
 # ============================================================
-MODEL_NAME = "nlptown/bert-base-multilingual-uncased-sentiment"
+# Esse modelo é nativo em português e gera resultados muito mais coerentes
+# com textos da NewsAPI e GNews.
+MODEL_NAME = "pysentimiento/robertuito-sentiment-analysis"
 
-print("🔄 Carregando modelo de sentimento...")
-tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-model = AutoModelForSequenceClassification.from_pretrained(MODEL_NAME)
-analyzer = pipeline("sentiment-analysis", model=model, tokenizer=tokenizer)
+print("🔄 Carregando modelo de sentimento (pysentimiento)...")
+device = 0 if torch.cuda.is_available() else -1
+analyzer = pipeline("sentiment-analysis", model=MODEL_NAME, device=device)
 print("✅ Modelo carregado com sucesso!")
 
 # ============================================================
-# 🔹 Função auxiliar para traduzir texto e analisar sentimento
+# 🔹 Função auxiliar de análise
 # ============================================================
 def analyze_text(text):
     if not text or len(text.strip()) == 0:
         return {"label": "neutral", "score": 0.0}
 
     try:
-        # Tradução para inglês (melhora precisão do modelo)
-        translated = GoogleTranslator(source='auto', target='en').translate(text)
-        result = analyzer(translated[:512])[0]  # limita tamanho para segurança
-        label = result['label']
-        score = result['score']
+        result = analyzer(text[:512])[0]  # corta textos muito longos
+        label = result["label"].lower()
+        score = float(result["score"])
 
-        # Conversão do label (modelo usa 1 a 5 estrelas)
+        # Mapeia o label do modelo para um formato padronizado
         label_map = {
-            "1 star": "negative",
-            "2 stars": "negative",
-            "3 stars": "neutral",
-            "4 stars": "positive",
-            "5 stars": "positive"
+            "positive": "positive",
+            "negative": "negative",
+            "neutral": "neutral"
         }
-
-        sentiment = label_map.get(label.lower(), "neutral")
+        sentiment = label_map.get(label, "neutral")
 
         return {"label": sentiment, "score": round(score, 3)}
 
@@ -48,21 +43,21 @@ def analyze_text(text):
         return {"label": "neutral", "score": 0.0}
 
 # ============================================================
-# 🔹 Endpoint para 1 texto (debug/teste manual)
+# 🔹 Endpoint único (para debug/teste)
 # ============================================================
 @app.route("/analyze", methods=["POST"])
 def analyze_single():
-    data = request.get_json()
+    data = request.get_json(force=True)
     text = data.get("text", "")
     result = analyze_text(text)
     return jsonify(result)
 
 # ============================================================
-# 🔹 Endpoint para múltiplos textos (usado pelo backend Java)
+# 🔹 Endpoint em lote (usado pelo backend Java)
 # ============================================================
 @app.route("/analyze-batch", methods=["POST"])
 def analyze_batch():
-    data = request.get_json()
+    data = request.get_json(force=True)
     if not isinstance(data, list):
         return jsonify({"error": "Esperada uma lista de textos"}), 400
 

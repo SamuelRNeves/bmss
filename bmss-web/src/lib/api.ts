@@ -43,15 +43,21 @@ interface ApiResponse<T> {
 // 🧩 Endpoints
 // =====================================================
 
+// 🔹 KPIs de sentimento
 export async function getSentimentos(): Promise<ApiResponse<any>> {
   try {
     const res = await api.get("/sentimento");
     return { data: res.data, error: null, isFallback: false };
   } catch (err: any) {
-    return { data: { positive: 0, neutral: 0, negative: 0 }, error: err.message, isFallback: true };
+    return {
+      data: { positive: 0, neutral: 0, negative: 0 },
+      error: err.message,
+      isFallback: true,
+    };
   }
 }
 
+// 🔹 Tendência de sentimento
 export async function getTendencias(): Promise<ApiResponse<any>> {
   try {
     const res = await api.get("/tendencias");
@@ -61,11 +67,19 @@ export async function getTendencias(): Promise<ApiResponse<any>> {
   }
 }
 
+// 🔹 Últimas notícias com fallback inteligente
 export async function getUltimasNoticias(limit = 12, q = "bitcoin"): Promise<ApiResponse<any[]>> {
   try {
     const res = await api.get(`/noticias/ultimas`, { params: { limit, q } });
-    return { data: res.data, error: null, isFallback: false };
+
+    // 🧠 Ajuste automático: caso o backend retorne { data: [...] }
+    const noticias = Array.isArray(res.data)
+      ? res.data
+      : res.data?.data || [];
+
+    return { data: noticias, error: null, isFallback: false };
   } catch (err: any) {
+    console.error("⚠️ Erro ao buscar últimas notícias:", err.message);
     return { data: [], error: err.message, isFallback: true };
   }
 }
@@ -76,7 +90,7 @@ export async function getUltimasNoticias(limit = 12, q = "bitcoin"): Promise<Api
 export async function cadastrarUsuario(payload: {
   nome: string;
   email: string;
-}): Promise<{ data: any; error: string | null; isFallback: boolean }> {
+}): Promise<ApiResponse<any>> {
   try {
     const res = await api.post("/usuarios", payload);
     return { data: res.data, error: null, isFallback: false };
@@ -85,6 +99,5 @@ export async function cadastrarUsuario(payload: {
     return { data: null, error: err.message, isFallback: true };
   }
 }
-
 
 export default api;

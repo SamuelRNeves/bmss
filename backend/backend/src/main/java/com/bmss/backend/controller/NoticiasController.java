@@ -6,9 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
+import java.util.*;
 
 @RestController
 @RequestMapping("/api/v1/noticias")
@@ -19,36 +17,56 @@ public class NoticiasController {
     private NoticiasService noticiasService;
 
     // ============================================================
-    // 🔹 Lista as últimas notícias (agora com limite maior e análise)
+    // 🔹 Endpoint principal usado pelo frontend
     // ============================================================
     @GetMapping("/ultimas")
-    public ResponseEntity<List<FeedDTO>> ultimas(
-            @RequestParam(defaultValue = "30") int limit, // ⬅️ aumentamos o limite padrão
-            @RequestParam(defaultValue = "bitcoin") String q
+    public ResponseEntity<Map<String, Object>> ultimas(
+            @RequestParam(defaultValue = "bitcoin") String q,
+            @RequestParam(defaultValue = "10") int limit
     ) {
+        System.out.println("🔎 [Frontend] Solicitando últimas notícias para: " + q);
+
         List<FeedDTO> noticias = noticiasService.buscarNoticias(limit, q);
 
-        // 🔹 Evita chamadas desnecessárias ao Flask se não houver notícias
-        if (noticias.isEmpty()) {
-            return ResponseEntity.ok(noticias);
-        }
+        Map<String, Object> resposta = new LinkedHashMap<>();
+        resposta.put("total", noticias.size());
+        resposta.put("keyword", q);
+        resposta.put("data", noticias);
+        resposta.put("message", noticias.isEmpty()
+                ? "⚠️ Nenhuma notícia encontrada."
+                : "✅ Notícias reais retornadas com sucesso.");
 
-        // 🔹 Monta os textos (título + descrição) para análise
-        List<String> textos = noticias.stream()
-                .map(n -> n.getTitle() + ". " + n.getDescription())
-                .collect(Collectors.toList());
-
-        // 🔹 Envia para o Flask em lote
-        List<Map<String, Object>> analises = noticiasService.analyzeBatch(textos);
-
-        // 🔹 Mapeia sentimentos e scores de volta para as notícias
-        for (int i = 0; i < noticias.size() && i < analises.size(); i++) {
-            Map<String, Object> analise = analises.get(i);
-            noticias.get(i).setSentimento((String) analise.getOrDefault("label", "neutral"));
-            noticias.get(i).setScore(Double.valueOf(analise.getOrDefault("score", 0.0).toString()));
-        }
-
-        System.out.println("✅ " + noticias.size() + " notícias enviadas ao frontend (" + q + ")");
-        return ResponseEntity.ok(noticias);
+        System.out.println("✅ Enviando " + noticias.size() + " notícias ao frontend.");
+        return ResponseEntity.ok(resposta);
     }
+
+    // ============================================================
+    // 🔹 Endpoint de debug para testar manualmente no navegador
+    // ============================================================
+    @GetMapping("/debug")
+    public ResponseEntity<Map<String, Object>> debugNoticias(
+            @RequestParam(defaultValue = "bitcoin") String q,
+            @RequestParam(defaultValue = "10") int limit
+    ) {
+        System.out.println("🧠 [Debug] Testando busca manual de notícias para: " + q);
+
+        List<FeedDTO> noticias = noticiasService.buscarNoticias(limit, q);
+
+        Map<String, Object> resposta = new LinkedHashMap<>();
+        resposta.put("total", noticias.size());
+        resposta.put("keyword", q);
+        resposta.put("data", noticias);
+        resposta.put("message", noticias.isEmpty()
+                ? "⚠️ Nenhuma notícia real encontrada (verifique a API GNews ou o filtro de domínios)."
+                : "✅ Notícias reais retornadas com sucesso.");
+
+        if (noticias.isEmpty()) {
+            System.out.println("⚠️ Nenhuma notícia retornada.");
+        } else {
+            System.out.println("✅ " + noticias.size() + " notícias encontradas.");
+        }
+
+        return ResponseEntity.ok(resposta);
+    }
+
 }
