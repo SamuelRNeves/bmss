@@ -1,22 +1,26 @@
+"use client";
+
 import { RefreshCcw, Search } from "lucide-react";
-import { getUltimasNoticias, getSentimentos, analisarNoticias } from "../lib/api"; // 👈 importa o novo endpoint
-import { useState, useEffect } from "react";
+import { getUltimasNoticias, getSentimentos } from "../lib/api";
 import axios from "axios";
+import { useState, useEffect } from "react";
 
 export default function Header() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
+  // 🔹 Atualização genérica (sentimentos + últimas notícias)
   const atualizarDashboard = async (mensagemInicio: string, mensagemSucesso: string) => {
     try {
       setLoading(true);
       setMessage(mensagemInicio);
 
+      // Atualiza KPIs e lista de notícias
       await Promise.all([getSentimentos(), getUltimasNoticias()]);
 
       setMessage(mensagemSucesso);
     } catch (error) {
-      console.error(error);
+      console.error("❌ Erro ao atualizar dashboard:", error);
       setMessage("❌ Falha ao atualizar o dashboard");
     } finally {
       setLoading(false);
@@ -24,28 +28,35 @@ export default function Header() {
     }
   };
 
+  // 🔹 Botão "Atualizar Lista" — apenas busca dados já analisados do banco
   const handleUpdate = () =>
     atualizarDashboard("Atualizando dados...", "✅ Dashboard atualizado com sucesso!");
 
-  // 🚀 Novo: faz o backend realmente chamar o Flask e atualizar sentimentos
+  // 🔹 Botão "Analisar Últimas 5" — força o backend a buscar, analisar via Flask e salvar
   const handleAnalyzeLast5 = async () => {
-  try {
-    setLoading(true);
-    setMessage("Analisando as últimas 5 notícias...");
+    try {
+      setLoading(true);
+      setMessage("🧠 Analisando as últimas 5 notícias...");
 
-    await axios.get("http://localhost:8080/api/v1/noticias/analisar?q=bitcoin");
+      // Envia a requisição POST (corrige o erro 405)
+      await axios.post("http://localhost:8080/api/v1/noticias/analisar", null, {
+        params: { q: "bitcoin", limit: 5 },
+      });
 
-    setMessage("✅ Análise concluída e salva no banco!");
-  } catch (error) {
-    console.error(error);
-    setMessage("❌ Erro ao analisar notícias");
-  } finally {
-    setLoading(false);
-    setTimeout(() => setMessage(""), 5000);
-  }
-};
+      setMessage("✅ Análise concluída e salva no banco!");
 
+      // Busca novamente para atualizar a interface
+      await atualizarDashboard("🔄 Atualizando lista com novos resultados...", "✅ Lista atualizada!");
+    } catch (error) {
+      console.error("❌ Erro ao analisar notícias:", error);
+      setMessage("❌ Erro ao analisar notícias");
+    } finally {
+      setLoading(false);
+      setTimeout(() => setMessage(""), 6000);
+    }
+  };
 
+  // 🔹 Atualização automática a cada 60 segundos
   useEffect(() => {
     const intervalo = setInterval(() => {
       atualizarDashboard("⏱ Atualização automática...", "✅ Dashboard sincronizado!");
@@ -59,6 +70,7 @@ export default function Header() {
         Dashboard de Sentimento
       </h1>
 
+      {/* Botões de ação */}
       <div className="flex flex-wrap gap-3">
         <button
           onClick={handleUpdate}
@@ -79,6 +91,7 @@ export default function Header() {
         </button>
       </div>
 
+      {/* Mensagem de status */}
       {message && (
         <p className="text-sm text-gray-400 animate-fadeIn text-right">
           {message}

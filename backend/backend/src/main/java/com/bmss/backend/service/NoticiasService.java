@@ -30,9 +30,14 @@ import java.util.stream.Collectors;
 @Service
 public class NoticiasService {
 
-    @Autowired
-    private ItemRepository itemRepository;
-    private SentimentRepository sentimentRepository;
+@Autowired
+private ItemRepository itemRepository;
+
+@Autowired
+private SentimentRepository sentimentRepository;
+
+
+
 
 
         private static final Logger log = LoggerFactory.getLogger(NoticiasService.class);
@@ -194,6 +199,11 @@ public List<Map<String, Object>> analyzeBatch(List<String> textos) {
                 request,
                 new ParameterizedTypeReference<List<Map<String, Object>>>() {}
         );
+        
+        //REMOVER DEPOIS
+        System.out.println("📩 RAW Response do Flask: " + response.getBody());
+
+
 
         if (response.getStatusCode() != HttpStatus.OK) {
             log.warn("⚠️ Flask retornou status HTTP {}", response.getStatusCode());

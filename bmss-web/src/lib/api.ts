@@ -116,6 +116,16 @@ export async function analisarNoticias(limit = 5, q = "bitcoin"): Promise<ApiRes
   }
 }
 
+export async function analisarUltimas(limit = 5, q = "bitcoin"): Promise<ApiResponse<any>> {
+  try {
+    const res = await api.post(`/noticias/analisar`, null, { params: { limit, q } });
+    return { data: res.data, error: null, isFallback: false };
+  } catch (err: any) {
+    return { data: null, error: err.message, isFallback: true };
+  }
+}
+
+
 
 
 export default api;

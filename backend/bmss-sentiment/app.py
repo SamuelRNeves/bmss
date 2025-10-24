@@ -9,12 +9,15 @@ app = Flask(__name__)
 # ============================================================
 # 🔹 Modelo otimizado para Português (sem precisar traduzir)
 # ============================================================
-MODEL_NAME = "pysentimiento/robertuito-sentiment-analysis"
+ MODEL_NAME = "nlptown/bert-base-multilingual-uncased-sentiment"
+
 
 print("🔄 Carregando modelo de sentimento (pysentimiento)...")
 device = 0 if torch.cuda.is_available() else -1
 analyzer = pipeline("sentiment-analysis", model=MODEL_NAME, device=device)
 print("✅ Modelo carregado com sucesso!")
+
+
 
 # ============================================================
 # 🔹 Função auxiliar de análise
@@ -24,22 +27,24 @@ def analyze_text(text):
         return {"label": "neutral", "score": 0.0}
 
     try:
-        result = analyzer(text[:512])[0]  # corta textos muito longos
-        label = result["label"].lower()
+        result = analyzer(text[:512])[0]
+        stars = result["label"]  # exemplo: "4 stars"
+        num = int(stars.split()[0])
+
+        if num <= 2:
+            label = "negative"
+        elif num == 3:
+            label = "neutral"
+        else:
+            label = "positive"
+
         score = float(result["score"])
-
-        label_map = {
-            "positive": "positive",
-            "negative": "negative",
-            "neutral": "neutral"
-        }
-        sentiment = label_map.get(label, "neutral")
-
-        return {"label": sentiment, "score": round(score, 3)}
+        return {"label": label, "score": round(score, 3)}
 
     except Exception as e:
         print(f"❌ Erro na análise: {e}")
         return {"label": "neutral", "score": 0.0}
+
 
 
 # ============================================================
@@ -90,6 +95,7 @@ def analyze_batch():
     except Exception as e:
         print(f"❌ Erro inesperado no analyze-batch: {e}")
         return jsonify([]), 200
+
 
 
 # ============================================================
