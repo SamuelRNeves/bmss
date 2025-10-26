@@ -1,6 +1,7 @@
 package com.bmss.backend.controller;
 
 import com.bmss.backend.dto.FeedDTO;
+import com.bmss.backend.exception.SentimentAnalysisException;
 import com.bmss.backend.model.Item;
 import com.bmss.backend.repository.ItemRepository;
 import com.bmss.backend.service.NoticiasService;
@@ -64,6 +65,11 @@ public class NoticiasController {
 
             return ResponseEntity.ok(resp);
 
+        } catch (SentimentAnalysisException e) {
+            e.printStackTrace();
+            return ResponseEntity.status(502).body(Map.of(
+                    "error", "❌ Falha ao contatar microserviço de sentimento: " + e.getMessage()
+            ));
         } catch (Exception e) {
             e.printStackTrace();
             return ResponseEntity.status(500).body(Map.of(
@@ -86,6 +92,11 @@ public class NoticiasController {
             noticiasService.fetchAndStoreNews(q);
             return ResponseEntity.ok(Map.of(
                     "message", "✅ Análise concluída e dados salvos no banco!"
+            ));
+        } catch (SentimentAnalysisException e) {
+            e.printStackTrace();
+            return ResponseEntity.status(502).body(Map.of(
+                    "error", "❌ Falha ao contatar microserviço de sentimento: " + e.getMessage()
             ));
         } catch (Exception e) {
             e.printStackTrace();
