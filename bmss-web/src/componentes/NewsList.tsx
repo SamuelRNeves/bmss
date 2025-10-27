@@ -23,7 +23,6 @@ export default function NewsList() {
   useEffect(() => {
     async function fetchNoticias() {
       const { data, isFallback } = await getUltimasNoticias(30, "bitcoin");
-
       setNews(data || []);
       setIsFallback(isFallback);
       setLoading(false);
@@ -51,11 +50,11 @@ export default function NewsList() {
   const getSentimentStyle = (sentimento?: string) => {
     switch (sentimento) {
       case "positive":
-        return { border: "border-green-500", text: "text-green-400" };
+        return { border: "border-green-500", text: "text-green-400", label: "Positivo" };
       case "negative":
-        return { border: "border-red-500", text: "text-red-400" };
+        return { border: "border-red-500", text: "text-red-400", label: "Negativo" };
       default:
-        return { border: "border-yellow-400", text: "text-yellow-400" };
+        return { border: "border-yellow-400", text: "text-yellow-400", label: "Neutro" };
     }
   };
 
@@ -72,34 +71,30 @@ export default function NewsList() {
             <h3 className="text-lg font-semibold text-gray-100 mb-1">
               {item.title || "Título não informado"}
             </h3>
+
             <p className="text-gray-400 text-sm mb-2 line-clamp-3">
               {item.description || "Sem descrição disponível."}
             </p>
 
-            {typeof item.score === "number" && (
-              <p className="text-gray-500 text-xs mb-1">
-                Score: {item.score.toFixed(3)}
-              </p>
-            )}
-
-            <div className="flex flex-col sm:flex-row sm:justify-between text-xs text-gray-500 mt-2">
-              <span>
-                <span className="text-gray-400">Fonte:</span>{" "}
-                {item.source || "Desconhecida"}
+            <p className="text-gray-500 text-xs mb-1">
+              <strong>Score:</strong>{" "}
+              {typeof item.score === "number" ? item.score.toFixed(3) : "—"}
+              <br />
+              <strong>Fonte:</strong> {item.source || "Desconhecida"}
+              <br />
+              <strong>Publicado:</strong>{" "}
+              {item.publishedAt
+                ? new Date(item.publishedAt).toLocaleString("pt-BR")
+                : "Data não informada"}
+              <br />
+              <strong>Sentimento:</strong>{" "}
+              <span className={style.text}>{style.label}</span>
+              <br />
+              <strong>Modelo:</strong>{" "}
+              <span className="text-blue-400">
+                Ensemble (Caramelo + FinBERT)
               </span>
-              <span>
-                <span className="text-gray-400">Publicado:</span>{" "}
-                {item.publishedAt
-                  ? new Date(item.publishedAt).toLocaleString("pt-BR")
-                  : "Data não informada"}
-              </span>
-              <span>
-                <span className="text-gray-400">Sentimento:</span>{" "}
-                <span className={style.text}>
-                  {item.sentimento || "neutro"}
-                </span>
-              </span>
-            </div>
+            </p>
 
             {item.url && (
               <a
@@ -123,5 +118,4 @@ export default function NewsList() {
       )}
     </section>
   );
-  
 }

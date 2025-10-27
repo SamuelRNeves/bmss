@@ -1,6 +1,7 @@
 package com.bmss.backend.controller;
 
 import com.bmss.backend.dto.FeedDTO;
+import com.bmss.backend.exception.SentimentAnalysisException;
 import com.bmss.backend.model.Item;
 import com.bmss.backend.repository.ItemRepository;
 import com.bmss.backend.service.NoticiasService;
@@ -28,20 +29,19 @@ public class NoticiasController {
     }
 
     // ============================================================
-    // 🔹 Endpoint: buscar e atualizar últimas notícias antes de retornar
+    // 🔹 GET: Buscar últimas notícias do banco (com atualização)
     // ============================================================
     @GetMapping("/ultimas")
     public ResponseEntity<Map<String, Object>> getUltimasNoticias(
             @RequestParam(defaultValue = "bitcoin") String q,
             @RequestParam(defaultValue = "10") int limit
     ) {
-        System.out.println("📡 [GET] /api/v1/noticias/ultimas → buscando últimas " + limit + " notícias salvas no banco.");
+        System.out.println("📡 [GET] /api/v1/noticias/ultimas → buscando últimas " + limit + " notícias.");
 
         try {
-            // 🔄 Atualiza banco com novas notícias do Flask/GNews antes de buscar
+            // 🔄 Atualiza e armazena novas notícias
             noticiasService.fetchAndStoreNews(q);
 
-            // 🔍 Busca as mais recentes no banco (usando Pageable dinâmico)
             var pageable = PageRequest.of(0, limit, Sort.by("analyzedAt").descending());
             List<Item> items = itemRepository.findAllByOrderByAnalyzedAtDesc(pageable);
 
@@ -64,6 +64,11 @@ public class NoticiasController {
 
             return ResponseEntity.ok(resp);
 
+        } catch (SentimentAnalysisException e) {
+            e.printStackTrace();
+            return ResponseEntity.status(502).body(Map.of(
+                    "error", "❌ Falha ao contatar microserviço de sentimento: " + e.getMessage()
+            ));
         } catch (Exception e) {
             e.printStackTrace();
             return ResponseEntity.status(500).body(Map.of(
@@ -73,19 +78,24 @@ public class NoticiasController {
     }
 
     // ============================================================
-    // 🔹 Endpoint: aciona manualmente a análise e persistência
+    // 🔹 POST: Disparar manualmente a análise via Flask
     // ============================================================
     @PostMapping("/analisar")
     public ResponseEntity<Map<String, Object>> analisarNoticias(
             @RequestParam(defaultValue = "bitcoin") String q,
             @RequestParam(defaultValue = "10") int limit
     ) {
-        System.out.println("🧠 [POST] /api/v1/noticias/analisar → iniciando nova análise para: " + q);
+        System.out.println("🧠 [POST] /api/v1/noticias/analisar → iniciando análise para: " + q);
 
         try {
             noticiasService.fetchAndStoreNews(q);
             return ResponseEntity.ok(Map.of(
                     "message", "✅ Análise concluída e dados salvos no banco!"
+            ));
+        } catch (SentimentAnalysisException e) {
+            e.printStackTrace();
+            return ResponseEntity.status(502).body(Map.of(
+                    "error", "❌ Falha ao contatar microserviço de sentimento: " + e.getMessage()
             ));
         } catch (Exception e) {
             e.printStackTrace();
