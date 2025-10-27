@@ -47,24 +47,15 @@ public class NoticiasController {
             // 🔹 Busca apenas notícias que NÃO sejam do Twitter
             List<Item> items = itemRepository.findBySourceNameNotContainingIgnoreCase("Twitter", pageable);
 
-            List<FeedDTO> payload = items.stream().map(it -> new FeedDTO(
-                    it.getTitle(),
-                    it.getText(),
-                    it.getUrl(),
-                    it.getSourceName(),
-                    it.getPublishedAt() != null ? it.getPublishedAt().toString() : null,
-                    it.getSentimentLabel(),
-                    it.getSentimentScore()
-            )).collect(Collectors.toList());
+            List<FeedDTO> payload = items.stream()
+                    .map(this::mapToFeedDTO)
+                    .collect(Collectors.toList());
 
-            Map<String, Object> resp = new LinkedHashMap<>();
-            resp.put("total", payload.size());
-            resp.put("data", payload);
-            resp.put("message", payload.isEmpty()
-                    ? "⚠️ Nenhuma notícia analisada encontrada."
-                    : "✅ Últimas notícias recentes retornadas com sucesso!");
-
-            return ResponseEntity.ok(resp);
+            return ResponseEntity.ok(buildResponse(
+                    payload,
+                    "⚠️ Nenhuma notícia analisada encontrada.",
+                    "✅ Últimas notícias recentes retornadas com sucesso!"
+            ));
 
         } catch (SentimentAnalysisException e) {
             e.printStackTrace();
@@ -110,7 +101,7 @@ public class NoticiasController {
     // ============================================================
     // 🔹 POST: busca e analisa tweets
     // ============================================================
-    @PostMapping("/tweets")
+    @PostMapping({"/tweets", "/analisar-tweets"})
     public ResponseEntity<Map<String, Object>> analisarTweets(
             @RequestParam(defaultValue = "bitcoin") String q
     ) {
@@ -143,23 +134,45 @@ public class NoticiasController {
         // 🔹 Busca apenas notícias do Twitter
         List<Item> items = itemRepository.findBySourceNameContainingIgnoreCase("Twitter", pageable);
 
-        List<FeedDTO> payload = items.stream().map(it -> new FeedDTO(
-                it.getTitle(),
-                it.getText(),
-                it.getUrl(),
-                it.getSourceName(),
-                it.getPublishedAt() != null ? it.getPublishedAt().toString() : null,
-                it.getSentimentLabel(),
-                it.getSentimentScore()
-        )).collect(Collectors.toList());
+        List<FeedDTO> payload = items.stream()
+                .map(this::mapToFeedDTO)
+                .collect(Collectors.toList());
 
+        return ResponseEntity.ok(buildResponse(
+                payload,
+                "⚠️ Nenhum tweet encontrado.",
+                "✅ Últimos tweets retornados com sucesso!"
+        ));
+    }
+
+    private Map<String, Object> buildResponse(List<FeedDTO> payload, String emptyMessage, String successMessage) {
         Map<String, Object> resp = new LinkedHashMap<>();
-        resp.put("total", payload.size());
         resp.put("data", payload);
-        resp.put("message", payload.isEmpty()
-                ? "⚠️ Nenhum tweet encontrado."
-                : "✅ Últimos tweets retornados com sucesso!");
+        resp.put("meta", Map.of("total", payload.size()));
+        resp.put("message", payload.isEmpty() ? emptyMessage : successMessage);
+        return resp;
+    }
 
-        return ResponseEntity.ok(resp);
+    private FeedDTO mapToFeedDTO(Item item) {
+        boolean isTweet = Optional.ofNullable(item.getSourceName())
+                .map(src -> src.toLowerCase(Locale.ROOT).contains("twitter"))
+                .orElse(false);
+
+        String publishedAt = item.getPublishedAt() != null ? item.getPublishedAt().toString() : null;
+        String url = item.getUrl();
+        String sentimento = Optional.ofNullable(item.getSentimentLabel()).orElse("neutral").toLowerCase(Locale.ROOT);
+        Double score = Optional.ofNullable(item.getSentimentScore()).orElse(0.0);
+
+        return new FeedDTO(
+                item.getTitle(),
+                item.getText(),
+                url,
+                Optional.ofNullable(item.getSourceName()).orElse("Desconhecida"),
+                publishedAt,
+                sentimento,
+                score,
+                isTweet,
+                isTweet ? url : null
+        );
     }
 }

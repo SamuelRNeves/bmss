@@ -26,6 +26,8 @@ public class FeedService {
                 dto.setUrl((String) article.get("url"));
                 dto.setSource(((Map<String, Object>) article.get("source")).get("name").toString());
                 dto.setPublishedAt((String) article.get("publishedAt"));
+                dto.setTweet(false);
+                dto.setTweetUrl(null);
                 feedList.add(dto);
             }
             return feedList;

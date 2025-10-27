@@ -73,10 +73,13 @@ export async function getUltimasNoticias(limit = 12, q = "bitcoin"): Promise<Api
   try {
     const res = await api.get(`/noticias/ultimas`, { params: { limit, q } });
 
-    // 🔍 Aceita tanto { data: [...] } quanto uma lista direta
-    const noticias = Array.isArray(res.data)
-      ? res.data
-      : res.data?.data || [];
+    const payload = res.data?.data;
+
+    if (!Array.isArray(payload)) {
+      throw new Error("Formato inesperado ao carregar últimas notícias (data ausente)");
+    }
+
+    const noticias = payload;
 
     console.info("📰 Notícias recebidas:", noticias.length);
     return { data: noticias, error: null, isFallback: false };
@@ -106,9 +109,13 @@ export async function getUltimosTweets(limit = 10, q = "bitcoin"): Promise<ApiRe
   try {
     const res = await api.get(`/noticias/tweets/ultimos`, { params: { limit, q } });
 
-    const tweets = Array.isArray(res.data)
-      ? res.data
-      : res.data?.data || [];
+    const payload = res.data?.data;
+
+    if (!Array.isArray(payload)) {
+      throw new Error("Formato inesperado ao carregar tweets (data ausente)");
+    }
+
+    const tweets = payload;
 
     console.info("🐦 Tweets recebidos:", tweets.length);
     return { data: tweets, error: null, isFallback: false };

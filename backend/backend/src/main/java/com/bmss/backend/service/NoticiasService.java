@@ -33,6 +33,9 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeParseException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
@@ -45,6 +48,7 @@ public class NoticiasService {
     private final RestTemplate newsRestTemplate;
     private final RestTemplate flaskRestTemplate;
     private final URI flaskEndpoint;
+    private final URI tweetsFlaskEndpoint;
 
     private static final Logger log = LoggerFactory.getLogger(NoticiasService.class);
     private static final Map<String, CacheEntry> cache = new ConcurrentHashMap<>();
@@ -58,6 +62,7 @@ public class NoticiasService {
             SentimentRepository sentimentRepository,
             RestTemplateBuilder restTemplateBuilder,
             @Value("${bmss.sentiment.flask-url:http://localhost:5000/analyze-batch}") String flaskUrl,
+            @Value("${bmss.sentiment.tweets-url:http://localhost:5000/analyze-tweets}") String tweetsFlaskUrl,
             @Value("${bmss.sentiment.connect-timeout:10s}") Duration connectTimeout,
             @Value("${bmss.sentiment.read-timeout:20s}") Duration readTimeout
     ) {
@@ -69,6 +74,7 @@ public class NoticiasService {
                 .setReadTimeout(readTimeout)
                 .build();
         this.flaskEndpoint = URI.create(Objects.requireNonNull(flaskUrl, "Flask URL must not be null"));
+        this.tweetsFlaskEndpoint = URI.create(Objects.requireNonNull(tweetsFlaskUrl, "Tweets Flask URL must not be null"));
     }
 
     private static final List<String> BLOCKED_DOMAINS = Arrays.asList(
@@ -160,6 +166,8 @@ public class NoticiasService {
                         dto.setPublishedAt((String) a.getOrDefault("publishedAt", LocalDateTime.now().toString()));
                         dto.setSentimento("neutral");
                         dto.setScore(0.0);
+                        dto.setTweet(false);
+                        dto.setTweetUrl(null);
                         return dto;
                     })
                     .limit(20)
@@ -325,7 +333,7 @@ public class NoticiasService {
                     continue; // Pular duplicata
                 }
 
-                list.add(new FeedDTO(title, "", link, "Google News", LocalDateTime.now().toString(), "neutral", 0.0));
+                list.add(new FeedDTO(title, "", link, "Google News", LocalDateTime.now().toString(), "neutral", 0.0, false, null));
             }
 
             log.info("🪶 Fallback RSS retornou {} notícias.", list.size());
@@ -497,26 +505,66 @@ public class NoticiasService {
             }
 
             List<Map<String, Object>> tweets = (List<Map<String, Object>>) response.getBody().get("data");
+            if (tweets == null || tweets.isEmpty()) {
+                log.warn("⚠️ Nenhum tweet retornado pela API do X.");
+                return;
+            }
+
             List<String> textos = tweets.stream()
-                    .map(t -> (String) t.get("text"))
+                    .map(t -> Objects.toString(t.get("text"), ""))
                     .collect(Collectors.toList());
 
+            boolean possuiTextoValido = textos.stream().anyMatch(t -> t != null && !t.isBlank());
+            if (!possuiTextoValido) {
+                log.warn("⚠️ Nenhum texto válido retornado dos tweets para análise.");
+                return;
+            }
+
             // 2️⃣ Chama o Flask (análise com Twitter-RoBERTa)
-            URI tweetEndpoint = URI.create("http://localhost:5000/analyze-tweets");
             HttpHeaders jsonHeaders = new HttpHeaders();
             jsonHeaders.setContentType(MediaType.APPLICATION_JSON);
             HttpEntity<List<String>> req = new HttpEntity<>(textos, jsonHeaders);
 
             ResponseEntity<List<Map<String, Object>>> flaskResp = flaskRestTemplate.exchange(
-                    tweetEndpoint, HttpMethod.POST, req, new ParameterizedTypeReference<List<Map<String, Object>>>() {}
+                    tweetsFlaskEndpoint,
+                    HttpMethod.POST,
+                    req,
+                    new ParameterizedTypeReference<List<Map<String, Object>>>() {}
             );
 
             List<Map<String, Object>> analises = flaskResp.getBody();
-            if (analises == null) analises = Collections.emptyList();
+            if (analises == null) {
+                analises = Collections.emptyList();
+            }
 
             // 3️⃣ Salva no banco
-            for (int i = 0; i < textos.size(); i++) {
-                String text = textos.get(i);
+            for (int i = 0; i < tweets.size(); i++) {
+                Map<String, Object> tweet = tweets.get(i);
+                String text = Objects.toString(tweet.get("text"), "").trim();
+                if (text.isEmpty()) {
+                    continue;
+                }
+
+                String id = Objects.toString(tweet.get("id"), null);
+                String tweetUrl = id != null ? "https://x.com/i/web/status/" + id : "https://x.com";
+
+                if (tweetUrl != null && itemRepository.existsByUrl(tweetUrl)) {
+                    log.debug("↪️ Tweet já persistido ({}), ignorando duplicata.", tweetUrl);
+                    continue;
+                }
+
+                LocalDateTime publishedAt = LocalDateTime.now();
+                Object createdAtObj = tweet.get("created_at");
+                if (createdAtObj instanceof String createdAtStr) {
+                    try {
+                        publishedAt = OffsetDateTime.parse(createdAtStr)
+                                .atZoneSameInstant(ZoneId.systemDefault())
+                                .toLocalDateTime();
+                    } catch (DateTimeParseException ex) {
+                        log.debug("⚠️ Não foi possível converter created_at do tweet {}: {}", id, ex.getMessage());
+                    }
+                }
+
                 String label = "neutral";
                 double score = 0.0;
 
@@ -525,18 +573,22 @@ public class NoticiasService {
                     label = Objects.toString(a.get("label"), "neutral").toLowerCase();
                     Object scr = a.get("score");
                     if (scr != null) {
-                        try { score = Double.parseDouble(scr.toString()); } catch (NumberFormatException ignored) {}
+                        try {
+                            score = Double.parseDouble(scr.toString());
+                        } catch (NumberFormatException ignored) {
+                        }
                     }
                 }
 
                 Item item = new Item();
-                item.setTitle(text.substring(0, Math.min(text.length(), 80)) + "...");
+                String title = text.length() > 100 ? text.substring(0, 97) + "..." : text;
+                item.setTitle(title);
                 item.setText(text);
-                item.setUrl("https://x.com");
+                item.setUrl(tweetUrl);
                 item.setSourceName("Twitter");
                 item.setSentimentLabel(label);
                 item.setSentimentScore(score);
-                item.setPublishedAt(LocalDateTime.now());
+                item.setPublishedAt(publishedAt);
                 item.setAnalyzedAt(LocalDateTime.now());
                 itemRepository.save(item);
 
