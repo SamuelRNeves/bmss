@@ -10,6 +10,14 @@ public interface ItemRepository extends JpaRepository<Item, Integer> {
 
     // 🔹 Busca as notícias mais recentes com limite e ordenação definidos via Pageable
     List<Item> findAllByOrderByAnalyzedAtDesc(Pageable pageable);
+    List<Item> findAllBySourceNameContainingIgnoreCase(String source, Pageable pageable);
+    List<Item> findBySourceNameNotContainingIgnoreCase(String source, Pageable pageable);
+    List<Item> findBySourceNameContainingIgnoreCase(String sourceName, Pageable pageable);
+
+
+    
+    
+
 
     // 🔹 Evita duplicatas ao salvar
     boolean existsByUrl(String url);

@@ -7,23 +7,22 @@ import NewsList from "@/componentes/NewsList";
 import SentimentTrends from "@/componentes/SentimentTrends";
 import Loader from "@/componentes/Loader";
 import TweetsList from "@/componentes/TweetsList";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function HomePage() {
   return (
     <>
-      {/* Loader inicial */}
       <Loader />
 
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.8, ease: "easeOut" }}
-        className="flex flex-col gap-8"
+        className="flex flex-col gap-10 max-w-7xl mx-auto px-4"
       >
+        {/* Header + KPIs */}
         <Header />
 
-        {/* KPIs */}
         <motion.div
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
@@ -32,47 +31,55 @@ export default function HomePage() {
           <KpiCards />
         </motion.div>
 
-        {/* Tendências e Abas (Notícias / Tweets) */}
-        <motion.div
+        {/* Seção de Tendência */}
+        <motion.section
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4, duration: 0.8 }}
-          className="grid gap-8 lg:grid-cols-3"
+          className="bg-neutral-900 rounded-2xl p-6 border border-neutral-800 shadow-lg"
         >
-          {/* Tendência de Sentimentos */}
-          <div className="lg:col-span-2 flex flex-col gap-8">
-            <SentimentTrends />
-          </div>
+          <h2 className="text-lg font-semibold text-gray-100 mb-4">
+            📈 Tendência de Sentimento
+          </h2>
+          <SentimentTrends />
+        </motion.section>
 
-          {/* Abas de conteúdo lateral */}
-          <div className="flex flex-col gap-8">
-            <Tabs defaultValue="news" className="w-full">
-              <TabsList className="flex justify-around bg-neutral-900 rounded-lg p-2 border border-neutral-700">
-                <TabsTrigger
-                  value="news"
-                  className="text-gray-300 data-[state=active]:text-blue-400"
-                >
-                  📰 Notícias
-                </TabsTrigger>
-                <TabsTrigger
-                  value="tweets"
-                  className="text-gray-300 data-[state=active]:text-sky-400"
-                >
-                  🐦 Tweets
-                </TabsTrigger>
-              </TabsList>
+        {/* Abas modernas: Notícias / Tweets */}
+        <motion.section
+          initial={{ opacity: 0, y: 25 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.6, duration: 0.8 }}
+          className="bg-neutral-900 rounded-2xl p-6 border border-neutral-800 shadow-lg"
+        >
+          <h2 className="text-lg font-semibold text-gray-100 mb-6 text-center">
+            📰 Análises Recentes
+          </h2>
 
-              {/* Conteúdo das Abas */}
-              <TabsContent value="news">
-                <NewsList />
-              </TabsContent>
+          <Tabs defaultValue="noticias" className="w-full">
+            <TabsList className="flex justify-center bg-neutral-800 rounded-xl p-1 mb-6">
+              <TabsTrigger
+                value="noticias"
+                className="data-[state=active]:bg-neutral-700 data-[state=active]:text-white text-gray-400 rounded-lg px-6 py-2 text-sm font-medium transition-all"
+              >
+                Notícias
+              </TabsTrigger>
+              <TabsTrigger
+                value="tweets"
+                className="data-[state=active]:bg-neutral-700 data-[state=active]:text-white text-gray-400 rounded-lg px-6 py-2 text-sm font-medium transition-all"
+              >
+                Tweets
+              </TabsTrigger>
+            </TabsList>
 
-              <TabsContent value="tweets">
-                <TweetsList />
-              </TabsContent>
-            </Tabs>
-          </div>
-        </motion.div>
+            <TabsContent value="noticias" className="animate-fadeIn">
+              <NewsList />
+            </TabsContent>
+
+            <TabsContent value="tweets" className="animate-fadeIn">
+              <TweetsList />
+            </TabsContent>
+          </Tabs>
+        </motion.section>
       </motion.div>
     </>
   );

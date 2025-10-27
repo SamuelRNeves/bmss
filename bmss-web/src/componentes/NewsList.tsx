@@ -13,6 +13,7 @@ interface NewsItem {
   publishedAt?: string;
   sentimento?: string;
   score?: number;
+  tweetUrl?: string; 
 }
 
 export default function NewsList() {
@@ -71,6 +72,8 @@ export default function NewsList() {
             <h3 className="text-lg font-semibold text-gray-100 mb-1">
               {item.title || "Título não informado"}
             </h3>
+            
+
 
             <p className="text-gray-400 text-sm mb-2 line-clamp-3">
               {item.description || "Sem descrição disponível."}
@@ -104,6 +107,9 @@ export default function NewsList() {
                 className="flex items-center gap-1 text-blue-400 text-sm mt-3 hover:text-blue-300 transition-colors"
               >
                 Ler notícia completa
+                <p className="text-xs text-gray-500">
+                Fonte: {item.source || "Desconhecida"}
+                </p>
                 <ExternalLink size={14} className="opacity-80" />
               </a>
             )}

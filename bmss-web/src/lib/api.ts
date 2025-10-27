@@ -3,9 +3,11 @@ import axios, { AxiosError } from "axios";
 // =====================================================
 // 🔧 Configuração global do Axios
 // =====================================================
+const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080/api/v1";
+
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080/api/v1",
-  timeout: 15000,
+  baseURL: BASE_URL,
+  timeout: 20000,
 });
 
 // =====================================================
@@ -40,10 +42,8 @@ interface ApiResponse<T> {
 }
 
 // =====================================================
-// 🧩 Endpoints
+// 🧩 Endpoints de Sentimento e Tendência
 // =====================================================
-
-// 🔹 KPIs de sentimento
 export async function getSentimentos(): Promise<ApiResponse<any>> {
   try {
     const res = await api.get("/sentimento");
@@ -57,7 +57,6 @@ export async function getSentimentos(): Promise<ApiResponse<any>> {
   }
 }
 
-// 🔹 Tendência de sentimento
 export async function getTendencias(): Promise<ApiResponse<any>> {
   try {
     const res = await api.get("/tendencias");
@@ -67,16 +66,19 @@ export async function getTendencias(): Promise<ApiResponse<any>> {
   }
 }
 
-// 🔹 Últimas notícias com fallback inteligente
+// =====================================================
+// 📰 NOTÍCIAS
+// =====================================================
 export async function getUltimasNoticias(limit = 12, q = "bitcoin"): Promise<ApiResponse<any[]>> {
   try {
     const res = await api.get(`/noticias/ultimas`, { params: { limit, q } });
 
-    // 🧠 Ajuste automático: caso o backend retorne { data: [...] }
+    // 🔍 Aceita tanto { data: [...] } quanto uma lista direta
     const noticias = Array.isArray(res.data)
       ? res.data
       : res.data?.data || [];
 
+    console.info("📰 Notícias recebidas:", noticias.length);
     return { data: noticias, error: null, isFallback: false };
   } catch (err: any) {
     console.error("⚠️ Erro ao buscar últimas notícias:", err.message);
@@ -84,22 +86,51 @@ export async function getUltimasNoticias(limit = 12, q = "bitcoin"): Promise<Api
   }
 }
 
-// 🔹 Tweets - CORRIGIDO
-export async function analisarTweets(q = "bitcoin") {
+// Dispara análise manualmente
+export async function analisarNoticias(limit = 5, q = "bitcoin"): Promise<ApiResponse<any>> {
   try {
-    const res = await fetch(
-      `${process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080/api/v1"}/noticias/analisar-tweets?q=${q}`,
-      { method: "POST" }
-    );
-    return await res.json();
+    const res = await api.post(`/noticias/analisar`, null, { params: { limit, q } });
+    return { data: res.data, error: null, isFallback: false };
   } catch (err: any) {
-    console.error("Erro ao analisar tweets:", err);
-    return { error: err.message };
+    console.error("❌ Erro ao analisar notícias:", err.message);
+    return { data: null, error: err.message, isFallback: true };
   }
 }
 
 // =====================================================
-// 👤 Cadastrar usuário
+// 🐦 TWEETS
+// =====================================================
+
+// 🔹 Buscar últimos tweets (separado das notícias)
+export async function getUltimosTweets(limit = 10, q = "bitcoin"): Promise<ApiResponse<any[]>> {
+  try {
+    const res = await api.get(`/noticias/tweets/ultimos`, { params: { limit, q } });
+
+    const tweets = Array.isArray(res.data)
+      ? res.data
+      : res.data?.data || [];
+
+    console.info("🐦 Tweets recebidos:", tweets.length);
+    return { data: tweets, error: null, isFallback: false };
+  } catch (err: any) {
+    console.error("⚠️ Erro ao buscar tweets:", err.message);
+    return { data: [], error: err.message, isFallback: true };
+  }
+}
+
+// 🔹 Dispara análise de tweets (executa fetchAndStoreTweets no backend)
+export async function analisarTweets(q = "bitcoin"): Promise<ApiResponse<any>> {
+  try {
+    const res = await api.post(`/noticias/analisar-tweets`, null, { params: { q } });
+    return { data: res.data, error: null, isFallback: false };
+  } catch (err: any) {
+    console.error("❌ Erro ao analisar tweets:", err.message);
+    return { data: null, error: err.message, isFallback: true };
+  }
+}
+
+// =====================================================
+// 👤 USUÁRIOS (Cadastro simples)
 // =====================================================
 export async function cadastrarUsuario(payload: {
   nome: string;
@@ -114,24 +145,6 @@ export async function cadastrarUsuario(payload: {
   }
 }
 
-// 🔹 Disparar análise de sentimento
-export async function analisarNoticias(limit = 5, q = "bitcoin"): Promise<ApiResponse<any>> {
-  try {
-    const res = await api.post(`/noticias/analisar`, null, { params: { limit, q } });
-    return { data: res.data, error: null, isFallback: false };
-  } catch (err: any) {
-    console.error("❌ Erro ao analisar notícias:", err.message);
-    return { data: null, error: err.message, isFallback: true };
-  }
-}
 
-export async function analisarUltimas(limit = 5, q = "bitcoin"): Promise<ApiResponse<any>> {
-  try {
-    const res = await api.post(`/noticias/analisar`, null, { params: { limit, q } });
-    return { data: res.data, error: null, isFallback: false };
-  } catch (err: any) {
-    return { data: null, error: err.message, isFallback: true };
-  }
-}
 
 export default api;

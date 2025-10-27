@@ -49,14 +49,17 @@ public class NoticiasService {
     private static final Logger log = LoggerFactory.getLogger(NoticiasService.class);
     private static final Map<String, CacheEntry> cache = new ConcurrentHashMap<>();
     private static final long CACHE_DURATION_MS = 5 * 60 * 1000;
+    
+    // Lock para prevenir execuções concorrentes
+    private final Object fetchLock = new Object();
 
     public NoticiasService(
             ItemRepository itemRepository,
             SentimentRepository sentimentRepository,
             RestTemplateBuilder restTemplateBuilder,
             @Value("${bmss.sentiment.flask-url:http://localhost:5000/analyze-batch}") String flaskUrl,
-            @Value("${bmss.sentiment.connect-timeout:4s}") Duration connectTimeout,
-            @Value("${bmss.sentiment.read-timeout:8s}") Duration readTimeout
+            @Value("${bmss.sentiment.connect-timeout:10s}") Duration connectTimeout,
+            @Value("${bmss.sentiment.read-timeout:20s}") Duration readTimeout
     ) {
         this.itemRepository = itemRepository;
         this.sentimentRepository = sentimentRepository;
@@ -85,7 +88,7 @@ public class NoticiasService {
             CacheEntry entry = cache.get(cacheKey);
             if (System.currentTimeMillis() - entry.timestamp < CACHE_DURATION_MS) {
                 log.info("⚡ Retornando notícias do cache para: {}", keyword);
-                return removeDuplicates(entry.data).stream().limit(limit).collect(Collectors.toList());
+                return entry.data.stream().limit(limit).collect(Collectors.toList());
             }
         }
 
@@ -107,7 +110,7 @@ public class NoticiasService {
     }
 
     // ============================================================
-    // 🔹 GNews API - COM FILTRO PÓS-COLETA (RECOMENDADO)
+    // 🔹 GNews API - COM FILTRO PÓS-COLETA E PREVENÇÃO DE DUPLICATAS
     // ============================================================
     private List<FeedDTO> fetchFromGNews(String keyword) {
         String GNEWS_API_KEY = "c413eaed68da399c2ef9fa585fe591aa";
@@ -136,9 +139,17 @@ public class NoticiasService {
 
             List<Map<String, Object>> articles = (List<Map<String, Object>>) response.getBody().get("articles");
 
-            // Filtrar pós-coleta por relevância
+            // Usar Set para URLs únicas durante o processamento
+            Set<String> seenUrls = new HashSet<>();
+            
+            // Filtrar pós-coleta por relevância e remover duplicatas
             return articles.stream()
                     .filter(a -> a.get("title") != null && a.get("url") != null)
+                    .filter(a -> {
+                        String urlStr = (String) a.get("url");
+                        String normalizedUrl = normalizeUrl(urlStr);
+                        return seenUrls.add(normalizedUrl); // Retorna false se já existir
+                    })
                     .filter(a -> isRelevantNews((String) a.get("title"), (String) a.get("description"), keyword))
                     .map(a -> {
                         FeedDTO dto = new FeedDTO();
@@ -193,12 +204,15 @@ public class NoticiasService {
     }
 
     // ============================================================
-    // 🔹 Remove notícias duplicadas por URL
+    // 🔹 Remove notícias duplicadas por URL (MAIS ROBUSTO)
     // ============================================================
     private List<FeedDTO> removeDuplicates(List<FeedDTO> noticias) {
         if (noticias == null || noticias.isEmpty()) {
             return noticias;
         }
+
+        // Debug: identificar duplicatas
+        debugDuplicates(noticias);
 
         // Usar LinkedHashMap para manter a ordem
         Map<String, FeedDTO> uniqueNews = new LinkedHashMap<>();
@@ -206,22 +220,53 @@ public class NoticiasService {
         for (FeedDTO noticia : noticias) {
             if (noticia.getUrl() != null && !noticia.getUrl().trim().isEmpty()) {
                 String normalizedUrl = normalizeUrl(noticia.getUrl());
-                // Se já não existe ou se é uma versão mais completa (com descrição)
-                if (!uniqueNews.containsKey(normalizedUrl) || 
-                    (noticia.getDescription() != null && !noticia.getDescription().isEmpty())) {
+                
+                // Se já não existe, adiciona
+                if (!uniqueNews.containsKey(normalizedUrl)) {
                     uniqueNews.put(normalizedUrl, noticia);
+                } else {
+                    // Se já existe, verifica se a nova é melhor (tem descrição)
+                    FeedDTO existing = uniqueNews.get(normalizedUrl);
+                    if ((noticia.getDescription() != null && !noticia.getDescription().isEmpty()) &&
+                        (existing.getDescription() == null || existing.getDescription().isEmpty())) {
+                        uniqueNews.put(normalizedUrl, noticia);
+                    }
                 }
             }
         }
         
-        log.info("🧹 Removidas {} duplicatas, restaram {} notícias únicas", 
-                 noticias.size() - uniqueNews.size(), uniqueNews.size());
+        int duplicatesRemoved = noticias.size() - uniqueNews.size();
+        if (duplicatesRemoved > 0) {
+            log.info("🧹 Removidas {} duplicatas, restaram {} notícias únicas", 
+                     duplicatesRemoved, uniqueNews.size());
+        }
         
         return new ArrayList<>(uniqueNews.values());
     }
 
     // ============================================================
-    // 🔹 Normaliza URL para comparação
+    // 🔹 Debug: identificar duplicatas
+    // ============================================================
+    private void debugDuplicates(List<FeedDTO> noticias) {
+        Map<String, List<FeedDTO>> urlCounts = new HashMap<>();
+        
+        for (FeedDTO noticia : noticias) {
+            String normalizedUrl = normalizeUrl(noticia.getUrl());
+            urlCounts.computeIfAbsent(normalizedUrl, k -> new ArrayList<>()).add(noticia);
+        }
+        
+        urlCounts.entrySet().stream()
+            .filter(entry -> entry.getValue().size() > 1)
+            .forEach(entry -> {
+                log.warn("🚨 URL duplicada: {} ({} vezes)", entry.getKey(), entry.getValue().size());
+                entry.getValue().forEach(dto -> 
+                    log.warn("   - Titulo: {}", dto.getTitle())
+                );
+            });
+    }
+
+    // ============================================================
+    // 🔹 Normaliza URL para comparação (MELHORADO)
     // ============================================================
     private String normalizeUrl(String url) {
         if (url == null || url.trim().isEmpty()) {
@@ -229,12 +274,13 @@ public class NoticiasService {
         }
         
         try {
-            // Remover parâmetros comuns de tracking
+            // Remover parâmetros comuns de tracking e UTM
             String normalized = url.split("\\?")[0] // Remove query parameters
                                   .split("#")[0]    // Remove fragments
                                   .replace("https://", "")
                                   .replace("http://", "")
                                   .replace("www.", "")
+                                  .replace("//", "/")
                                   .toLowerCase()
                                   .trim();
             
@@ -264,11 +310,20 @@ public class NoticiasService {
             Document doc = builder.parse(stream);
             NodeList items = doc.getElementsByTagName("item");
 
+            // Usar Set para prevenir duplicatas no RSS também
+            Set<String> seenUrls = new HashSet<>();
+            
             for (int i = 0; i < items.getLength() && i < 20; i++) {
                 Element el = (Element) items.item(i);
                 String title = el.getElementsByTagName("title").item(0).getTextContent();
                 String link = el.getElementsByTagName("link").item(0).getTextContent();
+                
                 if (isBlockedDomain(link)) continue;
+                
+                String normalizedUrl = normalizeUrl(link);
+                if (!seenUrls.add(normalizedUrl)) {
+                    continue; // Pular duplicata
+                }
 
                 list.add(new FeedDTO(title, "", link, "Google News", LocalDateTime.now().toString(), "neutral", 0.0));
             }
@@ -327,6 +382,100 @@ public class NoticiasService {
 
         log.info("✅ Recebido {} análises do Flask.", body.size());
         return body;
+    }
+
+    // ============================================================
+    // 🔹 Busca, análise e persistência (COM LOCK)
+    // ============================================================
+    public void fetchAndStoreNews(String keyword) {
+        // Prevenir execuções concorrentes que podem causar duplicatas
+        synchronized (fetchLock) {
+            List<FeedDTO> noticias = buscarNoticias(20, keyword);
+            if (noticias == null || noticias.isEmpty()) {
+                log.warn("⚠️ Nenhuma notícia para importar.");
+                return;
+            }
+
+            // Verificação final de duplicatas
+            noticias = removeDuplicates(noticias);
+
+            List<String> textos = noticias.stream()
+                    .map(n -> (Optional.ofNullable(n.getTitle()).orElse("")) + ". " +
+                            (Optional.ofNullable(n.getDescription()).orElse("")))
+                    .collect(Collectors.toList());
+
+            List<Map<String, Object>> analises = analyzeBatch(textos);
+
+            if (analises.isEmpty()) {
+                log.warn("⚠️ Nenhuma análise recebida do Flask. Mantendo sentimento neutro.");
+            } else {
+                log.info("✅ Flask retornou {} análises válidas!", analises.size());
+            }
+
+            int savedCount = 0;
+            int skippedCount = 0;
+            
+            for (int i = 0; i < noticias.size(); i++) {
+                FeedDTO dto = noticias.get(i);
+
+                String label = "neutral";
+                double score = 0.0;
+
+                if (i < analises.size() && analises.get(i) != null) {
+                    Map<String, Object> analise = analises.get(i);
+                    Object lbl = analise.get("label");
+                    Object scr = analise.get("score");
+
+                    if (lbl != null) label = lbl.toString().toLowerCase();
+                    if (scr != null) {
+                        try {
+                            score = Double.parseDouble(scr.toString());
+                        } catch (NumberFormatException ignored) {}
+                    }
+                }
+
+                dto.setSentimento(label);
+                dto.setScore(score);
+
+                // Verificação robusta de duplicatas no banco
+                if (itemRepository.existsByUrl(dto.getUrl())) {
+                    log.debug("⏩ Pulando notícia já existente: {}", dto.getUrl());
+                    skippedCount++;
+                    continue;
+                }
+
+                try {
+                    Item item = new Item();
+                    item.setTitle(dto.getTitle());
+                    item.setText(dto.getDescription());
+                    item.setUrl(dto.getUrl());
+                    item.setSourceName(dto.getSource());
+                    item.setSentimentLabel(label);
+                    item.setSentimentScore(score);
+                    item.setPublishedAt(LocalDateTime.now());
+                    item.setAnalyzedAt(LocalDateTime.now());
+                    itemRepository.save(item);
+
+                    Sentiment sentiment = Sentiment.builder()
+                            .item(item)
+                            .label(label)
+                            .score(score)
+                            .model("cardiffnlp/twitter-roberta-base-sentiment-latest")
+                            .createdAt(LocalDateTime.now())
+                            .build();
+                    sentimentRepository.save(sentiment);
+
+                    log.info("💾 Salvo: {} ({}) → {}", label.toUpperCase(), score, dto.getTitle());
+                    savedCount++;
+                    
+                } catch (Exception e) {
+                    log.error("❌ Erro ao salvar notícia: {}", e.getMessage());
+                }
+            }
+
+            log.info("🏁 {}/{} notícias analisadas e persistidas com sucesso! ({} puladas)", 
+                    savedCount, noticias.size(), skippedCount);
+        }
     }
 
     // ============================================================
@@ -406,89 +555,6 @@ public class NoticiasService {
         } catch (Exception e) {
             log.error("❌ Erro ao buscar/analisar tweets: {}", e.getMessage());
         }
-    }
-
-    // ============================================================
-    // 🔹 Busca, análise e persistência
-    // ============================================================
-    public void fetchAndStoreNews(String keyword) {
-        List<FeedDTO> noticias = buscarNoticias(20, keyword);
-        if (noticias == null || noticias.isEmpty()) {
-            log.warn("⚠️ Nenhuma notícia para importar.");
-            return;
-        }
-
-        List<String> textos = noticias.stream()
-                .map(n -> (Optional.ofNullable(n.getTitle()).orElse("")) + ". " +
-                        (Optional.ofNullable(n.getDescription()).orElse("")))
-                .collect(Collectors.toList());
-
-        List<Map<String, Object>> analises = analyzeBatch(textos);
-
-        if (analises.isEmpty()) {
-            log.warn("⚠️ Nenhuma análise recebida do Flask. Mantendo sentimento neutro.");
-        } else {
-            log.info("✅ Flask retornou {} análises válidas!", analises.size());
-        }
-
-        int savedCount = 0;
-        for (int i = 0; i < noticias.size(); i++) {
-            FeedDTO dto = noticias.get(i);
-
-            String label = "neutral";
-            double score = 0.0;
-
-            if (i < analises.size() && analises.get(i) != null) {
-                Map<String, Object> analise = analises.get(i);
-                Object lbl = analise.get("label");
-                Object scr = analise.get("score");
-
-                if (lbl != null) label = lbl.toString().toLowerCase();
-                if (scr != null) {
-                    try {
-                        score = Double.parseDouble(scr.toString());
-                    } catch (NumberFormatException ignored) {}
-                }
-            }
-
-            dto.setSentimento(label);
-            dto.setScore(score);
-
-            if (itemRepository.existsByUrl(dto.getUrl())) {
-                log.debug("⏩ Pulando notícia já existente: {}", dto.getUrl());
-                continue;
-            }
-
-            try {
-                Item item = new Item();
-                item.setTitle(dto.getTitle());
-                item.setText(dto.getDescription());
-                item.setUrl(dto.getUrl());
-                item.setSourceName(dto.getSource());
-                item.setSentimentLabel(label);
-                item.setSentimentScore(score);
-                item.setPublishedAt(LocalDateTime.now());
-                item.setAnalyzedAt(LocalDateTime.now());
-                itemRepository.save(item);
-
-                Sentiment sentiment = Sentiment.builder()
-                        .item(item)
-                        .label(label)
-                        .score(score)
-                        .model("cardiffnlp/twitter-roberta-base-sentiment-latest")
-                        .createdAt(LocalDateTime.now())
-                        .build();
-                sentimentRepository.save(sentiment);
-
-                log.info("💾 Salvo: {} ({}) → {}", label.toUpperCase(), score, dto.getTitle());
-                savedCount++;
-                
-            } catch (Exception e) {
-                log.error("❌ Erro ao salvar notícia: {}", e.getMessage());
-            }
-        }
-
-        log.info("🏁 {}/{} notícias analisadas e persistidas com sucesso!", savedCount, noticias.size());
     }
 
     private static class CacheEntry {

@@ -29,7 +29,7 @@ public class NoticiasController {
     }
 
     // ============================================================
-    // 🔹 GET: Buscar últimas notícias do banco (com atualização)
+    // 🔹 GET: Buscar últimas notícias do banco (COM ATUALIZAÇÃO)
     // ============================================================
     @GetMapping("/ultimas")
     public ResponseEntity<Map<String, Object>> getUltimasNoticias(
@@ -43,7 +43,9 @@ public class NoticiasController {
             noticiasService.fetchAndStoreNews(q);
 
             var pageable = PageRequest.of(0, limit, Sort.by("analyzedAt").descending());
-            List<Item> items = itemRepository.findAllByOrderByAnalyzedAtDesc(pageable);
+            
+            // 🔹 Busca apenas notícias que NÃO sejam do Twitter
+            List<Item> items = itemRepository.findBySourceNameNotContainingIgnoreCase("Twitter", pageable);
 
             List<FeedDTO> payload = items.stream().map(it -> new FeedDTO(
                     it.getTitle(),
@@ -105,22 +107,59 @@ public class NoticiasController {
         }
     }
 
-    @PostMapping("/analisar-tweets")
-public ResponseEntity<Map<String, Object>> analisarTweets(
-        @RequestParam(defaultValue = "bitcoin") String q
-) {
-    try {
-        noticiasService.fetchAndStoreTweets(q);
-        return ResponseEntity.ok(Map.of(
-                "message", "✅ Tweets analisados e salvos com sucesso!"
-        ));
-    } catch (Exception e) {
-        e.printStackTrace();
-        return ResponseEntity.status(500).body(Map.of(
-                "error", "❌ Erro ao processar tweets: " + e.getMessage()
-        ));
+    // ============================================================
+    // 🔹 POST: busca e analisa tweets
+    // ============================================================
+    @PostMapping("/tweets")
+    public ResponseEntity<Map<String, Object>> analisarTweets(
+            @RequestParam(defaultValue = "bitcoin") String q
+    ) {
+        System.out.println("🐦 [POST] /api/v1/noticias/tweets → iniciando análise de tweets para: " + q);
+
+        try {
+            noticiasService.fetchAndStoreTweets(q);
+            return ResponseEntity.ok(Map.of(
+                    "message", "✅ Tweets analisados e salvos com sucesso!"
+            ));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(Map.of(
+                    "error", "❌ Falha ao processar tweets: " + e.getMessage()
+            ));
+        }
     }
-}
 
+    // ============================================================
+    // 🔹 GET: retorna últimos tweets analisados
+    // ============================================================
+    @GetMapping("/tweets/ultimos")
+    public ResponseEntity<Map<String, Object>> getUltimosTweets(
+            @RequestParam(defaultValue = "20") int limit
+    ) {
+        System.out.println("🐦 [GET] /api/v1/noticias/tweets/ultimos → buscando últimos " + limit + " tweets.");
 
+        var pageable = PageRequest.of(0, limit, Sort.by("analyzedAt").descending());
+        
+        // 🔹 Busca apenas notícias do Twitter
+        List<Item> items = itemRepository.findBySourceNameContainingIgnoreCase("Twitter", pageable);
+
+        List<FeedDTO> payload = items.stream().map(it -> new FeedDTO(
+                it.getTitle(),
+                it.getText(),
+                it.getUrl(),
+                it.getSourceName(),
+                it.getPublishedAt() != null ? it.getPublishedAt().toString() : null,
+                it.getSentimentLabel(),
+                it.getSentimentScore()
+        )).collect(Collectors.toList());
+
+        Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("total", payload.size());
+        resp.put("data", payload);
+        resp.put("message", payload.isEmpty()
+                ? "⚠️ Nenhum tweet encontrado."
+                : "✅ Últimos tweets retornados com sucesso!");
+
+        return ResponseEntity.ok(resp);
+    }
 }
