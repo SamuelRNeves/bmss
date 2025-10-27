@@ -13,7 +13,8 @@ interface NewsItem {
   publishedAt?: string;
   sentimento?: string;
   score?: number;
-  tweetUrl?: string; 
+  tweetUrl?: string;
+  isTweet?: boolean;
 }
 
 export default function NewsList() {

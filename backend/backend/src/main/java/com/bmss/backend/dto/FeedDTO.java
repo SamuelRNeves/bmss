@@ -15,4 +15,6 @@ public class FeedDTO {
     private String publishedAt;
     private String sentimento;
     private Double score;
+    private boolean isTweet;
+    private String tweetUrl;
 }
