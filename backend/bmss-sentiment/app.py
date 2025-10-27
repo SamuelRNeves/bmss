@@ -1,88 +1,67 @@
 from flask import Flask, request, jsonify
 from transformers import pipeline
 import torch
-import json
 
 app = Flask(__name__)
 
-# ============================================================
-# 🔹 Modelo brasileiro otimizado para PT-BR
-# ============================================================
-MODEL_NAME = "Adilmar/caramelo-smile-2"
-
-print("🔄 Carregando modelo de sentimento (Caramelo Smile 2 - PT-BR)...")
+# ============================
+# 🔹 MODELOS
+# ============================
 device = 0 if torch.cuda.is_available() else -1
-analyzer = pipeline("sentiment-analysis", model=MODEL_NAME, device=device)
-print("✅ Modelo carregado com sucesso e pronto para análise!")
+
+news_analyzer = pipeline(
+    "sentiment-analysis",
+    model="Adilmar/caramelo-smile-2",
+    tokenizer="Adilmar/caramelo-smile-2",
+    device=device
+)
+
+tweet_analyzer = pipeline(
+    "sentiment-analysis",
+    model="cardiffnlp/twitter-roberta-base-sentiment-latest",
+    tokenizer="cardiffnlp/twitter-roberta-base-sentiment-latest",
+    device=device
+)
 
 
-# ============================================================
-# 🔹 Função auxiliar de análise
-# ============================================================
-def analyze_text(text):
-    if not text or len(text.strip()) == 0:
-        return {"label": "neutral", "score": 0.0}
-
-    try:
-        result = analyzer(text[:512])[0]  # corta textos longos
-        label = result["label"].lower()
-        score = float(result["score"])
-        return {"label": label, "score": round(score, 3)}
-
-    except Exception as e:
-        print(f"❌ Erro na análise: {e}")
-        return {"label": "neutral", "score": 0.0}
-
-
-# ============================================================
-# 🔹 Endpoint em lote (para o backend Java)
-# ============================================================
+# ============================
+# 🔹 NOTÍCIAS
+# ============================
 @app.route("/analyze-batch", methods=["POST"])
 def analyze_batch():
-    try:
-        raw_data = request.data.decode("utf-8", errors="ignore").strip()
-        if not raw_data:
-            print("⚠️ Nenhum corpo recebido!")
-            return jsonify([]), 200
+    textos = request.get_json()
+    if not textos:
+        return jsonify({"error": "Nenhum texto recebido"}), 400
 
-        data = json.loads(raw_data)
-        if not isinstance(data, list):
-            print(f"⚠️ Estrutura inesperada: {type(data)} → {data}")
-            return jsonify([]), 200
+    results = news_analyzer(textos)
+    return jsonify(results)
 
-        print(f"🧠 Recebido {len(data)} textos para análise do backend.")
-        results = [analyze_text(text) for text in data]
-        print(f"✅ {len(results)} análises concluídas e retornadas.")
-        return jsonify(results), 200
+# ============================
+# 🔹 TWEETS
+# ============================
+@app.route("/analyze-tweets", methods=["POST"])
+def analyze_tweets():
+    textos = request.get_json()
+    if not textos:
+        return jsonify({"error": "Nenhum tweet recebido"}), 400
 
-    except Exception as e:
-        print(f"❌ Erro inesperado no analyze-batch: {e}")
-        return jsonify([]), 200
+    results = tweet_analyzer(textos)
 
+    # Mapeia as labels numéricas para palavras legíveis
+    label_map = {
+        "LABEL_0": "negative",
+        "LABEL_1": "neutral",
+        "LABEL_2": "positive"
+    }
 
-# ============================================================
-# 🔹 Endpoint simples para teste manual
-# ============================================================
-@app.route("/analyze", methods=["POST"])
-def analyze_single():
-    try:
-        data = request.get_json(force=True)
-        text = data.get("text", "")
-        result = analyze_text(text)
-        return jsonify(result), 200
-    except Exception as e:
-        print(f"❌ Erro no /analyze: {e}")
-        return jsonify({"error": str(e)}), 400
+    converted = []
+    for r in results:
+        label = label_map.get(r["label"], "neutral")
+        converted.append({"label": label, "score": round(r["score"], 3)})
 
-
-@app.route("/")
-def index():
-    return jsonify({
-        "message": "🚀 API Flask de Sentimento (Caramelo Smile 2 - PT-BR)",
-        "model": MODEL_NAME
-    })
+    return jsonify(converted)
 
 
 if __name__ == "__main__":
-    print("🚀 Servidor Flask iniciado em http://127.0.0.1:5000")
+    print("✅ Modelos carregados (Caramelo e Twitter-RoBERTa).")
     app.run(host="0.0.0.0", port=5000)

@@ -1,9 +1,8 @@
-flask
-pydantic
-uvicorn[standard]
-python-dotenv
-transformers
-torch
-sentencepiece
-unidecode
-nltk
+# requirements.txt - VERSÃO FINAL
+flask==2.3.3
+gunicorn==21.2.0
+transformers==4.44.2
+torch==2.9.0
+requests==2.31.0
+numpy==1.26.4
+python-dotenv==1.0.0

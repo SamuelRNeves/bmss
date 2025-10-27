@@ -84,7 +84,19 @@ export async function getUltimasNoticias(limit = 12, q = "bitcoin"): Promise<Api
   }
 }
 
-
+// 🔹 Tweets - CORRIGIDO
+export async function analisarTweets(q = "bitcoin") {
+  try {
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080/api/v1"}/noticias/analisar-tweets?q=${q}`,
+      { method: "POST" }
+    );
+    return await res.json();
+  } catch (err: any) {
+    console.error("Erro ao analisar tweets:", err);
+    return { error: err.message };
+  }
+}
 
 // =====================================================
 // 👤 Cadastrar usuário
@@ -100,12 +112,9 @@ export async function cadastrarUsuario(payload: {
     console.error("❌ Erro ao cadastrar usuário:", err.message);
     return { data: null, error: err.message, isFallback: true };
   }
-
-  
 }
 
 // 🔹 Disparar análise de sentimento
-// 🔹 Disparar análise de sentimento via backend
 export async function analisarNoticias(limit = 5, q = "bitcoin"): Promise<ApiResponse<any>> {
   try {
     const res = await api.post(`/noticias/analisar`, null, { params: { limit, q } });
@@ -124,8 +133,5 @@ export async function analisarUltimas(limit = 5, q = "bitcoin"): Promise<ApiResp
     return { data: null, error: err.message, isFallback: true };
   }
 }
-
-
-
 
 export default api;

@@ -29,6 +29,8 @@ import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.InputStream;
 import java.net.URI;
 import java.net.URL;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -83,7 +85,7 @@ public class NoticiasService {
             CacheEntry entry = cache.get(cacheKey);
             if (System.currentTimeMillis() - entry.timestamp < CACHE_DURATION_MS) {
                 log.info("⚡ Retornando notícias do cache para: {}", keyword);
-                return entry.data.stream().limit(limit).collect(Collectors.toList());
+                return removeDuplicates(entry.data).stream().limit(limit).collect(Collectors.toList());
             }
         }
 
@@ -94,6 +96,9 @@ public class NoticiasService {
             noticias = fetchFromGoogleNewsRSS(keyword);
         }
 
+        // Remover duplicatas antes de salvar no cache
+        noticias = removeDuplicates(noticias);
+
         if (!noticias.isEmpty()) {
             cache.put(cacheKey, new CacheEntry(noticias, System.currentTimeMillis()));
         }
@@ -102,22 +107,21 @@ public class NoticiasService {
     }
 
     // ============================================================
-    // 🔹 GNews API
+    // 🔹 GNews API - COM FILTRO PÓS-COLETA (RECOMENDADO)
     // ============================================================
     private List<FeedDTO> fetchFromGNews(String keyword) {
         String GNEWS_API_KEY = "c413eaed68da399c2ef9fa585fe591aa";
-        String query = "(\"" + keyword + "\" OR bitcoin OR BTC) " +
-                   "(preço OR valor OR mercado OR alta OR baixa OR queda OR sobe OR desce " +
-                   "OR investimento OR trading OR análise técnica OR fundos OR ETF " +
-                   "OR halving OR mineração OR blockchain OR criptomoeda OR cripto) " +
-                   "-(jogo OR game OR meme OR piada OR entretenimento)";
-                   
-        String url = "https://gnews.io/api/v4/search?q=" + query +
-                "&lang=pt&country=br&max=20&apikey=" + GNEWS_API_KEY;
-
-        log.info("🌍 [GNews] Buscando notícias: {}", url);
-
+        
+        // Query simples dentro do limite de 200 caracteres
+        String query = "bitcoin OR criptomoeda";
+        
         try {
+            String encodedQuery = URLEncoder.encode(query, StandardCharsets.UTF_8);
+            String url = "https://gnews.io/api/v4/search?q=" + encodedQuery +
+                    "&lang=pt&country=br&max=30&apikey=" + GNEWS_API_KEY;
+
+            log.info("🌍 [GNews] Buscando notícias: {}", url);
+
             ResponseEntity<Map> response = newsRestTemplate.exchange(url, HttpMethod.GET, null, Map.class);
 
             if (response.getBody() != null && response.getBody().containsKey("errors")) {
@@ -132,8 +136,10 @@ public class NoticiasService {
 
             List<Map<String, Object>> articles = (List<Map<String, Object>>) response.getBody().get("articles");
 
+            // Filtrar pós-coleta por relevância
             return articles.stream()
                     .filter(a -> a.get("title") != null && a.get("url") != null)
+                    .filter(a -> isRelevantNews((String) a.get("title"), (String) a.get("description"), keyword))
                     .map(a -> {
                         FeedDTO dto = new FeedDTO();
                         dto.setTitle((String) a.get("title"));
@@ -145,11 +151,102 @@ public class NoticiasService {
                         dto.setScore(0.0);
                         return dto;
                     })
+                    .limit(20)
                     .collect(Collectors.toList());
 
         } catch (Exception e) {
             log.error("❌ Erro ao acessar GNews: {}", e.getMessage());
             return Collections.emptyList();
+        }
+    }
+
+    // ============================================================
+    // 🔹 Filtro de Relevância
+    // ============================================================
+    private boolean isRelevantNews(String title, String description, String keyword) {
+        if (title == null) return false;
+        
+        String content = (title + " " + (description != null ? description : "")).toLowerCase();
+        
+        // Palavras-chave que indicam relevância para Bitcoin
+        String[] relevantKeywords = {
+            "bitcoin", "btc", "criptomoeda", "cripto",
+            "preço", "valor", "mercado", "cotação",
+            "alta", "baixa", "queda", "sobe", "desce",
+            "investimento", "trading", "halving", "mineração",
+            "blockchain", "satosh", "etf", "fundos"
+        };
+        
+        // Contar palavras relevantes
+        long relevantWords = Arrays.stream(relevantKeywords)
+                .filter(kw -> content.contains(kw))
+                .count();
+        
+        // Considerar relevante se tiver pelo menos 1 palavra-chave
+        boolean isRelevant = relevantWords >= 1;
+        
+        if (!isRelevant) {
+            log.debug("📰 Notícia filtrada por irrelevância: {}", title);
+        }
+        
+        return isRelevant;
+    }
+
+    // ============================================================
+    // 🔹 Remove notícias duplicadas por URL
+    // ============================================================
+    private List<FeedDTO> removeDuplicates(List<FeedDTO> noticias) {
+        if (noticias == null || noticias.isEmpty()) {
+            return noticias;
+        }
+
+        // Usar LinkedHashMap para manter a ordem
+        Map<String, FeedDTO> uniqueNews = new LinkedHashMap<>();
+        
+        for (FeedDTO noticia : noticias) {
+            if (noticia.getUrl() != null && !noticia.getUrl().trim().isEmpty()) {
+                String normalizedUrl = normalizeUrl(noticia.getUrl());
+                // Se já não existe ou se é uma versão mais completa (com descrição)
+                if (!uniqueNews.containsKey(normalizedUrl) || 
+                    (noticia.getDescription() != null && !noticia.getDescription().isEmpty())) {
+                    uniqueNews.put(normalizedUrl, noticia);
+                }
+            }
+        }
+        
+        log.info("🧹 Removidas {} duplicatas, restaram {} notícias únicas", 
+                 noticias.size() - uniqueNews.size(), uniqueNews.size());
+        
+        return new ArrayList<>(uniqueNews.values());
+    }
+
+    // ============================================================
+    // 🔹 Normaliza URL para comparação
+    // ============================================================
+    private String normalizeUrl(String url) {
+        if (url == null || url.trim().isEmpty()) {
+            return "";
+        }
+        
+        try {
+            // Remover parâmetros comuns de tracking
+            String normalized = url.split("\\?")[0] // Remove query parameters
+                                  .split("#")[0]    // Remove fragments
+                                  .replace("https://", "")
+                                  .replace("http://", "")
+                                  .replace("www.", "")
+                                  .toLowerCase()
+                                  .trim();
+            
+            // Remover trailing slash
+            if (normalized.endsWith("/")) {
+                normalized = normalized.substring(0, normalized.length() - 1);
+            }
+            
+            return normalized;
+        } catch (Exception e) {
+            log.warn("⚠️ Erro ao normalizar URL: {}, usando original", url);
+            return url.toLowerCase().trim();
         }
     }
 
@@ -233,6 +330,85 @@ public class NoticiasService {
     }
 
     // ============================================================
+    // 🔹 Busca e analisa Tweets
+    // ============================================================
+    public void fetchAndStoreTweets(String keyword) {
+        log.info("🐦 Iniciando busca e análise de tweets para '{}'", keyword);
+
+        try {
+            // 1️⃣ Busca tweets via API oficial do X
+            String url = "https://api.x.com/2/tweets/search/recent?query=" + keyword + "&max_results=10&tweet.fields=created_at";
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("Authorization", "Bearer AAAAAAAAAAAAAAAAAAAAANJA5AEAAAAA6hIwdxjae3peiYVm3equauT1z74%3DcNHzAZesIp7f9sloSYrEoRPJv5VaDzpGTgOUJsWNJGznSjUeA7");
+            ResponseEntity<Map> response = newsRestTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+
+            if (response.getBody() == null || !response.getBody().containsKey("data")) {
+                log.warn("⚠️ Nenhum tweet retornado pela API do X.");
+                return;
+            }
+
+            List<Map<String, Object>> tweets = (List<Map<String, Object>>) response.getBody().get("data");
+            List<String> textos = tweets.stream()
+                    .map(t -> (String) t.get("text"))
+                    .collect(Collectors.toList());
+
+            // 2️⃣ Chama o Flask (análise com Twitter-RoBERTa)
+            URI tweetEndpoint = URI.create("http://localhost:5000/analyze-tweets");
+            HttpHeaders jsonHeaders = new HttpHeaders();
+            jsonHeaders.setContentType(MediaType.APPLICATION_JSON);
+            HttpEntity<List<String>> req = new HttpEntity<>(textos, jsonHeaders);
+
+            ResponseEntity<List<Map<String, Object>>> flaskResp = flaskRestTemplate.exchange(
+                    tweetEndpoint, HttpMethod.POST, req, new ParameterizedTypeReference<List<Map<String, Object>>>() {}
+            );
+
+            List<Map<String, Object>> analises = flaskResp.getBody();
+            if (analises == null) analises = Collections.emptyList();
+
+            // 3️⃣ Salva no banco
+            for (int i = 0; i < textos.size(); i++) {
+                String text = textos.get(i);
+                String label = "neutral";
+                double score = 0.0;
+
+                if (i < analises.size()) {
+                    Map<String, Object> a = analises.get(i);
+                    label = Objects.toString(a.get("label"), "neutral").toLowerCase();
+                    Object scr = a.get("score");
+                    if (scr != null) {
+                        try { score = Double.parseDouble(scr.toString()); } catch (NumberFormatException ignored) {}
+                    }
+                }
+
+                Item item = new Item();
+                item.setTitle(text.substring(0, Math.min(text.length(), 80)) + "...");
+                item.setText(text);
+                item.setUrl("https://x.com");
+                item.setSourceName("Twitter");
+                item.setSentimentLabel(label);
+                item.setSentimentScore(score);
+                item.setPublishedAt(LocalDateTime.now());
+                item.setAnalyzedAt(LocalDateTime.now());
+                itemRepository.save(item);
+
+                Sentiment sentiment = Sentiment.builder()
+                        .item(item)
+                        .label(label)
+                        .score(score)
+                        .model("Twitter-RoBERTa-Crypto")
+                        .createdAt(LocalDateTime.now())
+                        .build();
+                sentimentRepository.save(sentiment);
+
+                log.info("💾 Tweet analisado: {} ({})", label, score);
+            }
+
+        } catch (Exception e) {
+            log.error("❌ Erro ao buscar/analisar tweets: {}", e.getMessage());
+        }
+    }
+
+    // ============================================================
     // 🔹 Busca, análise e persistência
     // ============================================================
     public void fetchAndStoreNews(String keyword) {
@@ -255,6 +431,7 @@ public class NoticiasService {
             log.info("✅ Flask retornou {} análises válidas!", analises.size());
         }
 
+        int savedCount = 0;
         for (int i = 0; i < noticias.size(); i++) {
             FeedDTO dto = noticias.get(i);
 
@@ -278,34 +455,40 @@ public class NoticiasService {
             dto.setScore(score);
 
             if (itemRepository.existsByUrl(dto.getUrl())) {
-                log.info("⏩ Pulando notícia já existente: {}", dto.getUrl());
+                log.debug("⏩ Pulando notícia já existente: {}", dto.getUrl());
                 continue;
             }
 
-            Item item = new Item();
-            item.setTitle(dto.getTitle());
-            item.setText(dto.getDescription());
-            item.setUrl(dto.getUrl());
-            item.setSourceName(dto.getSource());
-            item.setSentimentLabel(label);
-            item.setSentimentScore(score);
-            item.setPublishedAt(LocalDateTime.now());
-            item.setAnalyzedAt(LocalDateTime.now());
-            itemRepository.save(item);
+            try {
+                Item item = new Item();
+                item.setTitle(dto.getTitle());
+                item.setText(dto.getDescription());
+                item.setUrl(dto.getUrl());
+                item.setSourceName(dto.getSource());
+                item.setSentimentLabel(label);
+                item.setSentimentScore(score);
+                item.setPublishedAt(LocalDateTime.now());
+                item.setAnalyzedAt(LocalDateTime.now());
+                itemRepository.save(item);
 
-            Sentiment sentiment = Sentiment.builder()
-                    .item(item)
-                    .label(label)
-                    .score(score)
-                    .model("Adilmar/caramelo-smile-2")
-                    .createdAt(LocalDateTime.now())
-                    .build();
-            sentimentRepository.save(sentiment);
+                Sentiment sentiment = Sentiment.builder()
+                        .item(item)
+                        .label(label)
+                        .score(score)
+                        .model("cardiffnlp/twitter-roberta-base-sentiment-latest")
+                        .createdAt(LocalDateTime.now())
+                        .build();
+                sentimentRepository.save(sentiment);
 
-            log.info("💾 Salvo: {} ({}) → {}", label.toUpperCase(), score, dto.getTitle());
+                log.info("💾 Salvo: {} ({}) → {}", label.toUpperCase(), score, dto.getTitle());
+                savedCount++;
+                
+            } catch (Exception e) {
+                log.error("❌ Erro ao salvar notícia: {}", e.getMessage());
+            }
         }
 
-        log.info("🏁 {} notícias analisadas e persistidas com sucesso!", noticias.size());
+        log.info("🏁 {}/{} notícias analisadas e persistidas com sucesso!", savedCount, noticias.size());
     }
 
     private static class CacheEntry {

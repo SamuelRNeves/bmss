@@ -104,4 +104,23 @@ public class NoticiasController {
             ));
         }
     }
+
+    @PostMapping("/analisar-tweets")
+public ResponseEntity<Map<String, Object>> analisarTweets(
+        @RequestParam(defaultValue = "bitcoin") String q
+) {
+    try {
+        noticiasService.fetchAndStoreTweets(q);
+        return ResponseEntity.ok(Map.of(
+                "message", "✅ Tweets analisados e salvos com sucesso!"
+        ));
+    } catch (Exception e) {
+        e.printStackTrace();
+        return ResponseEntity.status(500).body(Map.of(
+                "error", "❌ Erro ao processar tweets: " + e.getMessage()
+        ));
+    }
+}
+
+
 }
