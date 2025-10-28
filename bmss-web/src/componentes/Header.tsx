@@ -1,5 +1,5 @@
 import { RefreshCcw, Search } from "lucide-react";
-import { getUltimasNoticias, getSentimentos } from "../lib/api";
+import { getFeed, getSentimentos } from "../lib/api";
 import { useState, useEffect } from "react";
 import axios from "axios";
 
@@ -13,7 +13,7 @@ export default function Header() {
       setLoading(true);
       setMessage(msgInicio);
 
-      await Promise.all([getSentimentos(), getUltimasNoticias()]);
+      await Promise.all([getSentimentos(), getFeed("news", 30, "bitcoin")]);
       setMessage(msgSucesso);
     } catch (error) {
       console.error("Erro ao atualizar dashboard:", error);
@@ -56,7 +56,7 @@ export default function Header() {
   useEffect(() => {
     const intervalo = setInterval(() => {
       atualizarDashboard("⏱ Atualização automática...", "✅ Dashboard sincronizado!");
-    }, 60000);
+    }, 6000);
     return () => clearInterval(intervalo);
   }, []);
 

@@ -5,6 +5,8 @@ import torch
 import re
 import numpy as np
 import time
+from langdetect import detect
+
 
 app = Flask(__name__)
 
@@ -41,9 +43,9 @@ def clean_text(text):
 
 
 def translate_if_needed(text):
-    """Traduz se detectar português/espanhol"""
     try:
-        if any(w in text.lower() for w in ["bitcoin", "mercado", "cripto", "alta", "queda", "cotação", "preço"]):
+        lang = detect(text)
+        if lang != "en":
             return GoogleTranslator(source='auto', target='en').translate(text)
         return text
     except Exception:
@@ -51,16 +53,20 @@ def translate_if_needed(text):
 
 
 def adjust_neutral(label, text):
-    """Converte neutros com base em palavras contextuais"""
     t = text.lower()
-    pos = ["alta", "cresce", "recorde", "aprovação", "pump", "bull"]
-    neg = ["queda", "cai", "ban", "crise", "derrete", "bear"]
+    positive_words = ["alta", "recorde", "ganho", "valorização", "cresce", "aprovação", "pump", "bull", "otimismo"]
+    negative_words = ["queda", "cai", "ban", "crise", "derrete", "perda", "retração", "despenca", "bear"]
+
     if label == "neutral":
-        if any(w in t for w in pos):
+        pos_hits = sum(w in t for w in positive_words)
+        neg_hits = sum(w in t for w in negative_words)
+
+        if pos_hits > neg_hits and pos_hits > 0:
             return "positive"
-        if any(w in t for w in neg):
+        elif neg_hits > pos_hits and neg_hits > 0:
             return "negative"
     return label
+
 
 
 def analyze_roberta(text):
@@ -82,8 +88,10 @@ def analyze_finbert(text):
 
 def ensemble(text):
     """Combina FinBERT + RoBERTa"""
-    fin_label, fin_score = analyze_finbert(text)
-    rob_label, rob_score = analyze_roberta(text)
+    translated = translate_if_needed(clean_text(text))
+    fin_label, fin_score = analyze_finbert(translated)
+    rob_label, rob_score = analyze_roberta(translated)
+
 
     # ponderação: FinBERT domina notícias financeiras
     weights = {"positive": 1, "neutral": 0, "negative": -1}
@@ -117,9 +125,16 @@ def analyze_batch():
         resultados.append({"label": label, "score": score})
         print(f"[NEWS] {texto[:60]}... → {label.upper()} ({score}) ⏱ {round(time.time()-start,2)}s")
 
+    for r in resultados:
+            print(f"[DEBUG] FinBERT={r.get('finbert_label')} ({r.get('finbert_score')}) | "
+            f"RoBERTa={r.get('roberta_label')} | Final={r.get('label')} ({r.get('score')})")
+
+
     return jsonify(resultados)
 
-
+# ======================================================
+#  Rota: /analyze-tweets (RoBERTa + tradução + reforço)
+# ======================================================
 @app.route("/analyze-tweets", methods=["POST"])
 def analyze_tweets():
     textos = request.get_json()
@@ -128,13 +143,34 @@ def analyze_tweets():
 
     resultados = []
     for texto in textos:
-        start = time.time()
-        label, score = analyze_roberta(texto)
-        label = adjust_neutral(label, texto)
-        resultados.append({"label": label, "score": round(score, 3)})
-        print(f"[TWEET] {texto[:60]}... → {label.upper()} ({score}) ⏱ {round(time.time()-start,2)}s")
+        start_time = time.time()
 
+        cleaned = preprocess_text(texto)
+        try:
+            translated = GoogleTranslator(source='auto', target='en').translate(cleaned)
+        except Exception:
+            translated = cleaned
+
+        try:
+            result = roberta(translated[:512])[0]
+        except Exception as e:
+            print(f"[ERROR] Falha ao analisar tweet: {e}")
+            resultados.append({"label": "neutral", "score": 0.0})
+            continue
+
+        label = normalize_label(result["label"])
+        score = result["score"]
+
+        # Ajuste semântico
+        label = adjust_financial_sentiment(texto, label)
+        label, score = boost_confidence(label, score)
+
+        resultados.append({"label": label, "score": round(score, 3)})
+        print(f"[TWEET] 🐦 {texto[:70]}... → {label.upper()} ({score:.3f}) ⏱ {round(time.time() - start_time, 2)}s")
+
+    print(f"✅ Processados {len(resultados)} tweets com sucesso.")
     return jsonify(resultados)
+
 
 
 # ======================================================

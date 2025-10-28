@@ -8,10 +8,11 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Duration;
 import java.util.*;
 
 /**
- * Controlador responsável por gerenciar endpoints de notícias e tweets.
+ * Controlador responsável por endpoints de notícias e tweets.
  * Todas as respostas seguem o formato: { data, meta, message }.
  */
 @RestController
@@ -23,120 +24,211 @@ public class NoticiasController {
     private static final Logger log = LoggerFactory.getLogger(NoticiasController.class);
     private final NoticiasService noticiasService;
 
-    // ======================================================
-    // 🔹 Buscar últimas notícias (com análise)
-    // ======================================================
-    @GetMapping("/ultimas")
-    public ResponseEntity<Map<String, Object>> getUltimasNoticias(
-            @RequestParam(defaultValue = "10") int limit,
-            @RequestParam(defaultValue = "bitcoin") String q) {
+    // ==========================
+    // Util: polling simples
+    // ==========================
+    private List<FeedDTO> waitUntilAnalyzed(java.util.function.Supplier<List<FeedDTO>> supplier,
+                                            Duration timeout,
+                                            Duration interval) {
+        long deadline = System.currentTimeMillis() + timeout.toMillis();
+        List<FeedDTO> data = supplier.get();
 
-        log.info("📰 Requisição recebida: /noticias/ultimas?limit={}&q={}", limit, q);
-        List<FeedDTO> noticias = Collections.emptyList();
+        // Considera "analisado" quando existir ao menos 1 item com sentimento não nulo ou score > 0
+        while (System.currentTimeMillis() < deadline) {
+            boolean analyzed = data.stream().anyMatch(d ->
+                    (d.getSentimento() != null && !d.getSentimento().isBlank()) ||
+                    (d.getScore() != null && d.getScore() > 0)
+            );
+            if (analyzed) break;
+            try {
+                Thread.sleep(interval.toMillis());
+            } catch (InterruptedException ignored) {}
+            data = supplier.get();
+        }
+        return data;
+    }
 
-        try {
-            noticias = noticiasService.buscarNoticias(limit, q);
-        } catch (Exception e) {
-            log.error("❌ Erro ao buscar notícias: {}", e.getMessage());
-            return ResponseEntity.internalServerError().body(Map.of(
-                    "data", Collections.emptyList(),
-                    "meta", Map.of("total", 0),
-                    "message", "❌ Erro ao buscar notícias: " + e.getMessage()
-            ));
+    // ======================================================
+    //  Buscar últimas notícias
+    // ======================================================
+   @GetMapping("/ultimas")
+public ResponseEntity<Map<String, Object>> getUltimasNoticias(
+        @RequestParam(defaultValue = "10") int limit,
+        @RequestParam(defaultValue = "bitcoin") String q,
+        @RequestParam(defaultValue = "news") String type,
+        @RequestParam(defaultValue = "false") boolean analyze
+) {
+    log.info("📡 Requisição: /noticias/ultimas?type={}&analyze={}", type, analyze);
+    List<FeedDTO> resultados = Collections.emptyList();
+
+    try {
+        if ("tweets".equalsIgnoreCase(type)) {
+            // ✅ Força análise antes de retornar tweets
+            if (analyze) {
+                log.info("🐦 Solicitado analyze=true — analisando tweets via Flask...");
+                noticiasService.fetchAndStoreTweets(q);
+            }
+            resultados = noticiasService.buscarTweets(limit, q);
+        } else {
+            // ✅ Mantém comportamento para notícias
+            if (analyze) {
+                log.info("📰 Solicitado analyze=true — analisando notícias via Flask...");
+                noticiasService.fetchAndStoreNews(q);
+            }
+            resultados = noticiasService.buscarNoticias(limit, q);
         }
 
-        return ResponseEntity.ok(Map.of(
-                "data", noticias,
-                "meta", Map.of("total", noticias.size()),
-                "message", "✅ Notícias retornadas com sucesso."
+    } catch (Exception e) {
+        log.error("❌ Erro ao buscar {}: {}", type, e.getMessage());
+        return ResponseEntity.internalServerError().body(Map.of(
+                "data", Collections.emptyList(),
+                "meta", Map.of("total", 0),
+                "message", "❌ Erro ao buscar " + type + ": " + e.getMessage()
         ));
     }
 
+    return ResponseEntity.ok(Map.of(
+            "data", resultados,
+            "meta", Map.of("total", resultados.size()),
+            "message", "✅ " + type + " retornados com sucesso."
+    ));
+}
+
+
     // ======================================================
-    // 🔹 Força nova análise de notícias (FinBERT + RoBERTa)
+    // 🔹 Força nova análise de notícias e já retorna analisadas
     // ======================================================
     @PostMapping("/analisar")
     public ResponseEntity<Map<String, Object>> analisarNoticias(
-            @RequestParam(defaultValue = "10") int limit,
-            @RequestParam(defaultValue = "bitcoin") String q) {
-
-        log.info("⚙️ Disparando nova análise de notícias (limit={}, q={})", limit, q);
+            @RequestParam(defaultValue = "bitcoin") String q,
+            @RequestParam(defaultValue = "12") int limit
+    ) {
+        log.info("🛠️ POST /noticias/analisar?q={}&limit={}", q, limit);
         try {
             noticiasService.fetchAndStoreNews(q);
+
+            // Polling curto para garantir que o front já receba as análises atualizadas
+            List<FeedDTO> analisadas = waitUntilAnalyzed(
+                    () -> safeNoticias(limit, q),
+                    Duration.ofSeconds(6),
+                    Duration.ofMillis(300)
+            );
+
             return ResponseEntity.ok(Map.of(
-                    "data", Collections.emptyList(),
-                    "meta", Map.of("total", 0),
-                    "message", "✅ Análise de notícias iniciada com sucesso."
+                    "data", analisadas,
+                    "meta", Map.of("total", analisadas.size()),
+                    "message", "✅ Análise concluída e notícias atualizadas."
             ));
         } catch (Exception e) {
-            log.error("❌ Erro ao iniciar análise: {}", e.getMessage());
+            log.error("❌ Erro ao analisar notícias: {}", e.getMessage());
             return ResponseEntity.internalServerError().body(Map.of(
                     "data", Collections.emptyList(),
                     "meta", Map.of("total", 0),
-                    "message", "❌ Erro ao iniciar análise: " + e.getMessage()
+                    "message", "❌ Erro ao analisar notícias: " + e.getMessage()
             ));
         }
     }
 
     // ======================================================
-    // 🔹 Buscar últimos tweets
+    // 🔹 Buscar últimos tweets (já analisados se desejar)
+    //    analyze=true por padrão para manter UX homogênea
     // ======================================================
     @GetMapping("/tweets/ultimos")
     public ResponseEntity<Map<String, Object>> getUltimosTweets(
             @RequestParam(defaultValue = "10") int limit,
-            @RequestParam(defaultValue = "bitcoin") String q) {
-
-        log.info("🐦 Requisição recebida: /noticias/tweets/ultimos?limit={}&q={}", limit, q);
-        List<FeedDTO> tweets = Collections.emptyList();
+            @RequestParam(defaultValue = "bitcoin") String q,
+            @RequestParam(defaultValue = "true") boolean analyze
+    ) {
+        log.info("🐦 GET /noticias/tweets/ultimos?limit={}&q={}&analyze={}", limit, q, analyze);
 
         try {
-            tweets = noticiasService.buscarTweets(limit, q);
+            List<FeedDTO> tweets;
+
+            if (analyze) {
+                noticiasService.fetchAndStoreTweets(q);
+                tweets = waitUntilAnalyzed(
+                        () -> safeTweets(limit, q),
+                        Duration.ofSeconds(6),
+                        Duration.ofMillis(300)
+                );
+            } else {
+                tweets = safeTweets(limit, q);
+            }
+
+            if (tweets.isEmpty()) {
+                return ResponseEntity.ok(Map.of(
+                        "data", Collections.emptyList(),
+                        "meta", Map.of("total", 0),
+                        "message", "⚠️ Nenhum tweet encontrado."
+                ));
+            }
+
+            return ResponseEntity.ok(Map.of(
+                    "data", tweets,
+                    "meta", Map.of("total", tweets.size()),
+                    "message", "✅ Tweets retornados com sucesso."
+            ));
         } catch (Exception e) {
-            log.error("❌ Erro ao buscar tweets: {}", e.getMessage());
+            log.error("❌ Erro ao buscar/analisar tweets: {}", e.getMessage());
             return ResponseEntity.internalServerError().body(Map.of(
                     "data", Collections.emptyList(),
                     "meta", Map.of("total", 0),
-                    "message", "❌ Erro ao buscar tweets: " + e.getMessage()
+                    "message", "❌ Erro ao buscar/analisar tweets: " + e.getMessage()
             ));
         }
-
-        if (tweets.isEmpty()) {
-            return ResponseEntity.ok(Map.of(
-                    "data", Collections.emptyList(),
-                    "meta", Map.of("total", 0),
-                    "message", "⚠️ Nenhum tweet encontrado."
-            ));
-        }
-
-        return ResponseEntity.ok(Map.of(
-                "data", tweets,
-                "meta", Map.of("total", tweets.size()),
-                "message", "✅ Tweets retornados com sucesso."
-        ));
     }
 
     // ======================================================
-    // 🔹 Força nova análise de tweets
+    // 🔹 Força nova análise de tweets e já retorna analisados
     // ======================================================
     @PostMapping("/analisar-tweets")
     public ResponseEntity<Map<String, Object>> analisarTweets(
-            @RequestParam(defaultValue = "bitcoin") String q) {
-
-        log.info("🐦⚙️ Disparando nova análise de tweets para '{}'", q);
+            @RequestParam(defaultValue = "bitcoin") String q,
+            @RequestParam(defaultValue = "10") int limit
+    ) {
+        log.info("🐦⚙️ POST /noticias/analisar-tweets?q={}&limit={}", q, limit);
         try {
             noticiasService.fetchAndStoreTweets(q);
+
+            List<FeedDTO> analisados = waitUntilAnalyzed(
+                    () -> safeTweets(limit, q),
+                    Duration.ofSeconds(6),
+                    Duration.ofMillis(300)
+            );
+
             return ResponseEntity.ok(Map.of(
-                    "data", Collections.emptyList(),
-                    "meta", Map.of("total", 0),
-                    "message", "✅ Análise de tweets iniciada com sucesso."
+                    "data", analisados,
+                    "meta", Map.of("total", analisados.size()),
+                    "message", "✅ Análise de tweets concluída."
             ));
         } catch (Exception e) {
-            log.error("❌ Erro ao iniciar análise de tweets: {}", e.getMessage());
+            log.error("❌ Erro ao analisar tweets: {}", e.getMessage());
             return ResponseEntity.internalServerError().body(Map.of(
                     "data", Collections.emptyList(),
                     "meta", Map.of("total", 0),
-                    "message", "❌ Erro ao iniciar análise de tweets: " + e.getMessage()
+                    "message", "❌ Erro ao analisar tweets: " + e.getMessage()
             ));
+        }
+    }
+
+    // ==========================
+    // Helpers seguros
+    // ==========================
+    private List<FeedDTO> safeNoticias(int limit, String q) {
+        try {
+            return noticiasService.buscarNoticias(limit, q);
+        } catch (Exception e) {
+            log.warn("⚠️ Falha ao buscar noticias (safe): {}", e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
+    private List<FeedDTO> safeTweets(int limit, String q) {
+        try {
+            return noticiasService.buscarTweets(limit, q);
+        } catch (Exception e) {
+            log.warn("⚠️ Falha ao buscar tweets (safe): {}", e.getMessage());
+            return Collections.emptyList();
         }
     }
 }

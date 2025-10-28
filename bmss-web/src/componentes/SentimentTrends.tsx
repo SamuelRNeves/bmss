@@ -47,7 +47,7 @@ export default function SentimentTrends() {
       className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 shadow-inner"
     >
       <h2 className="text-lg font-semibold text-gray-100 mb-4">
-        Tendência de Sentimento (5 dias)
+        Tendência de Sentimento 
       </h2>
 
       {loading ? (

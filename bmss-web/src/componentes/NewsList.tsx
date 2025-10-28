@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { getUltimasNoticias } from "../lib/api";
-import { ExternalLink } from "lucide-react";
+import { getFeed } from "../lib/api";
+import { ExternalLink, RefreshCw } from "lucide-react";
 
 interface NewsItem {
   id?: string | number;
@@ -13,41 +13,31 @@ interface NewsItem {
   publishedAt?: string;
   sentimento?: string;
   score?: number;
-  tweetUrl?: string;
-  isTweet?: boolean;
 }
 
 export default function NewsList() {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [analyzing, setAnalyzing] = useState(false);
   const [isFallback, setIsFallback] = useState(false);
 
-  useEffect(() => {
-    async function fetchNoticias() {
-      const { data, isFallback } = await getUltimasNoticias(30, "bitcoin");
-      setNews(data || []);
-      setIsFallback(isFallback);
-      setLoading(false);
-    }
+  async function fetchNoticias(analyze = false) {
+    setLoading(true);
+    const { data, isFallback } = await getFeed("news", 30, "bitcoin", analyze);
+    setNews(data || []);
+    setIsFallback(isFallback);
+    setLoading(false);
+  }
 
+  async function handleAnalyze() {
+    setAnalyzing(true);
+    await fetchNoticias(true);
+    setAnalyzing(false);
+  }
+
+  useEffect(() => {
     fetchNoticias();
   }, []);
-
-  if (loading) {
-    return (
-      <div className="text-gray-400 text-center py-4">
-        Carregando notícias...
-      </div>
-    );
-  }
-
-  if (!news.length) {
-    return (
-      <div className="text-gray-400 text-center py-4">
-        Nenhuma notícia encontrada.
-      </div>
-    );
-  }
 
   const getSentimentStyle = (sentimento?: string) => {
     switch (sentimento) {
@@ -60,11 +50,34 @@ export default function NewsList() {
     }
   };
 
+  if (loading)
+    return <div className="text-gray-400 text-center py-4">Carregando notícias...</div>;
+
+  if (!news.length)
+    return <div className="text-gray-400 text-center py-4">Nenhuma notícia encontrada.</div>;
+
   return (
     <section className="space-y-4">
+      {/* Header com botão */}
+      <div className="flex justify-between items-center mb-2">
+        <h2 className="text-lg font-semibold text-gray-100">📰 Últimas Notícias</h2>
+        <button
+          onClick={handleAnalyze}
+          disabled={analyzing}
+          className={`flex items-center gap-2 px-3 py-2 rounded-md transition-colors ${
+            analyzing
+              ? "bg-gray-700 text-gray-300 cursor-wait"
+              : "bg-blue-600 hover:bg-blue-700 text-white"
+          }`}
+        >
+          <RefreshCw size={16} className={analyzing ? "animate-spin" : ""} />
+          {analyzing ? "Analisando..." : "Analisar"}
+        </button>
+      </div>
+
+      {/* Lista */}
       {news.map((item, index) => {
         const style = getSentimentStyle(item.sentimento);
-
         return (
           <div
             key={item.id || index}
@@ -73,16 +86,15 @@ export default function NewsList() {
             <h3 className="text-lg font-semibold text-gray-100 mb-1">
               {item.title || "Título não informado"}
             </h3>
-            
-
-
             <p className="text-gray-400 text-sm mb-2 line-clamp-3">
               {item.description || "Sem descrição disponível."}
             </p>
-
             <p className="text-gray-500 text-xs mb-1">
               <strong>Score:</strong>{" "}
               {typeof item.score === "number" ? item.score.toFixed(3) : "—"}
+              <br />
+              <strong>Sentimento:</strong>{" "}
+              <span className={style.text}>{style.label}</span>
               <br />
               <strong>Fonte:</strong> {item.source || "Desconhecida"}
               <br />
@@ -90,14 +102,6 @@ export default function NewsList() {
               {item.publishedAt
                 ? new Date(item.publishedAt).toLocaleString("pt-BR")
                 : "Data não informada"}
-              <br />
-              <strong>Sentimento:</strong>{" "}
-              <span className={style.text}>{style.label}</span>
-              <br />
-              <strong>Modelo:</strong>{" "}
-              <span className="text-blue-400">
-                Ensemble (FinBERT)
-              </span>
             </p>
 
             {item.url && (
@@ -105,13 +109,10 @@ export default function NewsList() {
                 href={item.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-1 text-blue-400 text-sm mt-3 hover:text-blue-300 transition-colors"
+                className="flex items-center gap-1 text-blue-400 text-sm mt-3 hover:text-blue-300"
               >
                 Ler notícia completa
-                <p className="text-xs text-gray-500">
-                Fonte: {item.source || "Desconhecida"}
-                </p>
-                <ExternalLink size={14} className="opacity-80" />
+                <ExternalLink size={14} />
               </a>
             )}
           </div>

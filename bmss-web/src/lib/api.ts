@@ -42,7 +42,7 @@ interface ApiResponse<T> {
 }
 
 // =====================================================
-// 🧩 Endpoints de Sentimento e Tendência
+// 🧩 Sentimento e Tendência
 // =====================================================
 export async function getSentimentos(): Promise<ApiResponse<any>> {
   try {
@@ -67,91 +67,30 @@ export async function getTendencias(): Promise<ApiResponse<any>> {
 }
 
 // =====================================================
-// 📰 NOTÍCIAS
+// 📰 NOTÍCIAS e TWEETS unificados
 // =====================================================
-export async function getUltimasNoticias(limit = 12, q = "bitcoin"): Promise<ApiResponse<any[]>> {
+export async function getFeed(
+  type: "news" | "tweets" = "news",
+  limit = 20,
+  q = "bitcoin",
+  analyze = false
+): Promise<ApiResponse<any[]>> {
   try {
-    const res = await api.get(`/noticias/ultimas`, { params: { limit, q } });
+    const res = await api.get(`/noticias/ultimas`, {
+      params: { limit, q, type, analyze },
+    });
 
     const payload = res.data?.data;
-
     if (!Array.isArray(payload)) {
-      throw new Error("Formato inesperado ao carregar últimas notícias (data ausente)");
+      throw new Error(`Formato inesperado ao carregar ${type} (data ausente)`);
     }
 
-    const noticias = payload;
-
-    console.info("📰 Notícias recebidas:", noticias.length);
-    return { data: noticias, error: null, isFallback: false };
+    console.info(`📡 ${type === "news" ? "Notícias" : "Tweets"} recebidos:`, payload.length);
+    return { data: payload, error: null, isFallback: false };
   } catch (err: any) {
-    console.error("⚠️ Erro ao buscar últimas notícias:", err.message);
+    console.error(`⚠️ Erro ao buscar ${type}:`, err.message);
     return { data: [], error: err.message, isFallback: true };
   }
 }
-
-// Dispara análise manualmente
-export async function analisarNoticias(limit = 5, q = "bitcoin"): Promise<ApiResponse<any>> {
-  try {
-    const res = await api.post(`/noticias/analisar`, null, { params: { limit, q } });
-    return { data: res.data, error: null, isFallback: false };
-  } catch (err: any) {
-    console.error("❌ Erro ao analisar notícias:", err.message);
-    return { data: null, error: err.message, isFallback: true };
-  }
-}
-
-// =====================================================
-// 🐦 TWEETS
-// =====================================================
-
-// 🔹 Buscar últimos tweets (separado das notícias)
-export async function getUltimosTweets(limit = 10, q = "bitcoin"): Promise<ApiResponse<any[]>> {
-  try {
-    const res = await api.get(`/noticias/tweets/ultimos`, { params: { limit, q } });
-
-    const payload = res.data?.data;
-
-    if (!Array.isArray(payload)) {
-      throw new Error("Formato inesperado ao carregar tweets (data ausente)");
-    }
-
-    const tweets = payload;
-
-    console.info("🐦 Tweets recebidos:", tweets.length);
-    return { data: tweets, error: null, isFallback: false };
-  } catch (err: any) {
-    console.error("⚠️ Erro ao buscar tweets:", err.message);
-    return { data: [], error: err.message, isFallback: true };
-  }
-}
-
-// 🔹 Dispara análise de tweets (executa fetchAndStoreTweets no backend)
-export async function analisarTweets(q = "bitcoin"): Promise<ApiResponse<any>> {
-  try {
-    const res = await api.post(`/noticias/analisar-tweets`, null, { params: { q } });
-    return { data: res.data, error: null, isFallback: false };
-  } catch (err: any) {
-    console.error("❌ Erro ao analisar tweets:", err.message);
-    return { data: null, error: err.message, isFallback: true };
-  }
-}
-
-// =====================================================
-// 👤 USUÁRIOS (Cadastro simples)
-// =====================================================
-export async function cadastrarUsuario(payload: {
-  nome: string;
-  email: string;
-}): Promise<ApiResponse<any>> {
-  try {
-    const res = await api.post("/usuarios", payload);
-    return { data: res.data, error: null, isFallback: false };
-  } catch (err: any) {
-    console.error("❌ Erro ao cadastrar usuário:", err.message);
-    return { data: null, error: err.message, isFallback: true };
-  }
-}
-
-
 
 export default api;

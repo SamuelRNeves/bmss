@@ -3,7 +3,7 @@
 import { motion } from "framer-motion";
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import { getSentimentos, getUltimasNoticias } from "../lib/api";
+import { getSentimentos, getFeed } from "../lib/api";
 
 export default function Loader() {
   const [loaded, setLoaded] = useState(false);
@@ -12,7 +12,7 @@ export default function Loader() {
     async function carregarDados() {
       try {
         // tenta ambos os endpoints antes de esconder o loader
-        await Promise.all([getSentimentos(), getUltimasNoticias()]);
+        await Promise.all([getSentimentos(), getFeed()]);
         setLoaded(true);
       } catch (error) {
         console.error("Erro ao carregar dados iniciais:", error);

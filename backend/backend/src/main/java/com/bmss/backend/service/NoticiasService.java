@@ -66,6 +66,7 @@ public class NoticiasService {
             @Value("${bmss.sentiment.connect-timeout:10s}") Duration connectTimeout,
             @Value("${bmss.sentiment.read-timeout:20s}") Duration readTimeout
     ) {
+
         this.itemRepository = itemRepository;
         this.sentimentRepository = sentimentRepository;
         this.newsRestTemplate = restTemplateBuilder.build();
@@ -490,7 +491,9 @@ public class NoticiasService {
     // 🔹 Busca e analisa Tweets
     // ============================================================
    public void fetchAndStoreTweets(String keyword) {
+    
     log.info("🐦 Iniciando busca e análise de tweets para '{}'", keyword);
+    
  
     try {
         // 🔹 Endpoint real (usar Bearer token válido)
@@ -499,7 +502,7 @@ public class NoticiasService {
                      + "&max_results=10&tweet.fields=created_at,lang";
 
         HttpHeaders headers = new HttpHeaders();
-        headers.set("Authorization", "Bearer SEU_TOKEN_AQUI");
+        headers.set("Authorization", "AAAAAAAAAAAAAAAAAAAAANJA5AEAAAAA6hIwdxjae3peiYVm3equauT1z74%3DcNHzAZesIp7f9sloSYrEoRPJv5VaDzpGTgOUJsWNJGznSjUeA7");
         headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
 
         ResponseEntity<Map> response = newsRestTemplate.exchange(
@@ -516,7 +519,8 @@ public class NoticiasService {
                 .collect(Collectors.toList());
 
         // 🔹 Envia para Flask (rota específica de tweets)
-        URI tweetEndpoint = URI.create("http://localhost:5000/analyze-tweets");
+        URI tweetEndpoint = tweetsFlaskEndpoint;
+
         HttpHeaders jsonHeaders = new HttpHeaders();
         jsonHeaders.setContentType(MediaType.APPLICATION_JSON);
         HttpEntity<List<String>> req = new HttpEntity<>(textos, jsonHeaders);
@@ -531,18 +535,19 @@ public class NoticiasService {
             Map<String, Object> tweetData = tweets.get(i);
             String text = textos.get(i);
 
-            // 🔹 Corrigido: garantir ID real
+            // garantir ID real
             String tweetId = null;
             Object rawId = tweetData.get("id");
-            if (rawId != null) {
-            tweetId = rawId.toString().replaceAll("\\.0$", ""); // evita float
-            } else if (tweetData.get("id_str") != null) {
-            tweetId = tweetData.get("id_str").toString();
-            }
+                    if (rawId != null) {
+                tweetId = new java.math.BigDecimal(rawId.toString()).toPlainString();
+                    } else if (tweetData.get("id_str") != null) {
+                tweetId = tweetData.get("id_str").toString();
+                    }
 
-String tweetUrl = tweetId != null
-        ? "https://x.com/i/web/status/" + tweetId
-        : "https://x.com/";
+            String tweetUrl = tweetId != null
+                ? "https://x.com/i/web/status/" + tweetId
+                : "https://x.com/";
+
 
 
             String label = "neutral";
@@ -578,6 +583,8 @@ String tweetUrl = tweetId != null
                     .createdAt(LocalDateTime.now())
                     .build();
             sentimentRepository.save(sentiment);
+
+            log.info("🐦 TweetData recebido: {}", tweetData);
 
             log.info("💾 Tweet analisado: {} ({}) → {}", label, score, tweetUrl);
         }

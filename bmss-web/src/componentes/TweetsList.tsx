@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { getUltimosTweets } from "../lib/api";
-import { Twitter } from "lucide-react";
+import { getFeed } from "../lib/api";
+import { Twitter, RefreshCw } from "lucide-react";
 
 interface TweetItem {
   id?: string | number;
@@ -14,38 +14,31 @@ interface TweetItem {
   sentimento?: string;
   score?: number;
   tweetUrl?: string;
-  isTweet?: boolean;
 }
 
 export default function TweetsList() {
   const [tweets, setTweets] = useState<TweetItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [isFallback, setIsFallback] = useState(false);
+
+  async function fetchTweets(analyze = true) {
+    setLoading(true);
+    const { data, isFallback } = await getFeed("tweets", 20, "bitcoin", analyze);
+    setTweets(data || []);
+    setIsFallback(isFallback);
+    setLoading(false);
+  }
+
+  async function handleReanalyze() {
+    setAnalyzing(true);
+    await fetchTweets(true);
+    setAnalyzing(false);
+  }
 
   useEffect(() => {
-    async function fetchTweets() {
-      const { data } = await getUltimosTweets(20, "bitcoin");
-      setTweets(data || []);
-      setLoading(false);
-    }
-
-    fetchTweets();
+    fetchTweets(true); // 🔹 Já analisa ao abrir
   }, []);
-
-  if (loading) {
-    return (
-      <div className="text-gray-400 text-center py-4">
-        Carregando tweets...
-      </div>
-    );
-  }
-
-  if (!tweets.length) {
-    return (
-      <div className="text-gray-400 text-center py-4">
-        Nenhum tweet encontrado.
-      </div>
-    );
-  }
 
   const getSentimentStyle = (sentimento?: string) => {
     switch (sentimento) {
@@ -58,12 +51,35 @@ export default function TweetsList() {
     }
   };
 
+  if (loading)
+    return <div className="text-gray-400 text-center py-4">Carregando tweets...</div>;
+
+  if (!tweets.length)
+    return <div className="text-gray-400 text-center py-4">Nenhum tweet encontrado.</div>;
+
   return (
     <section className="space-y-4">
+      {/* Header */}
+      <div className="flex justify-between items-center mb-2">
+        <h2 className="text-lg font-semibold text-gray-100">🐦 Últimos Tweets</h2>
+        <button
+          onClick={handleReanalyze}
+          disabled={analyzing}
+          className={`flex items-center gap-2 px-3 py-2 rounded-md transition-colors ${
+            analyzing
+              ? "bg-gray-700 text-gray-300 cursor-wait"
+              : "bg-sky-600 hover:bg-sky-700 text-white"
+          }`}
+        >
+          <RefreshCw size={16} className={analyzing ? "animate-spin" : ""} />
+          {analyzing ? "Analisando..." : "Analisar Tweets"}
+        </button>
+      </div>
+
+      {/* Lista */}
       {tweets.map((item, index) => {
         const style = getSentimentStyle(item.sentimento);
         const link = item.tweetUrl || item.url;
-
         return (
           <div
             key={item.id || index}
@@ -78,39 +94,25 @@ export default function TweetsList() {
 
             <p className="text-gray-400 text-sm mb-2">{item.description}</p>
 
-            {typeof item.score === "number" && (
-              <p className="text-gray-500 text-xs mb-1">
-                Score: {item.score.toFixed(3)}
+            <p className="text-gray-500 text-xs">
+              <strong>Sentimento:</strong>{" "}
+              <span className={style.text}>{style.label}</span>{" "}
+              {typeof item.score === "number" && `(${item.score.toFixed(3)})`}
+            </p>
+
+            {item.publishedAt && (
+              <p className="text-gray-500 text-xs">
+                <strong>Publicado:</strong>{" "}
+                {new Date(item.publishedAt).toLocaleString("pt-BR")}
               </p>
             )}
-
-            <div className="flex flex-col gap-1 mt-2 text-xs text-gray-400">
-              <span>
-                <strong>Sentimento:</strong>{" "}
-                <span className={style.text}>{style.label}</span>
-                {typeof item.score === "number" && (
-                  <span className="text-gray-500"> {`(${item.score.toFixed(3)})`}</span>
-                )}
-              </span>
-              {item.publishedAt && (
-                <span>
-                  <strong>Publicado:</strong>{" "}
-                  {new Date(item.publishedAt).toLocaleString("pt-BR")}
-                </span>
-              )}
-              {item.source && (
-                <span>
-                  <strong>Fonte:</strong> {item.source}
-                </span>
-              )}
-            </div>
 
             {link && (
               <a
                 href={link}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 text-sm text-sky-400 mt-3 hover:text-sky-300"
+                className="inline-flex items-center gap-1 text-sky-400 text-sm mt-3 hover:text-sky-300"
               >
                 Abrir no X
                 <Twitter size={14} className="text-sky-400" />
@@ -119,6 +121,12 @@ export default function TweetsList() {
           </div>
         );
       })}
+
+      {isFallback && (
+        <p className="text-yellow-400 text-xs text-center mt-3">
+          ⚠️ Exibindo dados de cache (modo offline)
+        </p>
+      )}
     </section>
   );
 }
