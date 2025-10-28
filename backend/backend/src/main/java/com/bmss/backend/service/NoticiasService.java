@@ -489,125 +489,148 @@ public class NoticiasService {
     // ============================================================
     // 🔹 Busca e analisa Tweets
     // ============================================================
-    public void fetchAndStoreTweets(String keyword) {
-        log.info("🐦 Iniciando busca e análise de tweets para '{}'", keyword);
+   public void fetchAndStoreTweets(String keyword) {
+    log.info("🐦 Iniciando busca e análise de tweets para '{}'", keyword);
+ 
+    try {
+        // 🔹 Endpoint real (usar Bearer token válido)
+        String url = "https://api.twitter.com/2/tweets/search/recent?query=" 
+                     + URLEncoder.encode(keyword, StandardCharsets.UTF_8)
+                     + "&max_results=10&tweet.fields=created_at,lang";
 
-        try {
-            // 1️⃣ Busca tweets via API oficial do X
-            String url = "https://api.x.com/2/tweets/search/recent?query=" + keyword + "&max_results=10&tweet.fields=created_at";
-            HttpHeaders headers = new HttpHeaders();
-            headers.set("Authorization", "Bearer AAAAAAAAAAAAAAAAAAAAANJA5AEAAAAA6hIwdxjae3peiYVm3equauT1z74%3DcNHzAZesIp7f9sloSYrEoRPJv5VaDzpGTgOUJsWNJGznSjUeA7");
-            ResponseEntity<Map> response = newsRestTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Authorization", "Bearer SEU_TOKEN_AQUI");
+        headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
 
-            if (response.getBody() == null || !response.getBody().containsKey("data")) {
-                log.warn("⚠️ Nenhum tweet retornado pela API do X.");
-                return;
-            }
+        ResponseEntity<Map> response = newsRestTemplate.exchange(
+                url, HttpMethod.GET, new HttpEntity<>(headers), Map.class);
 
-            List<Map<String, Object>> tweets = (List<Map<String, Object>>) response.getBody().get("data");
-            if (tweets == null || tweets.isEmpty()) {
-                log.warn("⚠️ Nenhum tweet retornado pela API do X.");
-                return;
-            }
-
-            List<String> textos = tweets.stream()
-                    .map(t -> Objects.toString(t.get("text"), ""))
-                    .collect(Collectors.toList());
-
-            boolean possuiTextoValido = textos.stream().anyMatch(t -> t != null && !t.isBlank());
-            if (!possuiTextoValido) {
-                log.warn("⚠️ Nenhum texto válido retornado dos tweets para análise.");
-                return;
-            }
-
-            // 2️⃣ Chama o Flask (análise com Twitter-RoBERTa)
-            HttpHeaders jsonHeaders = new HttpHeaders();
-            jsonHeaders.setContentType(MediaType.APPLICATION_JSON);
-            HttpEntity<List<String>> req = new HttpEntity<>(textos, jsonHeaders);
-
-            ResponseEntity<List<Map<String, Object>>> flaskResp = flaskRestTemplate.exchange(
-                    tweetsFlaskEndpoint,
-                    HttpMethod.POST,
-                    req,
-                    new ParameterizedTypeReference<List<Map<String, Object>>>() {}
-            );
-
-            List<Map<String, Object>> analises = flaskResp.getBody();
-            if (analises == null) {
-                analises = Collections.emptyList();
-            }
-
-            // 3️⃣ Salva no banco
-            for (int i = 0; i < tweets.size(); i++) {
-                Map<String, Object> tweet = tweets.get(i);
-                String text = Objects.toString(tweet.get("text"), "").trim();
-                if (text.isEmpty()) {
-                    continue;
-                }
-
-                String id = Objects.toString(tweet.get("id"), null);
-                String tweetUrl = id != null ? "https://x.com/i/web/status/" + id : "https://x.com";
-
-                if (tweetUrl != null && itemRepository.existsByUrl(tweetUrl)) {
-                    log.debug("↪️ Tweet já persistido ({}), ignorando duplicata.", tweetUrl);
-                    continue;
-                }
-
-                LocalDateTime publishedAt = LocalDateTime.now();
-                Object createdAtObj = tweet.get("created_at");
-                if (createdAtObj instanceof String createdAtStr) {
-                    try {
-                        publishedAt = OffsetDateTime.parse(createdAtStr)
-                                .atZoneSameInstant(ZoneId.systemDefault())
-                                .toLocalDateTime();
-                    } catch (DateTimeParseException ex) {
-                        log.debug("⚠️ Não foi possível converter created_at do tweet {}: {}", id, ex.getMessage());
-                    }
-                }
-
-                String label = "neutral";
-                double score = 0.0;
-
-                if (i < analises.size()) {
-                    Map<String, Object> a = analises.get(i);
-                    label = Objects.toString(a.get("label"), "neutral").toLowerCase();
-                    Object scr = a.get("score");
-                    if (scr != null) {
-                        try {
-                            score = Double.parseDouble(scr.toString());
-                        } catch (NumberFormatException ignored) {
-                        }
-                    }
-                }
-
-                Item item = new Item();
-                String title = text.length() > 100 ? text.substring(0, 97) + "..." : text;
-                item.setTitle(title);
-                item.setText(text);
-                item.setUrl(tweetUrl);
-                item.setSourceName("Twitter");
-                item.setSentimentLabel(label);
-                item.setSentimentScore(score);
-                item.setPublishedAt(publishedAt);
-                item.setAnalyzedAt(LocalDateTime.now());
-                itemRepository.save(item);
-
-                Sentiment sentiment = Sentiment.builder()
-                        .item(item)
-                        .label(label)
-                        .score(score)
-                        .model("Twitter-RoBERTa-Crypto")
-                        .createdAt(LocalDateTime.now())
-                        .build();
-                sentimentRepository.save(sentiment);
-
-                log.info("💾 Tweet analisado: {} ({})", label, score);
-            }
-
-        } catch (Exception e) {
-            log.error("❌ Erro ao buscar/analisar tweets: {}", e.getMessage());
+        if (response.getBody() == null || !response.getBody().containsKey("data")) {
+            log.warn("⚠️ Nenhum tweet retornado pela API do X.");
+            return;
         }
+
+        List<Map<String, Object>> tweets = (List<Map<String, Object>>) response.getBody().get("data");
+        List<String> textos = tweets.stream()
+                .map(t -> (String) t.get("text"))
+                .collect(Collectors.toList());
+
+        // 🔹 Envia para Flask (rota específica de tweets)
+        URI tweetEndpoint = URI.create("http://localhost:5000/analyze-tweets");
+        HttpHeaders jsonHeaders = new HttpHeaders();
+        jsonHeaders.setContentType(MediaType.APPLICATION_JSON);
+        HttpEntity<List<String>> req = new HttpEntity<>(textos, jsonHeaders);
+
+        ResponseEntity<List<Map<String, Object>>> flaskResp = flaskRestTemplate.exchange(
+                tweetEndpoint, HttpMethod.POST, req, new ParameterizedTypeReference<List<Map<String, Object>>>() {});
+
+        List<Map<String, Object>> analises = flaskResp.getBody();
+        if (analises == null) analises = Collections.emptyList();
+
+        for (int i = 0; i < textos.size(); i++) {
+            Map<String, Object> tweetData = tweets.get(i);
+            String text = textos.get(i);
+
+            // 🔹 Corrigido: garantir ID real
+            String tweetId = null;
+            Object rawId = tweetData.get("id");
+            if (rawId != null) {
+            tweetId = rawId.toString().replaceAll("\\.0$", ""); // evita float
+            } else if (tweetData.get("id_str") != null) {
+            tweetId = tweetData.get("id_str").toString();
+            }
+
+String tweetUrl = tweetId != null
+        ? "https://x.com/i/web/status/" + tweetId
+        : "https://x.com/";
+
+
+            String label = "neutral";
+            double score = 0.0;
+
+            if (i < analises.size()) {
+                Map<String, Object> a = analises.get(i);
+                label = Objects.toString(a.get("label"), "neutral").toLowerCase();
+                Object scr = a.get("score");
+                if (scr != null) {
+                    try {
+                        score = Double.parseDouble(scr.toString());
+                    } catch (NumberFormatException ignored) {}
+                }
+            }
+
+            Item item = new Item();
+            item.setTitle(text.substring(0, Math.min(text.length(), 80)) + "...");
+            item.setText(text);
+            item.setUrl(tweetUrl);
+            item.setSourceName("Twitter");
+            item.setSentimentLabel(label);
+            item.setSentimentScore(score);
+            item.setPublishedAt(LocalDateTime.now());
+            item.setAnalyzedAt(LocalDateTime.now());
+            itemRepository.save(item);
+
+            Sentiment sentiment = Sentiment.builder()
+                    .item(item)
+                    .label(label)
+                    .score(score)
+                    .model("BERTweet-Sentiment")
+                    .createdAt(LocalDateTime.now())
+                    .build();
+            sentimentRepository.save(sentiment);
+
+            log.info("💾 Tweet analisado: {} ({}) → {}", label, score, tweetUrl);
+        }
+
+    } catch (Exception e) {
+        log.error("❌ Erro ao buscar/analisar tweets: {}", e.getMessage());
     }
+}
+
+
+// ============================================================
+// 🔹 Buscar últimos tweets salvos no banco e mapear para FeedDTO
+// ============================================================
+public List<FeedDTO> buscarTweets(int limit, String keyword) {
+    log.info("🐦 Buscando últimos tweets armazenados no banco para '{}'", keyword);
+
+    try {
+        // Busca os itens mais recentes cuja fonte é "Twitter"
+        List<Item> tweets = itemRepository.findTop20BySourceNameOrderByPublishedAtDesc("Twitter");
+
+        if (tweets == null || tweets.isEmpty()) {
+            log.warn("⚠️ Nenhum tweet encontrado no banco.");
+            return Collections.emptyList();
+        }
+
+        // Converte cada Item em FeedDTO
+        return tweets.stream()
+                .limit(limit)
+                .map(item -> {
+                    FeedDTO dto = new FeedDTO();
+                    dto.setTitle(item.getTitle());
+                    dto.setDescription(item.getText());
+                    dto.setUrl(item.getUrl());
+                    dto.setSource(item.getSourceName());
+                    dto.setPublishedAt(
+                            item.getPublishedAt() != null
+                                    ? item.getPublishedAt().toString()
+                                    : LocalDateTime.now().toString()
+                    );
+                    dto.setSentimento(item.getSentimentLabel());
+                    dto.setScore(item.getSentimentScore());
+                    dto.setTweet(true);
+                    dto.setTweetUrl(item.getUrl());
+                    return dto;
+                })
+                .collect(Collectors.toList());
+
+    } catch (Exception e) {
+        log.error("❌ Erro ao buscar tweets do banco: {}", e.getMessage());
+        return Collections.emptyList();
+    }
+}
+
 
     private static class CacheEntry {
         List<FeedDTO> data;

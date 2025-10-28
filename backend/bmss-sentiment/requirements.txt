@@ -1,9 +1,24 @@
 
+# ======================================================
+# BMSS Sentiment Microservice - Flask + Transformers
+# Alta precisão (FinBERT + RoBERTa) com desempenho otimizado
+# ======================================================
+
+# 🔹 Servidor web
 flask==2.3.3
 gunicorn==21.2.0
+
+# 🔹 Modelos de IA (Hugging Face Transformers + PyTorch)
 transformers==4.44.2
-torch==2.9.0
-requests==2.31.0
+torch
+
+# 🔹 Dependências auxiliares
 numpy==1.26.4
-python-dotenv==1.0.0
+requests==2.32.3
 deep-translator==1.11.4
+
+# 🔹 Utilitários e configuração
+python-dotenv==1.0.1
+
+# (Opcional, mas recomendado para evitar warnings)
+tqdm==4.66.5

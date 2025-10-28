@@ -96,7 +96,7 @@ export default function NewsList() {
               <br />
               <strong>Modelo:</strong>{" "}
               <span className="text-blue-400">
-                Ensemble (Caramelo + FinBERT)
+                Ensemble (FinBERT)
               </span>
             </p>
 
