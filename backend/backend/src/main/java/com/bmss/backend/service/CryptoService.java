@@ -1,4 +1,3 @@
-// CryptoService.java
 package com.bmss.backend.service;
 
 import org.slf4j.Logger;
@@ -8,63 +7,206 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class CryptoService {
 
     private static final Logger log = LoggerFactory.getLogger(CryptoService.class);
     private final RestTemplate restTemplate;
+    
+    // Cache local por 30 segundos
+    private final Map<String, CacheEntry> priceCache = new ConcurrentHashMap<>();
+    private static final long CACHE_DURATION_MS = 30 * 1000; // 30 segundos
 
     public CryptoService(RestTemplateBuilder restTemplateBuilder) {
         this.restTemplate = restTemplateBuilder.build();
     }
 
+    // ============================================================
+    // 🔹 MÚLTIPLAS APIS COM FALLBACK
+    // ============================================================
     public Map<String, Object> getBitcoinPrice() {
+        String cacheKey = "bitcoin_price";
+        
+        // 🔹 Verifica cache primeiro
+        if (priceCache.containsKey(cacheKey)) {
+            CacheEntry entry = priceCache.get(cacheKey);
+            if (System.currentTimeMillis() - entry.timestamp < CACHE_DURATION_MS) {
+                log.info("⚡ Retornando preço do cache");
+                return entry.data;
+            }
+        }
+
+        Map<String, Object> result = new HashMap<>();
+        
+        // 🔹 Tenta diferentes APIs em ordem
         try {
-            String url = "http://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd,brl&include_24hr_change=true&include_last_updated_at=true";
+            result = tryCoinGecko();
+            result.put("source", "CoinGecko");
+            log.info("✅ Preço obtido da CoinGecko");
+        } catch (Exception e1) {
+            log.warn("⚠️ CoinGecko falhou: {}", e1.getMessage());
             
-            log.info("🔗 Buscando cotação do Bitcoin na CoinGecko...");
+            try {
+                result = tryBinance();
+                result.put("source", "Binance");
+                log.info("✅ Preço obtido da Binance");
+            } catch (Exception e2) {
+                log.warn("⚠️ Binance falhou: {}", e2.getMessage());
+                
+                try {
+                    result = tryCoinCap();
+                    result.put("source", "CoinCap");
+                    log.info("✅ Preço obtido da CoinCap");
+                } catch (Exception e3) {
+                    log.warn("⚠️ CoinCap falhou: {}", e3.getMessage());
+                    
+                    // 🔹 Fallback final
+                    result = getFallbackPrice();
+                    result.put("source", "Fallback");
+                    log.warn("🚨 Usando preço fallback");
+                }
+            }
+        }
+
+        // 🔹 Atualiza cache
+        priceCache.put(cacheKey, new CacheEntry(result, System.currentTimeMillis()));
+        
+        return result;
+    }
+
+    // ============================================================
+    // 🔹 COINGECKO (com tratamento de rate limit)
+    // ============================================================
+    private Map<String, Object> tryCoinGecko() {
+        try {
+            String url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd,brl&include_24hr_change=true&include_last_updated_at=true";
             
             ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
-            Map<String, Object> bitcoinData = (Map<String, Object>) response.getBody().get("bitcoin");
             
-            if (bitcoinData == null) {
-                log.warn("⚠️ Nenhum dado do Bitcoin retornado pela API");
-                return getFallbackData();
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                Map<String, Object> bitcoinData = (Map<String, Object>) response.getBody().get("bitcoin");
+                
+                Map<String, Object> result = new HashMap<>();
+                result.put("success", true);
+                result.put("usd", bitcoinData.get("usd"));
+                result.put("brl", bitcoinData.get("brl"));
+                result.put("change24h", bitcoinData.get("usd_24h_change"));
+                result.put("lastUpdated", LocalDateTime.now().toString());
+                
+                return result;
             }
-            
-            Map<String, Object> result = new HashMap<>();
-            result.put("usd", bitcoinData.get("usd"));
-            result.put("brl", bitcoinData.get("brl"));
-            result.put("change24h", bitcoinData.get("usd_24h_change"));
-            result.put("lastUpdated", LocalDateTime.now().toString());
-            result.put("source", "CoinGecko");
-            result.put("success", true);
-            
-            log.info("✅ Cotação BTC: USD ${}, BRL R${}, Variação 24h: {}%", 
-                    result.get("usd"), result.get("brl"), result.get("change24h"));
-            
-            return result;
+            throw new RuntimeException("Resposta inválida da CoinGecko");
             
         } catch (Exception e) {
-            log.error("❌ Erro ao buscar cotação do Bitcoin: {}", e.getMessage());
-            return getFallbackData();
+            throw new RuntimeException("CoinGecko: " + e.getMessage());
         }
     }
 
-    private Map<String, Object> getFallbackData() {
-        Map<String, Object> fallback = new HashMap<>();
-        fallback.put("usd", 0);
-        fallback.put("brl", 0);
-        fallback.put("change24h", 0);
-        fallback.put("lastUpdated", LocalDateTime.now().toString());
-        fallback.put("source", "Fallback");
-        fallback.put("success", false);
-        return fallback;
+    // ============================================================
+    // 🔹 BINANCE API (sem rate limit para preços)
+    // ============================================================
+    private Map<String, Object> tryBinance() {
+        try {
+            // Preço em USD
+            String usdUrl = "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT";
+            ResponseEntity<Map> usdResponse = restTemplate.getForEntity(usdUrl, Map.class);
+            
+            // Para converter para BRL, usamos uma API de câmbio
+            String exchangeUrl = "https://api.exchangerate.host/latest?base=USD&symbols=BRL";
+            ResponseEntity<Map> exchangeResponse = restTemplate.getForEntity(exchangeUrl, Map.class);
+            
+            if (usdResponse.getStatusCode().is2xxSuccessful() && usdResponse.getBody() != null &&
+                exchangeResponse.getStatusCode().is2xxSuccessful() && exchangeResponse.getBody() != null) {
+                
+                double btcUsd = Double.parseDouble(usdResponse.getBody().get("price").toString());
+                Map<String, Object> rates = (Map<String, Object>) exchangeResponse.getBody().get("rates");
+                double usdToBrl = Double.parseDouble(rates.get("BRL").toString());
+                double btcBrl = btcUsd * usdToBrl;
+                
+                Map<String, Object> result = new HashMap<>();
+                result.put("success", true);
+                result.put("usd", btcUsd);
+                result.put("brl", btcBrl);
+                result.put("change24h", 0.0); // Binance não fornece change24h fácil
+                result.put("lastUpdated", LocalDateTime.now().toString());
+                
+                return result;
+            }
+            throw new RuntimeException("Resposta inválida da Binance");
+            
+        } catch (Exception e) {
+            throw new RuntimeException("Binance: " + e.getMessage());
+        }
+    }
+
+    // ============================================================
+    // 🔹 COINCAP API (alternativa gratuita)
+    // ============================================================
+    private Map<String, Object> tryCoinCap() {
+        try {
+            String url = "https://api.coincap.io/v2/assets/bitcoin";
+            ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
+            
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                Map<String, Object> data = (Map<String, Object>) response.getBody().get("data");
+                
+                double usdPrice = Double.parseDouble(data.get("priceUsd").toString());
+                
+                // Converter para BRL
+                String exchangeUrl = "https://api.exchangerate.host/latest?base=USD&symbols=BRL";
+                ResponseEntity<Map> exchangeResponse = restTemplate.getForEntity(exchangeUrl, Map.class);
+                Map<String, Object> rates = (Map<String, Object>) exchangeResponse.getBody().get("rates");
+                double usdToBrl = Double.parseDouble(rates.get("BRL").toString());
+                double brlPrice = usdPrice * usdToBrl;
+                
+                double change24h = Double.parseDouble(data.get("changePercent24Hr").toString());
+                
+                Map<String, Object> result = new HashMap<>();
+                result.put("success", true);
+                result.put("usd", usdPrice);
+                result.put("brl", brlPrice);
+                result.put("change24h", change24h);
+                result.put("lastUpdated", LocalDateTime.now().toString());
+                
+                return result;
+            }
+            throw new RuntimeException("Resposta inválida da CoinCap");
+            
+        } catch (Exception e) {
+            throw new RuntimeException("CoinCap: " + e.getMessage());
+        }
+    }
+
+    // ============================================================
+    // 🔹 FALLBACK - Preço fixo com atualização manual
+    // ============================================================
+    private Map<String, Object> getFallbackPrice() {
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", false);
+        result.put("usd", 35000.0); // Valor aproximado
+        result.put("brl", 175000.0); // Valor aproximado
+        result.put("change24h", 0.0);
+        result.put("lastUpdated", LocalDateTime.now().toString());
+        result.put("message", "Preço aproximado - APIs indisponíveis");
+        
+        return result;
+    }
+
+    // ============================================================
+    // 🔹 Cache Entry
+    // ============================================================
+    private static class CacheEntry {
+        Map<String, Object> data;
+        long timestamp;
+        
+        CacheEntry(Map<String, Object> data, long timestamp) {
+            this.data = data;
+            this.timestamp = timestamp;
+        }
     }
 }
