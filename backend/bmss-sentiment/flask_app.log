@@ -1,0 +1,19 @@
+2025-10-29 14:29:12,987 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.253.92:5000
+2025-10-29 14:29:12,988 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2025-10-29 14:29:20,152 - werkzeug - INFO - 127.0.0.1 - - [29/Oct/2025 14:29:20] "POST /analyze-tweets HTTP/1.1" 200 -
+2025-10-29 14:29:25,602 - werkzeug - INFO - 127.0.0.1 - - [29/Oct/2025 14:29:25] "GET /healthz HTTP/1.1" 200 -
+2025-10-29 14:29:46,712 - werkzeug - INFO - 127.0.0.1 - - [29/Oct/2025 14:29:46] "POST /analyze-tweets HTTP/1.1" 200 -
+2025-10-29 14:30:42,135 - werkzeug - INFO - 127.0.0.1 - - [29/Oct/2025 14:30:42] "POST /analyze-batch HTTP/1.1" 200 -
+2025-10-29 15:03:23,933 - werkzeug - INFO - 127.0.0.1 - - [29/Oct/2025 15:03:23] "POST /analyze-batch HTTP/1.1" 200 -
+2025-10-29 15:03:33,888 - werkzeug - INFO - 127.0.0.1 - - [29/Oct/2025 15:03:33] "POST /analyze-tweets HTTP/1.1" 200 -
+2025-10-29 15:03:42,620 - werkzeug - INFO - 127.0.0.1 - - [29/Oct/2025 15:03:42] "POST /analyze-batch HTTP/1.1" 200 -
+2025-10-29 15:22:56,974 - werkzeug - INFO - 127.0.0.1 - - [29/Oct/2025 15:22:56] "POST /analyze-batch HTTP/1.1" 200 -
+2025-10-29 15:23:03,758 - werkzeug - INFO - 127.0.0.1 - - [29/Oct/2025 15:23:03] "POST /analyze-tweets HTTP/1.1" 200 -
+2025-10-29 15:34:48,599 - werkzeug - INFO - 127.0.0.1 - - [29/Oct/2025 15:34:48] "POST /analyze-batch HTTP/1.1" 200 -
+2025-10-29 15:39:22,634 - werkzeug - INFO - 127.0.0.1 - - [29/Oct/2025 15:39:22] "POST /analyze-batch HTTP/1.1" 200 -
+2025-10-29 15:47:38,640 - werkzeug - INFO - 127.0.0.1 - - [29/Oct/2025 15:47:38] "POST /analyze-batch HTTP/1.1" 200 -
+2025-10-29 15:47:54,243 - werkzeug - INFO - 127.0.0.1 - - [29/Oct/2025 15:47:54] "POST /analyze-tweets HTTP/1.1" 200 -
+2025-10-29 17:07:50,797 - werkzeug - INFO - 127.0.0.1 - - [29/Oct/2025 17:07:50] "POST /analyze-batch HTTP/1.1" 200 -

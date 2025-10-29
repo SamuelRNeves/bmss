@@ -7,6 +7,7 @@ import NewsList from "@/componentes/NewsList";
 import SentimentTrends from "@/componentes/SentimentTrends";
 import Loader from "@/componentes/Loader";
 import TweetsList from "@/componentes/TweetsList";
+import BitcoinPrice from "@/componentes/BitcoinPrice";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function HomePage() {
@@ -20,9 +21,19 @@ export default function HomePage() {
         transition={{ duration: 0.8, ease: "easeOut" }}
         className="flex flex-col gap-10 max-w-7xl mx-auto px-4"
       >
-        {/* Header + KPIs */}
+        {/* Header */}
         <Header />
 
+        {/* Bitcoin Price - Destaque no topo */}
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1, duration: 0.6 }}
+        >
+          <BitcoinPrice />
+        </motion.div>
+
+        {/* KPIs Cards */}
         <motion.div
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
@@ -61,13 +72,13 @@ export default function HomePage() {
                 value="noticias"
                 className="data-[state=active]:bg-neutral-700 data-[state=active]:text-white text-gray-400 rounded-lg px-6 py-2 text-sm font-medium transition-all"
               >
-                Notícias
+                📰 Notícias
               </TabsTrigger>
               <TabsTrigger
                 value="tweets"
                 className="data-[state=active]:bg-neutral-700 data-[state=active]:text-white text-gray-400 rounded-lg px-6 py-2 text-sm font-medium transition-all"
               >
-                Tweets
+                🐦 Tweets
               </TabsTrigger>
             </TabsList>
 

@@ -42,13 +42,18 @@ public class Item {
 
     // 🔹 Campos adicionados para Análise de Sentimento
     @Column(name = "sentiment_label")
-    private String sentimentLabel; // Ex: "positive", "negative", "neutral"
+    private String sentimentLabel;
 
     @Column(name = "sentiment_score")
-    private Double sentimentScore; // Ex: -0.75, 0.82 etc.
+    private Double sentimentScore;
 
     @Column(name = "analyzed_at")
-    private LocalDateTime analyzedAt; // Data/hora da análise
+    private LocalDateTime analyzedAt;
 
-    
+    // 🔹 NOVOS CAMPOS PARA TWEETS (CRÍTICO!)
+    @Column(name = "is_tweet")
+    private Boolean isTweet = false;
+
+    @Column(name = "tweet_id")
+    private String tweetId;
 }

@@ -35,6 +35,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -490,109 +491,183 @@ public class NoticiasService {
     // ============================================================
     // 🔹 Busca e analisa Tweets
     // ============================================================
-   public void fetchAndStoreTweets(String keyword) {
-    
+   // ============================================================
+// 🔹 Busca e analisa Tweets (Com chamada ao Flask corrigida)
+// ============================================================
+// ============================================================
+// 🔹 Busca e analisa Tweets (COMPLETAMENTE REVISADO)
+// ============================================================
+public void fetchAndStoreTweets(String keyword) {
     log.info("🐦 Iniciando busca e análise de tweets para '{}'", keyword);
-    
- 
+
     try {
-        // 🔹 Endpoint real (usar Bearer token válido)
-        String url = "https://api.twitter.com/2/tweets/search/recent?query=" 
-                     + URLEncoder.encode(keyword, StandardCharsets.UTF_8)
-                     + "&max_results=10&tweet.fields=created_at,lang";
+        //  TOKEN VÁLIDO DA API DO TWITTER 
+        String bearerToken = "AAAAAAAAAAAAAAAAAAAAANJA5AEAAAAA6hIwdxjae3peiYVm3equauT1z74%3DcNHzAZesIp7f9sloSYrEoRPJv5VaDzpGTgOUJsWNJGznSjUeA7"; // TODO: Colocar token real
+        
+        String url = "https://api.twitter.com/2/tweets/search/recent?query="
+                + URLEncoder.encode("bitcoin OR criptomoeda", StandardCharsets.UTF_8)
+                + "&max_results=10&tweet.fields=created_at,lang,author_id";
 
         HttpHeaders headers = new HttpHeaders();
-        headers.set("Authorization", "AAAAAAAAAAAAAAAAAAAAANJA5AEAAAAA6hIwdxjae3peiYVm3equauT1z74%3DcNHzAZesIp7f9sloSYrEoRPJv5VaDzpGTgOUJsWNJGznSjUeA7");
+        headers.set("Authorization", "Bearer " + bearerToken);
         headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
+
+        log.info("🔍 Buscando tweets na API do Twitter...");
 
         ResponseEntity<Map> response = newsRestTemplate.exchange(
                 url, HttpMethod.GET, new HttpEntity<>(headers), Map.class);
 
         if (response.getBody() == null || !response.getBody().containsKey("data")) {
-            log.warn("⚠️ Nenhum tweet retornado pela API do X.");
+            log.warn("⚠️ Nenhum tweet retornado pela API do X. Body: {}", response.getBody());
             return;
         }
 
         List<Map<String, Object>> tweets = (List<Map<String, Object>>) response.getBody().get("data");
+        
+        if (tweets == null || tweets.isEmpty()) {
+            log.warn("⚠️ Lista de tweets vazia.");
+            return;
+        }
+
         List<String> textos = tweets.stream()
                 .map(t -> (String) t.get("text"))
                 .collect(Collectors.toList());
 
-        // 🔹 Envia para Flask (rota específica de tweets)
-        URI tweetEndpoint = tweetsFlaskEndpoint;
+        log.info("📨 Enviando {} tweets para análise de sentimento", textos.size());
 
-        HttpHeaders jsonHeaders = new HttpHeaders();
-        jsonHeaders.setContentType(MediaType.APPLICATION_JSON);
-        HttpEntity<List<String>> req = new HttpEntity<>(textos, jsonHeaders);
+        // ✅ CORREÇÃO CRÍTICA: Configurar POST JSON corretamente
+        HttpHeaders flaskHeaders = new HttpHeaders();
+        flaskHeaders.setContentType(MediaType.APPLICATION_JSON);
+        flaskHeaders.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
 
-        ResponseEntity<List<Map<String, Object>>> flaskResp = flaskRestTemplate.exchange(
-                tweetEndpoint, HttpMethod.POST, req, new ParameterizedTypeReference<List<Map<String, Object>>>() {});
+        HttpEntity<List<String>> requestEntity = new HttpEntity<>(textos, flaskHeaders);
 
-        List<Map<String, Object>> analises = flaskResp.getBody();
-        if (analises == null) analises = Collections.emptyList();
+        log.info("🚀 Chamando Flask em: {}", tweetsFlaskEndpoint);
 
-        for (int i = 0; i < textos.size(); i++) {
+        ResponseEntity<List<Map<String, Object>>> flaskResponse;
+        try {
+            flaskResponse = flaskRestTemplate.exchange(
+                    tweetsFlaskEndpoint,
+                    HttpMethod.POST,
+                    requestEntity,
+                    new ParameterizedTypeReference<List<Map<String, Object>>>() {}
+            );
+        } catch (RestClientException e) {
+            log.error("❌ Erro na comunicação com Flask: {}", e.getMessage());
+            return;
+        }
+
+        // 🔹 VERIFICAÇÃO DETALHADA DA RESPOSTA
+        if (!flaskResponse.getStatusCode().is2xxSuccessful()) {
+            log.error("❌ Flask retornou status HTTP: {}", flaskResponse.getStatusCode());
+            return;
+        }
+
+        List<Map<String, Object>> analises = flaskResponse.getBody();
+        if (analises == null) {
+            log.error("❌ Flask retornou corpo vazio");
+            return;
+        }
+
+        log.info("✅ Flask analisou {} tweets com sucesso", analises.size());
+
+        // ============================================================
+        // 🔹 PERSISTÊNCIA CORRIGIDA COM NOVOS CAMPOS
+        // ============================================================
+        int savedCount = 0;
+        
+        for (int i = 0; i < tweets.size(); i++) {
             Map<String, Object> tweetData = tweets.get(i);
-            String text = textos.get(i);
+            String texto = (String) tweetData.get("text");
+            String tweetId = (String) tweetData.get("id");
+            
+            // 🔹 Verificar se tweet já existe
+            if (itemRepository.existsByTweetId(tweetId)) {
+                log.debug("⏩ Pulando tweet já existente: {}", tweetId);
+                continue;
+            }
 
-            // garantir ID real
-            String tweetId = null;
-            Object rawId = tweetData.get("id");
-                    if (rawId != null) {
-                tweetId = new java.math.BigDecimal(rawId.toString()).toPlainString();
-                    } else if (tweetData.get("id_str") != null) {
-                tweetId = tweetData.get("id_str").toString();
-                    }
-
-            String tweetUrl = tweetId != null
-                ? "https://x.com/i/web/status/" + tweetId
-                : "https://x.com/";
-
-
-
+            // 🔹 Valores padrão
             String label = "neutral";
             double score = 0.0;
 
+            // 🔹 Aplicar análise do Flask se disponível
             if (i < analises.size()) {
-                Map<String, Object> a = analises.get(i);
-                label = Objects.toString(a.get("label"), "neutral").toLowerCase();
-                Object scr = a.get("score");
+                Map<String, Object> analise = analises.get(i);
+                label = Objects.toString(analise.get("label"), "neutral").toLowerCase();
+                Object scr = analise.get("score");
                 if (scr != null) {
                     try {
                         score = Double.parseDouble(scr.toString());
-                    } catch (NumberFormatException ignored) {}
+                    } catch (NumberFormatException ignored) {
+                        log.warn("⚠️ Score inválido do Flask: {}", scr);
+                    }
                 }
             }
 
-            Item item = new Item();
-            item.setTitle(text.substring(0, Math.min(text.length(), 80)) + "...");
-            item.setText(text);
-            item.setUrl(tweetUrl);
-            item.setSourceName("Twitter");
-            item.setSentimentLabel(label);
-            item.setSentimentScore(score);
-            item.setPublishedAt(LocalDateTime.now());
-            item.setAnalyzedAt(LocalDateTime.now());
-            itemRepository.save(item);
+            // 🔹 Criar URL do tweet
+            String tweetUrl = "https://x.com/i/web/status/" + tweetId;
 
-            Sentiment sentiment = Sentiment.builder()
-                    .item(item)
-                    .label(label)
-                    .score(score)
-                    .model("BERTweet-Sentiment")
-                    .createdAt(LocalDateTime.now())
+            // 🔹 CRIAR ITEM COM TODOS OS CAMPOS
+            Item item = Item.builder()
+                    .title(texto.length() > 80 ? texto.substring(0, 77) + "..." : texto)
+                    .text(texto)
+                    .url(tweetUrl)
+                    .sourceName("Twitter")
+                    .sentimentLabel(label)
+                    .sentimentScore(score)
+                    .publishedAt(parseTwitterDate(tweetData.get("created_at")))
+                    .analyzedAt(LocalDateTime.now())
+                    .isTweet(true)          // 🔹 CAMPO NOVO
+                    .tweetId(tweetId)       // 🔹 CAMPO NOVO
                     .build();
-            sentimentRepository.save(sentiment);
 
-            log.info("🐦 TweetData recebido: {}", tweetData);
+            try {
+                // 🔹 Salvar Item primeiro
+                Item savedItem = itemRepository.save(item);
+                log.debug("💾 Item salvo com ID: {}", savedItem.getId());
 
-            log.info("💾 Tweet analisado: {} ({}) → {}", label, score, tweetUrl);
+                // 🔹 Criar Sentiment associado
+                Sentiment sentiment = Sentiment.builder()
+                        .item(savedItem)
+                        .label(label)
+                        .score(score)
+                        .model("Twitter-RoBERTa-Crypto")
+                        .createdAt(LocalDateTime.now())
+                        .build();
+
+                sentimentRepository.save(sentiment);
+                savedCount++;
+                
+                log.info("✅ Tweet {} salvo: {} ({})", tweetId, label.toUpperCase(), score);
+                
+            } catch (Exception e) {
+                log.error("❌ Erro ao salvar tweet {}: {}", tweetId, e.getMessage());
+            }
         }
 
+        log.info("🏁 Persistência concluída: {}/{} tweets salvos", savedCount, tweets.size());
+
     } catch (Exception e) {
-        log.error("❌ Erro ao buscar/analisar tweets: {}", e.getMessage());
+        log.error("❌ Erro crítico em fetchAndStoreTweets: {}", e.getMessage(), e);
     }
 }
+
+// 🔹 Método auxiliar para parse de data do Twitter
+private LocalDateTime parseTwitterDate(Object dateObj) {
+    if (dateObj == null) return LocalDateTime.now();
+    
+    try {
+        String dateStr = dateObj.toString();
+        // Formato: 2024-01-15T10:30:00.000Z
+        return LocalDateTime.parse(dateStr.replace("Z", ""), 
+            DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS"));
+    } catch (Exception e) {
+        log.warn("⚠️ Erro ao parse data do tweet, usando data atual");
+        return LocalDateTime.now();
+    }
+}
+
 
 
 // ============================================================
