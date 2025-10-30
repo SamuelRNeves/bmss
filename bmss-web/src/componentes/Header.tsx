@@ -1,4 +1,4 @@
-import { RefreshCcw, Search } from "lucide-react";
+import { RefreshCcw, Search, UserPlus } from "lucide-react";
 import { getFeed, getSentimentos } from "../lib/api";
 import { useState, useEffect } from "react";
 import axios from "axios";
@@ -62,7 +62,10 @@ export default function Header() {
 
   return (
     <header className="flex flex-col md:flex-row md:items-center md:justify-between mb-8 gap-4">
-      <h1 className="text-2xl font-bold text-gray-100">Dashboard de Sentimento</h1>
+      <div className="flex flex-col">
+        <h1 className="text-2xl font-bold text-gray-100">Dashboard de Sentimento</h1>
+        <p className="text-sm text-gray-400">Análise em tempo real do mercado Bitcoin</p>
+      </div>
 
       <div className="flex flex-wrap gap-3">
         <button
@@ -82,6 +85,14 @@ export default function Header() {
           <Search size={18} />
           {loading ? "Analisando..." : "Analisar Últimas 5"}
         </button>
+
+        <a
+          href="/cadastrar"
+          className="flex items-center gap-2 bg-yellow-500 hover:bg-yellow-400 text-black font-medium px-4 py-2 rounded-lg transition"
+        >
+          <UserPlus size={18} />
+          Cadastrar
+        </a>
       </div>
 
       {message && (

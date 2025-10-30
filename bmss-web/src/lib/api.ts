@@ -168,8 +168,70 @@ function generateRealisticTrends() {
 }
 
 
+// lib/api.ts - Adicionar esta função
 
-// lib/api.ts - Adicione esta função
+export interface RegisterData {
+  name: string;
+  email: string;
+  
+}
+
+export interface RegisterResponse {
+  success: boolean;
+  message?: string;
+  error?: string;
+  token?: string;
+  user?: {
+    id: number;
+    name: string;
+    email: string;
+  };
+}
+
+export async function cadastrarUsuario(data: RegisterData): Promise<RegisterResponse> {
+  try {
+    console.group("📝 Cadastrando usuário...");
+    console.info("Dados do cadastro:", { ...data, password: "***" });
+
+    const response = await api.post("/auth/register", data);
+    
+    console.info("✅ Cadastro realizado com sucesso:", response.data);
+    console.groupEnd();
+
+    return {
+      success: true,
+      message: response.data.message,
+      token: response.data.token,
+      user: response.data.user
+    };
+  } catch (error: any) {
+    console.error("❌ Erro no cadastro:", error.response?.data || error.message);
+    
+    // Tratar diferentes tipos de erro
+    if (error.response?.data?.error) {
+      return {
+        success: false,
+        error: error.response.data.error
+      };
+    } else if (error.code === "ECONNABORTED") {
+      return {
+        success: false,
+        error: "Tempo de conexão esgotado. Tente novamente."
+      };
+    } else if (error.response?.status === 400) {
+      return {
+        success: false,
+        error: "Dados inválidos. Verifique as informações."
+      };
+    } else {
+      return {
+        success: false,
+        error: "Erro de conexão com o servidor. Tente novamente."
+      };
+    }
+  }
+}
+
 export async function getBitcoinPrice(): Promise<ApiResponse<any>> {
   try {
     const res = await api.get("/crypto/bitcoin");
