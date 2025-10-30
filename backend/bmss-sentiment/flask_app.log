@@ -17,3 +17,22 @@
 2025-10-29 15:47:38,640 - werkzeug - INFO - 127.0.0.1 - - [29/Oct/2025 15:47:38] "POST /analyze-batch HTTP/1.1" 200 -
 2025-10-29 15:47:54,243 - werkzeug - INFO - 127.0.0.1 - - [29/Oct/2025 15:47:54] "POST /analyze-tweets HTTP/1.1" 200 -
 2025-10-29 17:07:50,797 - werkzeug - INFO - 127.0.0.1 - - [29/Oct/2025 17:07:50] "POST /analyze-batch HTTP/1.1" 200 -
+2025-10-29 18:58:06,728 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.18.2:5000
+2025-10-29 18:58:06,728 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2025-10-29 19:06:30,539 - werkzeug - INFO - 127.0.0.1 - - [29/Oct/2025 19:06:30] "POST /analyze-tweets HTTP/1.1" 200 -
+2025-10-29 19:14:44,936 - werkzeug - INFO - 127.0.0.1 - - [29/Oct/2025 19:14:44] "POST /analyze-batch HTTP/1.1" 200 -
+2025-10-29 22:03:35,742 - werkzeug - INFO - 127.0.0.1 - - [29/Oct/2025 22:03:35] "POST /analyze-tweets HTTP/1.1" 200 -
+2025-10-29 22:04:26,373 - werkzeug - INFO - 127.0.0.1 - - [29/Oct/2025 22:04:26] "POST /analyze-batch HTTP/1.1" 200 -
+2025-10-29 22:05:11,078 - werkzeug - INFO - 127.0.0.1 - - [29/Oct/2025 22:05:11] "POST /analyze-batch HTTP/1.1" 200 -
+2025-10-29 22:20:55,158 - werkzeug - INFO - 127.0.0.1 - - [29/Oct/2025 22:20:55] "POST /analyze-batch HTTP/1.1" 200 -
+2025-10-29 22:21:16,751 - werkzeug - INFO - 127.0.0.1 - - [29/Oct/2025 22:21:16] "POST /analyze-tweets HTTP/1.1" 200 -
+2025-10-29 22:23:35,039 - werkzeug - INFO - 127.0.0.1 - - [29/Oct/2025 22:23:35] "POST /analyze-batch HTTP/1.1" 200 -
+2025-10-29 22:34:48,168 - werkzeug - INFO - 127.0.0.1 - - [29/Oct/2025 22:34:48] "POST /analyze-batch HTTP/1.1" 200 -
+2025-10-29 22:50:42,552 - werkzeug - INFO - 127.0.0.1 - - [29/Oct/2025 22:50:42] "POST /analyze-tweets HTTP/1.1" 200 -
+2025-10-29 22:50:59,507 - werkzeug - INFO - 127.0.0.1 - - [29/Oct/2025 22:50:59] "POST /analyze-batch HTTP/1.1" 200 -
+2025-10-29 23:06:39,775 - werkzeug - INFO - 127.0.0.1 - - [29/Oct/2025 23:06:39] "POST /analyze-tweets HTTP/1.1" 200 -
+2025-10-29 23:07:00,272 - werkzeug - INFO - 127.0.0.1 - - [29/Oct/2025 23:07:00] "POST /analyze-batch HTTP/1.1" 200 -
+2025-10-29 23:08:45,590 - werkzeug - INFO - 127.0.0.1 - - [29/Oct/2025 23:08:45] "POST /analyze-batch HTTP/1.1" 200 -
