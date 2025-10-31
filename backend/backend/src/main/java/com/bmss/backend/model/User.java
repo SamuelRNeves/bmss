@@ -19,14 +19,16 @@ public class User {
     @Column(unique = true, nullable = false)
     private String email;
 
-    @Column(name = "password_hash") // Remover nullable = false
-    private String passwordHash; // Agora pode ser null
+    @Column(name = "password_hash")
+    private String passwordHash;
 
     @ManyToOne
     @JoinColumn(name = "role_id")
     private Role role;
 
+    @Column(name = "notification_preference")
+    private String notificationPreference = "diario";
+
     @Column(name = "created_at")
     private LocalDateTime createdAt = LocalDateTime.now();
 }
-

@@ -21,7 +21,14 @@ public class AuthController {
     }
 
     @PostMapping("/register")
-    public ResponseEntity<?> register(@RequestBody RegisterRequest request) {
-        return authService.register(request);
-    }
+public ResponseEntity<?> register(@RequestBody RegisterRequest request) {
+    System.out.println("=== DEBUG CADASTRO ===");
+    System.out.println("Nome recebido: " + request.getName());
+    System.out.println("Email recebido: " + request.getEmail());
+    System.out.println("Preferência recebida: " + request.getNotificationPreference());
+    System.out.println("=== FIM DEBUG ===");
+    
+    return authService.register(request);
 }
+}
+

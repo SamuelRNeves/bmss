@@ -36,9 +36,13 @@ api.interceptors.response.use(
   }
 );
 
-// =====================================================
-// 📦 Tipo de retorno padrão
-// =====================================================
+export interface RegisterData {
+  name: string;
+  email: string;
+  notificationPreference?: string;
+}
+
+
 interface ApiResponse<T> {
   data: T | null;
   error: string | null;
@@ -46,9 +50,7 @@ interface ApiResponse<T> {
   timestamp?: string;
 }
 
-// =====================================================
-// 🧩 Sentimento e Tendência - CORRIGIDOS
-// =====================================================
+
 export async function getSentimentos(): Promise<ApiResponse<any>> {
   try {
     console.group("📊 Buscando KPIs de Sentimento...");
@@ -135,6 +137,8 @@ export async function getTendencias(): Promise<ApiResponse<any>> {
   }
 }
 
+
+
 // 🔹 Gerador de tendências realistas para fallback
 function generateRealisticTrends() {
   const trends = [];
@@ -191,9 +195,13 @@ export interface RegisterResponse {
 export async function cadastrarUsuario(data: RegisterData): Promise<RegisterResponse> {
   try {
     console.group("📝 Cadastrando usuário...");
-    console.info("Dados do cadastro:", { ...data, password: "***" });
+    console.info("Dados do cadastro:", data);
 
-    const response = await api.post("/auth/register", data);
+    const response = await api.post("/auth/register", data, {
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
     
     console.info("✅ Cadastro realizado com sucesso:", response.data);
     console.groupEnd();
@@ -201,11 +209,19 @@ export async function cadastrarUsuario(data: RegisterData): Promise<RegisterResp
     return {
       success: true,
       message: response.data.message,
-      token: response.data.token,
       user: response.data.user
     };
   } catch (error: any) {
-    console.error("❌ Erro no cadastro:", error.response?.data || error.message);
+    console.error("❌ Erro detalhado no cadastro:", error);
+    
+    // Log mais detalhado
+    if (error.response) {
+      console.error("📊 Resposta do servidor:", {
+        status: error.response.status,
+        data: error.response.data,
+        headers: error.response.headers
+      });
+    }
     
     // Tratar diferentes tipos de erro
     if (error.response?.data?.error) {
@@ -221,12 +237,17 @@ export async function cadastrarUsuario(data: RegisterData): Promise<RegisterResp
     } else if (error.response?.status === 400) {
       return {
         success: false,
-        error: "Dados inválidos. Verifique as informações."
+        error: "Dados inválidos enviados ao servidor."
+      };
+    } else if (error.response?.status === 500) {
+      return {
+        success: false,
+        error: "Erro interno do servidor. Tente novamente mais tarde."
       };
     } else {
       return {
         success: false,
-        error: "Erro de conexão com o servidor. Tente novamente."
+        error: "Erro de conexão com o servidor. Verifique sua internet."
       };
     }
   }
