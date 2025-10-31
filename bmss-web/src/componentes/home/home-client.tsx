@@ -12,6 +12,10 @@ import { ToastNotifier, showToast } from "@/componentes/notifications/toast-noti
 import { SentimentBadge } from "@/componentes/status/sentiment-badge";
 import { Newspaper, TrendingUp, TrendingDown, Twitter, BarChart3, RefreshCw, Bell } from "lucide-react";
 import { useState, useEffect } from "react";
+import BitcoinHistoricoChart from "../charts/BitcoinHistoricoChart";
+import BitcoinHistoricoCompleto from "../charts/BitcoinHistoricoCompleto";
+import BitcoinPriceSafe from "../BitcoinPriceSafe";
+import PriceChartSafe from "../charts/PriceChartSafe";
 
 export default function HomeClient() {
   const [stats, setStats] = useState({
@@ -135,7 +139,7 @@ export default function HomeClient() {
 
         {/* Conteúdo Principal (mantido igual) */}
         <div className="mb-8">
-          <BitcoinPrice />
+          <BitcoinPriceSafe />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -169,6 +173,13 @@ export default function HomeClient() {
           />
         </div>
 
+
+
+ 
+
+
+
+
         {/* Gráficos e Conteúdo */}
         <div className="mb-8">
           <div className="flex items-center gap-2 mb-6">
@@ -188,10 +199,16 @@ export default function HomeClient() {
           </div>
           
           <div className="grid grid-cols-1 gap-8">
-            <PriceChart />
+          <PriceChartSafe />
+
           </div>
         </div>
 
+
+       
+    <BitcoinHistoricoCompleto className="mt-6" />
+
+            <br />
         <div className="mb-12">
           <NewsFeed />
         </div>
