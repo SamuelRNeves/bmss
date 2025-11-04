@@ -1,0 +1,8 @@
+[build]
+builder = "maven"
+
+[deploy]
+startCommand = "java -jar target/backend-0.0.1-SNAPSHOT.jar"
+
+[env]
+JAVA_VERSION = "17"
