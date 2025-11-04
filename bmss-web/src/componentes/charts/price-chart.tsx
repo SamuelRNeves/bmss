@@ -33,7 +33,7 @@ interface PriceData {
 
 interface BitcoinPriceData {
   usd: number;
-  brl: number;
+  brl: number | null;
   change24h: number;
   success: boolean;
   source: string;
@@ -48,49 +48,50 @@ export function PriceChart() {
   // Buscar preço atual do Bitcoin
   const fetchBitcoinPrice = async () => {
     try {
-      const response = await fetch('http://localhost:8080/api/v1/crypto/bitcoin');
-      
-      if (!response.ok) {
-        throw new Error(`Erro HTTP: ${response.status}`);
+      const { getBitcoin24h } = await import('@/lib/api');
+      const resultado = await getBitcoin24h();
+
+      if (!resultado.data) {
+        throw new Error(resultado.error || 'Dados indisponíveis');
       }
-      
-      const data = await response.json();
-      setCurrentBitcoinData(data);
-      
-      // Adicionar ao histórico
-      const newPricePoint: PriceData = {
-        time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-        price: data.usd
-      };
-      
-      setPriceData(prev => {
-        const newData = [...prev, newPricePoint];
-        // Manter apenas os últimos 12 pontos (2 horas se atualizar a cada 10 min)
-        return newData.slice(-12);
+
+      const { prices, currentPriceUSD, currentPriceBRL, change24h, source, lastUpdated } = resultado.data;
+
+      const latestPrices = prices.slice(-8).map((item: any) => ({
+        time: item.time,
+        price: item.price,
+      }));
+
+      setPriceData(latestPrices);
+      setCurrentBitcoinData({
+        usd: currentPriceUSD,
+        brl: currentPriceBRL,
+        change24h: Number(change24h),
+        success: true,
+        source,
+        lastUpdated,
       });
-      
     } catch (error) {
       console.error('Erro ao buscar preço do Bitcoin:', error);
-      
-      // Fallback com dados simulados baseados em variação realista
+
       const mockPrice = 67432 + (Math.random() * 2000 - 1000);
       const newPricePoint: PriceData = {
         time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-        price: mockPrice
+        price: mockPrice,
       };
-      
+
       setPriceData(prev => {
         const newData = [...prev, newPricePoint];
         return newData.slice(-12);
       });
-      
+
       setCurrentBitcoinData({
         usd: mockPrice,
-        brl: mockPrice * 5.2, // Conversão aproximada
-        change24h: (Math.random() * 10 - 5), // Variação entre -5% e +5%
+        brl: mockPrice * 5.2,
+        change24h: (Math.random() * 10 - 5),
         success: false,
-        source: "Mock Data",
-        lastUpdated: new Date().toISOString()
+        source: 'Fallback',
+        lastUpdated: new Date().toISOString(),
       });
     } finally {
       setIsLoading(false);
@@ -107,28 +108,7 @@ export function PriceChart() {
     return () => clearInterval(interval);
   }, []);
 
-  // Inicializar com alguns dados se estiver vazio
-  useEffect(() => {
-    if (priceData.length === 0 && currentBitcoinData) {
-      const initialData: PriceData[] = [];
-      const basePrice = currentBitcoinData.usd;
-      const now = new Date();
-      
-      // Criar dados das últimas 2 horas
-      for (let i = 11; i >= 0; i--) {
-        const time = new Date(now.getTime() - (i * 10 * 60000)); // 10 minutos entre pontos
-        const variation = (Math.random() - 0.5) * 0.02; // Variação de ±1%
-        initialData.push({
-          time: time.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-          price: basePrice * (1 - variation * i/12) // Tendência suave
-        });
-      }
-      
-      setPriceData(initialData);
-    }
-  }, [currentBitcoinData, priceData.length]);
-
-  if (isLoading || priceData.length === 0) {
+  if (isLoading || priceData.length === 0 || !currentBitcoinData) {
     return (
       <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6">
         <div className="animate-pulse">
@@ -140,8 +120,8 @@ export function PriceChart() {
     );
   }
 
-  const currentPrice = priceData.length > 0 ? priceData[priceData.length - 1].price : 0;
-  const startPrice = priceData.length > 0 ? priceData[0].price : 0;
+  const currentPrice = priceData[priceData.length - 1]?.price ?? 0;
+  const startPrice = priceData[0]?.price ?? 0;
   const priceChange = currentPrice - startPrice;
   const percentageChange = startPrice > 0 ? (priceChange / startPrice) * 100 : 0;
   const isPositive = percentageChange > 0;
@@ -293,7 +273,9 @@ export function PriceChart() {
           <div>
             <span className="block text-gray-500">Variação 24h (API):</span>
             <span className={currentBitcoinData?.change24h && currentBitcoinData.change24h > 0 ? 'text-green-400' : 'text-red-400'}>
-              {currentBitcoinData?.change24h ? `${currentBitcoinData.change24h > 0 ? '+' : ''}${currentBitcoinData.change24h.toFixed(2)}%` : 'N/A'}
+              {typeof currentBitcoinData?.change24h === 'number'
+                ? `${currentBitcoinData.change24h > 0 ? '+' : ''}${currentBitcoinData.change24h.toFixed(2)}%`
+                : 'N/A'}
             </span>
           </div>
           <div>
