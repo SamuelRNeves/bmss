@@ -3,12 +3,16 @@ package com.bmss.backend.service;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestTemplate;
 
 import java.time.Instant;
@@ -39,12 +43,19 @@ public class CryptoService {
 
     private final RestTemplate restTemplate;
     private final Map<String, CacheEntry> cache = new ConcurrentHashMap<>();
+    private final String coinGeckoApiKey;
+    private final String coinGeckoHeaderName;
+    private boolean coinGeckoWarningLogged = false;
 
-    public CryptoService(RestTemplateBuilder restTemplateBuilder) {
+    public CryptoService(RestTemplateBuilder restTemplateBuilder,
+                         @Value("${COINGECKO_API_KEY:}") String coinGeckoApiKey,
+                         @Value("${COINGECKO_API_KEY_HEADER:}") String coinGeckoApiKeyHeader) {
         this.restTemplate = restTemplateBuilder
                 .setConnectTimeout(java.time.Duration.ofSeconds(10))
                 .setReadTimeout(java.time.Duration.ofSeconds(10))
                 .build();
+        this.coinGeckoApiKey = coinGeckoApiKey != null ? coinGeckoApiKey.trim() : "";
+        this.coinGeckoHeaderName = resolveCoinGeckoHeaderName(coinGeckoApiKeyHeader, this.coinGeckoApiKey);
     }
 
     @PostConstruct
@@ -60,9 +71,9 @@ public class CryptoService {
         log.info("⏱️ Atualizando caches de dados do Bitcoin a partir da Binance...");
         refreshCache("price", this::buildPriceResponse, this::buildPriceFallbackResponse);
         refreshCache("24h", this::build24hResponse, this::build24hFallbackResponse);
-        refreshCache("history_30", () -> buildHistoryResponse(30), this::buildHistoryFallbackResponse);
-        refreshCache("history_365", () -> buildHistoryResponse(365), this::buildHistoryFallbackResponse);
-        refreshCache("history_full", this::buildFullHistoryResponse, this::buildHistoryFallbackResponse);
+        refreshCache("history_30", () -> buildHistoryResponse(30), () -> buildHistoryFallbackResponse(30));
+        refreshCache("history_365", () -> buildHistoryResponse(365), () -> buildHistoryFallbackResponse(365));
+        refreshCache("history_full", this::buildFullHistoryResponse, () -> buildHistoryFallbackResponse(Integer.MAX_VALUE));
     }
 
     private void refreshCache(String key, Supplier<Map<String, Object>> fetcher, Supplier<Map<String, Object>> fallback) {
@@ -95,11 +106,11 @@ public class CryptoService {
 
     public Map<String, Object> getBitcoinHistorico(int dias) {
         String cacheKey = "history_" + dias;
-        return getOrFetch(cacheKey, () -> buildHistoryResponse(dias), this::buildHistoryFallbackResponse);
+        return getOrFetch(cacheKey, () -> buildHistoryResponse(dias), () -> buildHistoryFallbackResponse(dias));
     }
 
     public Map<String, Object> getBitcoinHistoricoCompleto() {
-        return getOrFetch("history_full", this::buildFullHistoryResponse, this::buildHistoryFallbackResponse);
+        return getOrFetch("history_full", this::buildFullHistoryResponse, () -> buildHistoryFallbackResponse(Integer.MAX_VALUE));
     }
 
     private Map<String, Object> getOrFetch(String key,
@@ -266,6 +277,17 @@ public class CryptoService {
     // 🔹 Fallbacks
     // ============================================================
     private Map<String, Object> buildPriceFallbackResponse() {
+        try {
+            Map<String, Object> data = tryCoinGeckoPrice();
+            log.info("✅ Utilizando dados de preço do fallback CoinGecko.");
+            return data;
+        } catch (Exception ex) {
+            log.warn("⚠️ Falha ao buscar preço na CoinGecko: {}", ex.getMessage());
+        }
+        return buildStaticPriceFallbackResponse();
+    }
+
+    private Map<String, Object> buildStaticPriceFallbackResponse() {
         Map<String, Object> data = new HashMap<>();
         double fallbackPriceUsd = 64500.0;
         data.put("price", fallbackPriceUsd);
@@ -282,6 +304,17 @@ public class CryptoService {
     }
 
     private Map<String, Object> build24hFallbackResponse() {
+        try {
+            Map<String, Object> data = tryCoinGecko24h();
+            log.info("✅ Utilizando dados de 24h do fallback CoinGecko.");
+            return data;
+        } catch (Exception ex) {
+            log.warn("⚠️ Falha ao buscar dados 24h na CoinGecko: {}", ex.getMessage());
+        }
+        return buildStatic24hFallbackResponse();
+    }
+
+    private Map<String, Object> buildStatic24hFallbackResponse() {
         Map<String, Object> data = new HashMap<>();
         List<Map<String, Object>> prices = new ArrayList<>();
         double basePrice = 64500.0;
@@ -309,7 +342,18 @@ public class CryptoService {
         return data;
     }
 
-    private Map<String, Object> buildHistoryFallbackResponse() {
+    private Map<String, Object> buildHistoryFallbackResponse(int dias) {
+        try {
+            Map<String, Object> data = tryCoinGeckoHistory(dias);
+            log.info("✅ Utilizando histórico do fallback CoinGecko ({} dias).", dias >= Integer.MAX_VALUE ? "max" : dias);
+            return data;
+        } catch (Exception ex) {
+            log.warn("⚠️ Falha ao buscar histórico na CoinGecko: {}", ex.getMessage());
+        }
+        return buildStaticHistoryFallbackResponse();
+    }
+
+    private Map<String, Object> buildStaticHistoryFallbackResponse() {
         Map<String, Object> resultado = new HashMap<>();
         resultado.put("isFallback", true);
 
@@ -432,6 +476,187 @@ public class CryptoService {
         long lastClose = toLong(klines.get(klines.size() - 1).get(6));
         payload.put("lastUpdated", ISO_FORMATTER.format(Instant.ofEpochMilli(lastClose)));
         return payload;
+    }
+
+    private Map<String, Object> tryCoinGeckoPrice() {
+        String url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd,brl&include_24hr_change=true&include_last_updated_at=true";
+
+        try {
+            HttpEntity<Void> request = new HttpEntity<>(buildCoinGeckoHeaders());
+            ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.GET, request, Map.class);
+
+            Map<String, Object> body = response.getBody();
+            if (body == null || !body.containsKey("bitcoin")) {
+                throw new IllegalStateException("Resposta inválida da CoinGecko");
+            }
+
+            Map<String, Object> bitcoin = (Map<String, Object>) body.get("bitcoin");
+            double usdPrice = toDouble(bitcoin.get("usd"));
+            Double brlPrice = bitcoin.get("brl") != null ? toDouble(bitcoin.get("brl")) : null;
+            double change = bitcoin.get("usd_24h_change") != null ? toDouble(bitcoin.get("usd_24h_change")) : 0.0;
+            long updatedAt = bitcoin.get("last_updated_at") != null ? TimeUnit.SECONDS.toMillis(toLong(bitcoin.get("last_updated_at"))) : System.currentTimeMillis();
+
+            Map<String, Object> data = new HashMap<>();
+            data.put("price", usdPrice);
+            data.put("priceUSD", usdPrice);
+            data.put("priceBRL", brlPrice);
+            data.put("change24h", String.format(Locale.US, "%.2f", change));
+            data.put("lastUpdated", ISO_FORMATTER.format(Instant.ofEpochMilli(updatedAt)));
+            data.put("currency", "USD");
+            data.put("priceFormatted", formatCurrency(usdPrice, "USD"));
+            data.put("priceFormattedBRL", brlPrice != null ? formatCurrency(brlPrice, "BRL") : null);
+            data.put("source", "CoinGecko");
+            data.put("isFallback", false);
+            return data;
+        } catch (HttpStatusCodeException e) {
+            if (e.getStatusCode().value() == 401) {
+                throw new IllegalStateException("CoinGecko retornou 401 - configure sua chave de API.");
+            }
+            throw new IllegalStateException("CoinGecko: " + e.getStatusCode().value() + " - " + e.getStatusText());
+        }
+    }
+
+    private Map<String, Object> tryCoinGecko24h() {
+        String url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=1&interval=hourly";
+
+        try {
+            HttpEntity<Void> request = new HttpEntity<>(buildCoinGeckoHeaders());
+            ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.GET, request, Map.class);
+
+            Map<String, Object> body = response.getBody();
+            if (body == null || !body.containsKey("prices")) {
+                throw new IllegalStateException("Resposta inválida da CoinGecko");
+            }
+
+            List<List<Object>> pricesRaw = toObjectList(body.get("prices"));
+            if (pricesRaw.isEmpty()) {
+                throw new IllegalStateException("Histórico 24h vazio retornado pela CoinGecko");
+            }
+
+            int startIndex = Math.max(0, pricesRaw.size() - 24);
+            List<Map<String, Object>> prices = new ArrayList<>();
+            for (int i = startIndex; i < pricesRaw.size(); i++) {
+                List<Object> entry = pricesRaw.get(i);
+                long timestamp = toLong(entry.get(0));
+                double price = toDouble(entry.get(1));
+
+                Map<String, Object> point = new HashMap<>();
+                point.put("timestamp", timestamp);
+                point.put("price", roundTwoDecimals(price));
+                point.put("time", LocalDateTime.ofInstant(Instant.ofEpochMilli(timestamp), ZoneId.of("America/Sao_Paulo"))
+                        .format(DateTimeFormatter.ofPattern("HH:mm")));
+                point.put("priceFormatted", formatCurrency(price, "USD"));
+                prices.add(point);
+            }
+
+            double firstPrice = toDouble(pricesRaw.get(startIndex).get(1));
+            double lastPrice = toDouble(pricesRaw.get(pricesRaw.size() - 1).get(1));
+            double changePercent = firstPrice != 0 ? ((lastPrice - firstPrice) / firstPrice) * 100 : 0.0;
+            long lastTimestamp = toLong(pricesRaw.get(pricesRaw.size() - 1).get(0));
+
+            Map<String, Object> data = new HashMap<>();
+            data.put("prices", prices);
+            data.put("currentPriceUSD", roundTwoDecimals(lastPrice));
+            data.put("currentPriceBRL", null);
+            data.put("change24h", String.format(Locale.US, "%.2f", changePercent));
+            data.put("source", "CoinGecko");
+            data.put("isFallback", false);
+            data.put("lastUpdated", ISO_FORMATTER.format(Instant.ofEpochMilli(lastTimestamp)));
+            return data;
+        } catch (HttpStatusCodeException e) {
+            if (e.getStatusCode().value() == 401) {
+                throw new IllegalStateException("CoinGecko retornou 401 - configure sua chave de API.");
+            }
+            throw new IllegalStateException("CoinGecko: " + e.getStatusCode().value() + " - " + e.getStatusText());
+        }
+    }
+
+    private Map<String, Object> tryCoinGeckoHistory(int dias) {
+        String daysParam = dias >= Integer.MAX_VALUE ? "max" : String.valueOf(Math.max(dias, 1));
+        String url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=" + daysParam;
+
+        try {
+            HttpEntity<Void> request = new HttpEntity<>(buildCoinGeckoHeaders());
+            ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.GET, request, Map.class);
+
+            Map<String, Object> body = response.getBody();
+            if (body == null || !body.containsKey("prices")) {
+                throw new IllegalStateException("Resposta inválida da CoinGecko");
+            }
+
+            List<List<Object>> pricesRaw = toObjectList(body.get("prices"));
+            if (pricesRaw.isEmpty()) {
+                throw new IllegalStateException("Histórico vazio retornado pela CoinGecko");
+            }
+
+            List<List<Object>> volumesRaw = toObjectList(body.get("total_volumes"));
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("prices", convertToNumberPairs(pricesRaw));
+            if (!volumesRaw.isEmpty()) {
+                payload.put("total_volumes", convertToNumberPairs(volumesRaw));
+            }
+
+            long lastTimestamp = toLong(pricesRaw.get(pricesRaw.size() - 1).get(0));
+            payload.put("lastUpdated", ISO_FORMATTER.format(Instant.ofEpochMilli(lastTimestamp)));
+            payload.put("source", "CoinGecko");
+            payload.put("isFallback", false);
+            return payload;
+        } catch (HttpStatusCodeException e) {
+            if (e.getStatusCode().value() == 401) {
+                throw new IllegalStateException("CoinGecko retornou 401 - configure sua chave de API.");
+            }
+            throw new IllegalStateException("CoinGecko: " + e.getStatusCode().value() + " - " + e.getStatusText());
+        }
+    }
+
+    private HttpHeaders buildCoinGeckoHeaders() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.add("Accept", "application/json");
+
+        if (coinGeckoApiKey != null && !coinGeckoApiKey.isBlank()) {
+            headers.add(coinGeckoHeaderName, coinGeckoApiKey);
+        } else if (!coinGeckoWarningLogged) {
+            log.warn("⚠️ COINGECKO_API_KEY não configurada. A CoinGecko pode retornar 401 Unauthorized.");
+            coinGeckoWarningLogged = true;
+        }
+
+        return headers;
+    }
+
+    private String resolveCoinGeckoHeaderName(String configuredHeader, String apiKey) {
+        if (apiKey == null || apiKey.isBlank()) {
+            return "";
+        }
+        if (configuredHeader != null && !configuredHeader.isBlank()) {
+            return configuredHeader.trim();
+        }
+        return apiKey.startsWith("CG-") ? "x-cg-demo-api-key" : "x-cg-pro-api-key";
+    }
+
+    private List<List<Object>> toObjectList(Object raw) {
+        if (!(raw instanceof List<?> list)) {
+            return Collections.emptyList();
+        }
+        List<List<Object>> converted = new ArrayList<>();
+        for (Object item : list) {
+            if (item instanceof List<?> inner) {
+                converted.add(new ArrayList<>(inner));
+            }
+        }
+        return converted;
+    }
+
+    private List<List<Number>> convertToNumberPairs(List<List<Object>> rawPoints) {
+        List<List<Number>> converted = new ArrayList<>();
+        for (List<Object> point : rawPoints) {
+            if (point.size() < 2) {
+                continue;
+            }
+            long timestamp = toLong(point.get(0));
+            double value = toDouble(point.get(1));
+            converted.add(Arrays.asList(timestamp, value));
+        }
+        return converted;
     }
 
     private Long computeStartTime(int limit, String interval) {
