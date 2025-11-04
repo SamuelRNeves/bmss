@@ -2,9 +2,14 @@ package com.bmss.backend.service;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.client.RestTemplateBuilder;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestTemplate;
 
 import java.time.LocalDateTime;
@@ -17,13 +22,22 @@ public class CryptoService {
 
     private static final Logger log = LoggerFactory.getLogger(CryptoService.class);
     private final RestTemplate restTemplate;
+    private final String coinGeckoApiKey;
+    private final String coinGeckoHeaderName;
+    private boolean coinGeckoWarningLogged = false;
     
     // Cache local por 30 segundos
     private final Map<String, CacheEntry> priceCache = new ConcurrentHashMap<>();
     private static final long CACHE_DURATION_MS = 30 * 1000; // 30 segundos
 
-    public CryptoService(RestTemplateBuilder restTemplateBuilder) {
+    public CryptoService(
+            RestTemplateBuilder restTemplateBuilder,
+            @Value("${COINGECKO_API_KEY:}") String coinGeckoApiKey,
+            @Value("${COINGECKO_API_KEY_HEADER:}") String coinGeckoApiKeyHeader
+    ) {
         this.restTemplate = restTemplateBuilder.build();
+        this.coinGeckoApiKey = coinGeckoApiKey != null ? coinGeckoApiKey.trim() : "";
+        this.coinGeckoHeaderName = resolveCoinGeckoHeaderName(coinGeckoApiKeyHeader, this.coinGeckoApiKey);
     }
 
     // ============================================================
@@ -82,26 +96,61 @@ public class CryptoService {
     // ============================================================
     // 🔹 COINGECKO (com tratamento de rate limit)
     // ============================================================
+    private String resolveCoinGeckoHeaderName(String configuredHeader, String apiKey) {
+        if (apiKey == null || apiKey.isBlank()) {
+            return "";
+        }
+
+        if (configuredHeader != null && !configuredHeader.isBlank()) {
+            return configuredHeader.trim();
+        }
+
+        return apiKey.startsWith("CG-") ? "x-cg-demo-api-key" : "x-cg-pro-api-key";
+    }
+
+    private HttpHeaders buildCoinGeckoHeaders() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.add("Accept", "application/json");
+
+        if (coinGeckoApiKey != null && !coinGeckoApiKey.isBlank()) {
+            String headerName = coinGeckoHeaderName.isBlank()
+                    ? resolveCoinGeckoHeaderName(null, coinGeckoApiKey)
+                    : coinGeckoHeaderName;
+            headers.add(headerName, coinGeckoApiKey);
+        } else if (!coinGeckoWarningLogged) {
+            log.warn("⚠️ COINGECKO_API_KEY não configurada. A CoinGecko pode retornar 401 Unauthorized.");
+            coinGeckoWarningLogged = true;
+        }
+
+        return headers;
+    }
+
     private Map<String, Object> tryCoinGecko() {
         try {
             String url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd,brl&include_24hr_change=true&include_last_updated_at=true";
-            
-            ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
-            
+
+            HttpEntity<Void> requestEntity = new HttpEntity<>(buildCoinGeckoHeaders());
+            ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.GET, requestEntity, Map.class);
+
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                 Map<String, Object> bitcoinData = (Map<String, Object>) response.getBody().get("bitcoin");
-                
+
                 Map<String, Object> result = new HashMap<>();
                 result.put("success", true);
                 result.put("usd", bitcoinData.get("usd"));
                 result.put("brl", bitcoinData.get("brl"));
                 result.put("change24h", bitcoinData.get("usd_24h_change"));
                 result.put("lastUpdated", LocalDateTime.now().toString());
-                
+
                 return result;
             }
             throw new RuntimeException("Resposta inválida da CoinGecko");
-            
+
+        } catch (HttpStatusCodeException e) {
+            if (e.getStatusCode().value() == 401) {
+                throw new RuntimeException("CoinGecko: 401 Unauthorized - verifique sua chave de API");
+            }
+            throw new RuntimeException("CoinGecko: " + e.getStatusCode().value() + " - " + e.getStatusText());
         } catch (Exception e) {
             throw new RuntimeException("CoinGecko: " + e.getMessage());
         }
