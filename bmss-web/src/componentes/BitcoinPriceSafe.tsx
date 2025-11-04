@@ -1,141 +1,164 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { TrendingUp, TrendingDown, RefreshCw, AlertTriangle } from "lucide-react";
+import { useEffect, useState } from "react";
+import { getBitcoinPrice } from "@/lib/api";
+import { Bitcoin, TrendingUp, TrendingDown, RefreshCw, WifiOff } from "lucide-react";
 
-// Interface segura com valores padrão
-interface BitcoinPriceData {
+interface BitcoinData {
   price: number;
+  priceUSD: number;
+  priceBRL: number | null;
   change24h: string;
-  priceFormatted: string;
-  isFallback: boolean;
+  lastUpdated: string;
   currency: string;
+  priceFormatted: string;
+  priceFormattedBRL: string | null;
+  source: string;
+  isFallback: boolean;
 }
 
-// Dados fallback garantidos
-const FALLBACK_DATA: BitcoinPriceData = {
-  price: 64500,
-  change24h: "2.30",
-  priceFormatted: "US$ 64.500,00",
-  isFallback: true,
-  currency: "USD"
-};
-
-export default function BitcoinPriceSafe() {
-  const [dados, setDados] = useState<BitcoinPriceData>(FALLBACK_DATA);
-  const [loading, setLoading] = useState(true);
+export function BitcoinPriceSafe() {
+  const [bitcoinData, setBitcoinData] = useState<BitcoinData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Função segura para formatar preço
-  const formatarPreco = (price: number): string => {
-    try {
-      return new Intl.NumberFormat('pt-BR', {
-        style: 'currency',
-        currency: 'USD'
-      }).format(price);
-    } catch (err) {
-      return `$${price.toLocaleString('pt-BR')}`;
-    }
-  };
 
   const carregarPreco = async () => {
     try {
-      setLoading(true);
+      setIsRefreshing(true);
       setError(null);
       
-      // Importação dinâmica para evitar problemas de build
-      const { getBitcoinPrice } = await import("@/lib/api");
       const resultado = await getBitcoinPrice();
       
       if (resultado.data) {
-        // Garantir que todos os campos existam
-        const dadosSeguros: BitcoinPriceData = {
-          price: resultado.data.price || FALLBACK_DATA.price,
-          change24h: resultado.data.change24h?.toString() || FALLBACK_DATA.change24h,
-          priceFormatted: resultado.data.priceFormatted || formatarPreco(resultado.data.price || FALLBACK_DATA.price),
-          isFallback: resultado.data.isFallback || false,
-          currency: resultado.data.currency || 'USD'
-        };
-        setDados(dadosSeguros);
+        setBitcoinData(resultado.data);
       } else {
-        setDados(FALLBACK_DATA);
-        setError(resultado.error || "Usando dados simulados");
+        setError(resultado.error || "Erro ao carregar dados do Bitcoin");
       }
-    } catch (err) {
-      console.error("Erro ao carregar preço:", err);
-      setDados(FALLBACK_DATA);
-      setError("Erro de conexão - usando dados simulados");
+    } catch (error) {
+      console.error('Erro ao buscar preço do Bitcoin:', error);
+      setError('Erro de conexão com a API');
+      
+      // Fallback local garantido
+      const fallbackData: BitcoinData = {
+        price: 67432.50,
+        priceUSD: 67432.50,
+        priceBRL: 337162.50,
+        change24h: "2.45",
+        lastUpdated: new Date().toISOString(),
+        currency: "USD",
+        priceFormatted: new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency: 'USD'
+        }).format(67432.50),
+        priceFormattedBRL: new Intl.NumberFormat('pt-BR', {
+          style: 'currency',
+          currency: 'BRL'
+        }).format(337162.50),
+        source: "Dados Locais",
+        isFallback: true
+      };
+      setBitcoinData(fallbackData);
     } finally {
-      setLoading(false);
+      setIsLoading(false);
+      setIsRefreshing(false);
     }
   };
 
   useEffect(() => {
     carregarPreco();
-    
-    const intervalo = setInterval(carregarPreco, 60000);
-    return () => clearInterval(intervalo);
+    const interval = setInterval(carregarPreco, 60000); // Atualizar a cada 1 minuto
+    return () => clearInterval(interval);
   }, []);
 
-  // Dados sempre garantidos - mesmo se loading ou error
-  const { price, change24h, priceFormatted, isFallback } = dados;
-  
-  const isPositive = parseFloat(change24h) > 0;
-  const changeColor = isPositive ? "text-green-400" : "text-red-400";
-  const ChangeIcon = isPositive ? TrendingUp : TrendingDown;
-
-  return (
-    <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-lg font-semibold text-white">Bitcoin (BTC)</h3>
-          
-          {loading ? (
-            <div className="flex items-center gap-2 mt-1">
-              <div className="animate-pulse bg-yellow-400/20 h-8 w-32 rounded"></div>
-              <div className="animate-spin">
-                <RefreshCw size={16} className="text-yellow-400" />
-              </div>
-            </div>
-          ) : (
-            <>
-              <p className="text-2xl font-bold text-yellow-400">
-                {priceFormatted}
-              </p>
-              <div className={`flex items-center gap-1 mt-1 ${changeColor}`}>
-                <ChangeIcon size={16} />
-                <span className="text-sm font-medium">
-                  {change24h}% (24h)
-                </span>
-              </div>
-            </>
-          )}
-        </div>
-        
-        <div className="flex items-center gap-3">
-          {(isFallback || error) && (
-            <span className="bg-orange-500 text-white text-xs px-2 py-1 rounded-full flex items-center gap-1">
-              <AlertTriangle size={10} />
-              {error ? "ERRO" : "CACHE"}
-            </span>
-          )}
-          <button
-            onClick={carregarPreco}
-            disabled={loading}
-            className="bg-yellow-500 hover:bg-yellow-400 disabled:bg-yellow-700 text-black p-2 rounded-lg transition"
-            title="Atualizar Preço"
-          >
-            <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
-          </button>
+  if (isLoading) {
+    return (
+      <div className="bg-gradient-to-r from-yellow-500/10 to-orange-500/10 border border-yellow-400/20 rounded-xl p-6">
+        <div className="animate-pulse">
+          <div className="h-4 bg-yellow-400/20 rounded w-1/4 mb-2"></div>
+          <div className="h-8 bg-yellow-400/20 rounded w-1/2 mb-2"></div>
+          <div className="h-4 bg-yellow-400/20 rounded w-1/3"></div>
         </div>
       </div>
-      
-      {error && !loading && (
-        <p className="text-orange-400 text-xs mt-2 flex items-center gap-1">
-          <AlertTriangle size={10} />
-          {error}
-        </p>
-      )}
+    );
+  }
+
+  if (error && !bitcoinData) {
+    return (
+      <div className="bg-gradient-to-r from-red-500/10 to-orange-500/10 border border-red-400/20 rounded-xl p-6">
+        <div className="flex items-center gap-3">
+          <WifiOff className="text-red-400" size={24} />
+          <div>
+            <p className="text-white font-semibold">Erro de Conexão</p>
+            <p className="text-gray-400 text-sm">Não foi possível conectar à API</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!bitcoinData) {
+    return (
+      <div className="bg-gradient-to-r from-yellow-500/10 to-orange-500/10 border border-yellow-400/20 rounded-xl p-6">
+        <div className="text-center text-gray-400">
+          Dados do Bitcoin não disponíveis
+        </div>
+      </div>
+    );
+  }
+
+  const isPositive = parseFloat(bitcoinData.change24h) > 0;
+
+  return (
+    <div className={`border rounded-xl p-6 transition-all duration-300 ${
+      !bitcoinData.isFallback 
+        ? 'bg-gradient-to-r from-yellow-500/10 to-orange-500/10 border-yellow-400/20 hover:border-yellow-400/40' 
+        : 'bg-gradient-to-r from-gray-500/10 to-gray-600/10 border-gray-400/20'
+    }`}>
+      <div className="flex items-center justify-between">
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-2">
+            <Bitcoin className="text-yellow-400" size={20} />
+            <span className="text-gray-400 text-sm">Bitcoin (BTC)</span>
+            <button
+              onClick={carregarPreco}
+              disabled={isRefreshing}
+              className="text-gray-400 hover:text-yellow-400 transition-colors disabled:opacity-50"
+            >
+              <RefreshCw size={14} className={isRefreshing ? "animate-spin" : ""} />
+            </button>
+            {bitcoinData.isFallback && (
+              <span className="text-xs text-yellow-400 bg-yellow-400/10 px-2 py-1 rounded flex items-center gap-1">
+                <WifiOff size={12} />
+                Offline
+              </span>
+            )}
+          </div>
+          
+          <div className="flex items-baseline gap-2 mb-1">
+            <span className="text-2xl font-bold text-white">
+              {bitcoinData.priceFormatted}
+            </span>
+            <div className={`flex items-center gap-1 text-sm ${
+              isPositive ? 'text-green-400' : 'text-red-400'
+            }`}>
+              {isPositive ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
+              <span>{Math.abs(parseFloat(bitcoinData.change24h)).toFixed(2)}%</span>
+            </div>
+          </div>
+
+          <p className="text-gray-400 text-sm">
+            {bitcoinData.priceFormattedBRL || 'R$ N/A'}
+          </p>
+        </div>
+
+        <div className="text-right">
+          <p className="text-xs text-gray-500 mb-1">Fonte: {bitcoinData.source}</p>
+          <div className={`w-3 h-3 rounded-full animate-pulse ${
+            !bitcoinData.isFallback ? 'bg-green-400' : 'bg-yellow-400'
+          }`}></div>
+        </div>
+      </div>
     </div>
   );
 }
