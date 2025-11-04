@@ -8,8 +8,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableScheduling
 public class BmssBackendApplication {
 
-        public static void main(String[] args) {
-                SpringApplication.run(BmssBackendApplication.class, args);
-        }
-
+    public static void main(String[] args) {
+        SpringApplication.run(BmssBackendApplication.class, args);
+    }
 }

@@ -1,5 +1,6 @@
 package com.bmss.backend.service;
 
+import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.web.client.RestTemplateBuilder;
@@ -46,6 +47,11 @@ public class CryptoService {
                 .build();
     }
 
+    @PostConstruct
+    public void primeCaches() {
+        refreshDailyCaches();
+    }
+
     // ============================================================
     // 🔄 Atualização agendada diariamente às 12h (horário de Brasília)
     // ============================================================
@@ -65,6 +71,12 @@ public class CryptoService {
             cache.put(key, new CacheEntry(response, System.currentTimeMillis()));
         } catch (Exception ex) {
             log.warn("⚠️ Falha ao atualizar cache '{}': {}", key, ex.getMessage());
+            CacheEntry existing = cache.get(key);
+            if (existing != null) {
+                log.info("♻️ Mantendo valor anterior do cache para '{}' após falha na atualização.", key);
+                return;
+            }
+
             Map<String, Object> fallbackResponse = wrapSuccess(fallback.get(), true);
             cache.put(key, new CacheEntry(fallbackResponse, System.currentTimeMillis()));
         }
@@ -105,6 +117,11 @@ public class CryptoService {
             return response;
         } catch (Exception ex) {
             log.warn("⚠️ Falha ao buscar '{}': {}", key, ex.getMessage());
+            if (cached != null) {
+                log.info("♻️ Retornando valor em cache anterior para '{}' após falha na atualização.", key);
+                return cached.payload;
+            }
+
             Map<String, Object> response = wrapSuccess(fallbackSupplier.get(), true);
             cache.put(key, new CacheEntry(response, now));
             return response;
