@@ -10,16 +10,24 @@ const api = axios.create({
   baseURL: BASE_URL,
 });
 
-const COINGECKO_BASE_URL = "https://api.coingecko.com/api/v3";
+function getBackendErrorMessage(error: unknown): string {
+  if (axios.isAxiosError(error)) {
+    const status = error.response?.status;
+    if (status) {
+      return `${status} - ${error.response?.statusText || "Erro ao chamar backend"}`;
+    }
 
-const coingecko = axios.create({
-  baseURL: COINGECKO_BASE_URL,
-  timeout: 10000,
-  headers: {
-    Accept: "application/json",
-    "User-Agent": "BMSS-Dashboard/1.0 (+https://github.com/)",
-  },
-});
+    if (error.message) {
+      return error.message;
+    }
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return String(error);
+}
 
 // =====================================================
 // 🧱 Interceptores globais
@@ -118,77 +126,37 @@ interface HistoricoData {
 // =====================================================
 export async function getBitcoinPrice(): Promise<ApiResponse<any>> {
   try {
-    console.group("💰 Buscando preço atual do Bitcoin (CoinGecko)...");
+    console.group("💰 Buscando preço atual do Bitcoin (Binance via backend)...");
 
-    const res = await coingecko.get("/simple/price", {
-      params: {
-        ids: "bitcoin",
-        vs_currencies: "usd,brl",
-        include_24hr_change: "true",
-        precision: 4,
-      },
-    });
+    const res = await api.get("/crypto/bitcoin");
+    const payload = res.data;
 
-    const coinData = res.data?.bitcoin;
-
-    if (!coinData || typeof coinData.usd !== "number") {
-      throw new Error("Resposta inválida da CoinGecko");
+    if (!payload?.success || !payload?.data) {
+      throw new Error(payload?.error || "Resposta inválida do backend");
     }
 
-    const priceUSD = Number(coinData.usd);
-    const priceBRL = typeof coinData.brl === "number" ? Number(coinData.brl) : null;
-    const change24hValue = typeof coinData.usd_24h_change === "number" ? coinData.usd_24h_change : 0;
-    const lastUpdated = new Date().toISOString();
+    const data = payload.data;
+    const isFallback = Boolean(payload.isFallback || data.isFallback);
+    const timestamp =
+      payload.timestamp || data.lastUpdated || new Date().toISOString();
 
-    const processedData = {
-      price: priceUSD,
-      priceUSD,
-      priceBRL,
-      change24h: change24hValue.toFixed(2),
-      lastUpdated,
-      currency: "USD",
-      priceFormatted: new Intl.NumberFormat("pt-BR", {
-        style: "currency",
-        currency: "USD",
-      }).format(priceUSD),
-      priceFormattedBRL: priceBRL
-        ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(priceBRL)
-        : null,
-      source: "CoinGecko",
-      isFallback: false,
-    };
-
-    console.info("💰 Preço processado:", processedData);
+    console.info("💰 Preço recebido:", data);
     console.groupEnd();
 
     return {
-      data: processedData,
+      data,
       error: null,
-      isFallback: false,
-      timestamp: lastUpdated,
+      isFallback,
+      timestamp,
     };
   } catch (err: any) {
-    console.error("❌ Erro ao buscar preço Bitcoin:", err.message);
+    const errorMessage = getBackendErrorMessage(err);
+    console.error("❌ Erro ao buscar preço Bitcoin:", errorMessage);
 
-    const fallbackData = {
-      price: 64500,
-      priceUSD: 64500,
-      priceBRL: null,
-      change24h: "2.30",
-      lastUpdated: new Date().toISOString(),
-      currency: "USD",
-      priceFormatted: new Intl.NumberFormat("pt-BR", {
-        style: "currency",
-        currency: "USD",
-      }).format(64500),
-      priceFormattedBRL: null,
-      source: "Fallback",
-      isFallback: true,
-    };
-
+    const fallbackData = gerarPrecoFallback();
     return {
       data: fallbackData,
-      error: err.message,
+      error: errorMessage,
       isFallback: true,
       timestamp: fallbackData.lastUpdated,
     };
@@ -201,85 +169,62 @@ export async function getBitcoinPrice(): Promise<ApiResponse<any>> {
 // =====================================================
 export async function getBitcoin24h(): Promise<ApiResponse<any>> {
   try {
-    console.group("📈 Buscando dados das últimas 24h (CoinGecko)...");
+    console.group("📈 Buscando dados das últimas 24h (Binance via backend)...");
 
-    const [priceRes, chartRes] = await Promise.all([
-      coingecko.get("/simple/price", {
-        params: {
-          ids: "bitcoin",
-          vs_currencies: "usd,brl",
-          include_24hr_change: "true",
-          precision: 4,
-        },
-      }),
-      coingecko.get("/coins/bitcoin/market_chart", {
-        params: {
-          vs_currency: "usd",
-          days: 1,
-          interval: "minute",
-          precision: 4,
-        },
-      }),
-    ]);
+    const res = await api.get("/crypto/bitcoin/24h");
+    const payload = res.data;
 
-    const coinData = priceRes.data?.bitcoin;
-    const chartData: [number, number][] = chartRes.data?.prices;
-
-    if (!Array.isArray(chartData) || chartData.length === 0) {
-      throw new Error("Dados de gráfico indisponíveis");
+    if (!payload?.success || !payload?.data) {
+      throw new Error(payload?.error || "Resposta inválida do backend");
     }
 
-    const sampledPrices = chartData
-      .filter((_, index) => index % 15 === 0 || index === chartData.length - 1)
-      .map(([timestamp, price]) => {
-        const date = new Date(timestamp);
-        return {
-          timestamp,
-          price: Number(price.toFixed(2)),
-          time: date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
-          priceFormatted: new Intl.NumberFormat("pt-BR", {
-            style: "currency",
-            currency: "USD",
-          }).format(price),
-        };
-      });
+    const data = payload.data;
+    const isFallback = Boolean(payload.isFallback || data.isFallback);
+    const timestamp =
+      payload.timestamp || data.lastUpdated || new Date().toISOString();
 
-    const firstPrice = chartData[0][1];
-    const lastPrice = chartData[chartData.length - 1][1];
-    const change24hValue = firstPrice > 0 ? ((lastPrice - firstPrice) / firstPrice) * 100 : 0;
-    const lastUpdated = new Date(chartData[chartData.length - 1][0]).toISOString();
-
-    const processedData = {
-      prices: sampledPrices,
-      currentPriceUSD: Number(lastPrice.toFixed(2)),
-      currentPriceBRL:
-        coinData && typeof coinData.brl === "number" ? Number(coinData.brl.toFixed(2)) : null,
-      change24h: change24hValue.toFixed(2),
-      source: "CoinGecko",
-      isFallback: false,
-      lastUpdated,
-    };
-
-    console.info("💹 Dados 24h processados:", processedData);
+    console.info("💹 Dados 24h recebidos:", data);
     console.groupEnd();
 
     return {
-      data: processedData,
+      data,
       error: null,
-      isFallback: false,
-      timestamp: lastUpdated,
+      isFallback,
+      timestamp,
     };
   } catch (err: any) {
-    console.error("❌ Erro ao buscar dados 24h:", err.message);
+    const errorMessage = getBackendErrorMessage(err);
+    console.error("❌ Erro ao buscar dados 24h:", errorMessage);
 
     const fallbackData = gerarDados24hFallback();
     return {
       data: fallbackData,
-      error: err.message,
+      error: errorMessage,
       isFallback: true,
       timestamp: fallbackData.lastUpdated,
     };
   }
+}
+
+function gerarPrecoFallback() {
+  const price = 64500;
+  const lastUpdated = new Date().toISOString();
+
+  return {
+    price,
+    priceUSD: price,
+    priceBRL: null,
+    change24h: "0.00",
+    lastUpdated,
+    currency: "USD",
+    priceFormatted: new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "USD",
+    }).format(price),
+    priceFormattedBRL: null,
+    source: "Fallback",
+    isFallback: true,
+  };
 }
 
 function gerarDados24hFallback() {
@@ -328,36 +273,38 @@ function gerarDados24hFallback() {
 // =====================================================
 export async function getBitcoinHistoricoCompleto(): Promise<ApiResponse<HistoricoCompletoData>> {
   try {
-    console.group("📈 Buscando histórico COMPLETO do Bitcoin (CoinGecko)...");
+    console.group("📈 Buscando histórico COMPLETO do Bitcoin (Binance via backend)...");
 
-    const res = await coingecko.get("/coins/bitcoin/market_chart", {
-      params: {
-        vs_currency: "usd",
-        days: "max",
-        interval: "daily",
-        precision: 4,
-      },
-    });
+    const res = await api.get("/crypto/bitcoin/historico-completo");
+    const payload = res.data;
 
-    const data = res.data;
+    if (!payload?.success || !payload?.data) {
+      throw new Error(payload?.error || "Resposta inválida do backend");
+    }
 
-    const processedData = processarDadosHistoricosReais(data);
+    const processedData = processarDadosHistoricosReais(payload.data);
+    const isFallback = Boolean(
+      payload.isFallback || payload.data?.isFallback || processedData.isFallback
+    );
+    const timestamp = payload.timestamp || processedData.atualizado;
+
     console.info("📈 Histórico completo processado:", processedData);
     console.groupEnd();
 
     return {
       data: processedData,
       error: null,
-      isFallback: false,
-      timestamp: processedData.atualizado,
+      isFallback,
+      timestamp,
     };
   } catch (err: any) {
-    console.error("❌ Erro ao buscar histórico completo:", err.message);
+    const errorMessage = getBackendErrorMessage(err);
+    console.error("❌ Erro ao buscar histórico completo:", errorMessage);
 
     const fallbackData = gerarDadosHistoricosRealistas();
     return {
       data: fallbackData,
-      error: err.message,
+      error: errorMessage,
       isFallback: true,
       timestamp: fallbackData.atualizado,
     };
@@ -714,19 +661,24 @@ export async function getFeed(
 // =====================================================
 // 📊 FUNÇÕES DE HISTÓRICO (30 DIAS, 1 ANO)
 // =====================================================
-export async function getBitcoinHistorico(dias: number = 30): Promise<ApiResponse<HistoricoData>> {
+export async function getBitcoinHistorico(
+  dias: number = 30
+): Promise<ApiResponse<HistoricoData>> {
   try {
-    console.group("📈 Buscando histórico Bitcoin (CoinGecko)...");
+    console.group("📈 Buscando histórico Bitcoin (Binance via backend)...");
 
-    const params = {
-      vs_currency: "usd",
-      days: dias,
-      interval: dias > 90 ? "daily" : "hourly",
-      precision: 4,
-    } as const;
+    const res = await api.get("/crypto/bitcoin/historico", { params: { dias } });
+    const payload = res.data;
 
-    const res = await coingecko.get("/coins/bitcoin/market_chart", { params });
-    const processedData = processarDadosHistoricos(res.data, dias);
+    if (!payload?.success || !payload?.data) {
+      throw new Error(payload?.error || "Resposta inválida do backend");
+    }
+
+    const processedData = processarDadosHistoricos(payload.data, dias);
+    const isFallback = Boolean(
+      payload.isFallback || payload.data?.isFallback || processedData.isFallback
+    );
+    const timestamp = payload.timestamp || processedData.atualizado;
 
     console.info("📈 Histórico processado:", processedData);
     console.groupEnd();
@@ -734,16 +686,17 @@ export async function getBitcoinHistorico(dias: number = 30): Promise<ApiRespons
     return {
       data: processedData,
       error: null,
-      isFallback: false,
-      timestamp: processedData.atualizado,
+      isFallback,
+      timestamp,
     };
   } catch (err: any) {
-    console.error("❌ Erro ao buscar histórico Bitcoin:", err.message);
+    const errorMessage = getBackendErrorMessage(err);
+    console.error("❌ Erro ao buscar histórico Bitcoin:", errorMessage);
 
     const fallbackData = gerarDadosHistoricosFallback(dias);
     return {
       data: fallbackData,
-      error: err.message,
+      error: errorMessage,
       isFallback: true,
       timestamp: fallbackData.atualizado,
     };
@@ -782,7 +735,8 @@ function processarDadosHistoricos(data: any, dias: number): HistoricoData {
       volume: Math.round(volume / 1000000)
     })),
     periodo: `${dias} dias`,
-    atualizado: new Date(prices[prices.length - 1][0]).toISOString()
+    atualizado: new Date(prices[prices.length - 1][0]).toISOString(),
+    isFallback: false
   };
 }
 
