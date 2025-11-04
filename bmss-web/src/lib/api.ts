@@ -10,16 +10,75 @@ const api = axios.create({
   baseURL: BASE_URL,
 });
 
-const COINGECKO_BASE_URL = "https://api.coingecko.com/api/v3";
+const COINGECKO_BASE_URL =
+  process.env.NEXT_PUBLIC_COINGECKO_BASE_URL ||
+  process.env.COINGECKO_BASE_URL ||
+  "https://api.coingecko.com/api/v3";
+
+const COINGECKO_API_KEY =
+  (process.env.NEXT_PUBLIC_COINGECKO_API_KEY ||
+    process.env.COINGECKO_API_KEY ||
+    "").trim();
+
+const COINGECKO_API_KEY_HEADER =
+  (process.env.NEXT_PUBLIC_COINGECKO_API_KEY_HEADER ||
+    process.env.COINGECKO_API_KEY_HEADER ||
+    "").trim();
+
+const coingeckoHeaders: Record<string, string> = {
+  Accept: "application/json",
+  "User-Agent": "BMSS-Dashboard/1.0 (+https://github.com/)",
+};
+
+if (COINGECKO_API_KEY) {
+  const resolvedHeader =
+    COINGECKO_API_KEY_HEADER ||
+    (COINGECKO_API_KEY.startsWith("CG-")
+      ? "x-cg-demo-api-key"
+      : "x-cg-pro-api-key");
+
+  coingeckoHeaders[resolvedHeader] = COINGECKO_API_KEY;
+}
 
 const coingecko = axios.create({
   baseURL: COINGECKO_BASE_URL,
   timeout: 10000,
-  headers: {
-    Accept: "application/json",
-    "User-Agent": "BMSS-Dashboard/1.0 (+https://github.com/)",
-  },
+  headers: coingeckoHeaders,
 });
+
+let coinGeckoKeyWarningShown = false;
+
+function getCoinGeckoErrorMessage(error: unknown): string {
+  if (axios.isAxiosError(error)) {
+    const status = error.response?.status;
+    if (status === 401) {
+      if (!COINGECKO_API_KEY && !coinGeckoKeyWarningShown) {
+        console.warn(
+          "⚠️ Nenhuma chave de API da CoinGecko foi configurada. Defina NEXT_PUBLIC_COINGECKO_API_KEY (front-end) ou COINGECKO_API_KEY (backend) para obter dados reais."
+        );
+        coinGeckoKeyWarningShown = true;
+      }
+
+      return !COINGECKO_API_KEY
+        ? "CoinGecko retornou 401 (chave ausente). Configure sua chave da CoinGecko nas variáveis de ambiente."
+        : "CoinGecko retornou 401 (verifique se a chave configurada é válida ou se possui acesso ao endpoint).";
+    }
+
+    if (status) {
+      return `${status} - ${error.response?.statusText || "Erro ao chamar CoinGecko"}`;
+    }
+
+    if (error.message) {
+      return error.message;
+    }
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return String(error);
+}
 
 // =====================================================
 // 🧱 Interceptores globais
@@ -168,7 +227,8 @@ export async function getBitcoinPrice(): Promise<ApiResponse<any>> {
       timestamp: lastUpdated,
     };
   } catch (err: any) {
-    console.error("❌ Erro ao buscar preço Bitcoin:", err.message);
+    const errorMessage = getCoinGeckoErrorMessage(err);
+    console.error("❌ Erro ao buscar preço Bitcoin:", errorMessage);
 
     const fallbackData = {
       price: 64500,
@@ -188,7 +248,7 @@ export async function getBitcoinPrice(): Promise<ApiResponse<any>> {
 
     return {
       data: fallbackData,
-      error: err.message,
+      error: errorMessage,
       isFallback: true,
       timestamp: fallbackData.lastUpdated,
     };
@@ -270,12 +330,13 @@ export async function getBitcoin24h(): Promise<ApiResponse<any>> {
       timestamp: lastUpdated,
     };
   } catch (err: any) {
-    console.error("❌ Erro ao buscar dados 24h:", err.message);
+    const errorMessage = getCoinGeckoErrorMessage(err);
+    console.error("❌ Erro ao buscar dados 24h:", errorMessage);
 
     const fallbackData = gerarDados24hFallback();
     return {
       data: fallbackData,
-      error: err.message,
+      error: errorMessage,
       isFallback: true,
       timestamp: fallbackData.lastUpdated,
     };
@@ -352,12 +413,13 @@ export async function getBitcoinHistoricoCompleto(): Promise<ApiResponse<Histori
       timestamp: processedData.atualizado,
     };
   } catch (err: any) {
-    console.error("❌ Erro ao buscar histórico completo:", err.message);
+    const errorMessage = getCoinGeckoErrorMessage(err);
+    console.error("❌ Erro ao buscar histórico completo:", errorMessage);
 
     const fallbackData = gerarDadosHistoricosRealistas();
     return {
       data: fallbackData,
-      error: err.message,
+      error: errorMessage,
       isFallback: true,
       timestamp: fallbackData.atualizado,
     };
@@ -738,12 +800,13 @@ export async function getBitcoinHistorico(dias: number = 30): Promise<ApiRespons
       timestamp: processedData.atualizado,
     };
   } catch (err: any) {
-    console.error("❌ Erro ao buscar histórico Bitcoin:", err.message);
+    const errorMessage = getCoinGeckoErrorMessage(err);
+    console.error("❌ Erro ao buscar histórico Bitcoin:", errorMessage);
 
     const fallbackData = gerarDadosHistoricosFallback(dias);
     return {
       data: fallbackData,
-      error: err.message,
+      error: errorMessage,
       isFallback: true,
       timestamp: fallbackData.atualizado,
     };
