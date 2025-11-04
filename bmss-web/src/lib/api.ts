@@ -10,11 +10,81 @@ const api = axios.create({
   baseURL: BASE_URL,
 });
 
+const COINGECKO_BASE_URL =
+  process.env.NEXT_PUBLIC_COINGECKO_BASE_URL ||
+  process.env.COINGECKO_BASE_URL ||
+  "https://api.coingecko.com/api/v3";
+
+const COINGECKO_API_KEY =
+  (process.env.NEXT_PUBLIC_COINGECKO_API_KEY ||
+    process.env.COINGECKO_API_KEY ||
+    "").trim();
+
+const COINGECKO_API_KEY_HEADER =
+  (process.env.NEXT_PUBLIC_COINGECKO_API_KEY_HEADER ||
+    process.env.COINGECKO_API_KEY_HEADER ||
+    "").trim();
+
+const coingeckoHeaders: Record<string, string> = {
+  Accept: "application/json",
+  "User-Agent": "BMSS-Dashboard/1.0 (+https://github.com/)",
+};
+
+if (COINGECKO_API_KEY) {
+  const resolvedHeader =
+    COINGECKO_API_KEY_HEADER ||
+    (COINGECKO_API_KEY.startsWith("CG-")
+      ? "x-cg-demo-api-key"
+      : "x-cg-pro-api-key");
+
+  coingeckoHeaders[resolvedHeader] = COINGECKO_API_KEY;
+}
+
+const coingecko = axios.create({
+  baseURL: COINGECKO_BASE_URL,
+  timeout: 10000,
+  headers: coingeckoHeaders,
+});
+
+let coinGeckoKeyWarningShown = false;
+
 function getBackendErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
     const status = error.response?.status;
     if (status) {
       return `${status} - ${error.response?.statusText || "Erro ao chamar backend"}`;
+    }
+
+    if (error.message) {
+      return error.message;
+    }
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return String(error);
+}
+
+function getCoinGeckoErrorMessage(error: unknown): string {
+  if (axios.isAxiosError(error)) {
+    const status = error.response?.status;
+    if (status === 401) {
+      if (!COINGECKO_API_KEY && !coinGeckoKeyWarningShown) {
+        console.warn(
+          "⚠️ Nenhuma chave de API da CoinGecko foi configurada. Defina NEXT_PUBLIC_COINGECKO_API_KEY (front-end) ou COINGECKO_API_KEY (backend) para obter dados reais."
+        );
+        coinGeckoKeyWarningShown = true;
+      }
+
+      return !COINGECKO_API_KEY
+        ? "CoinGecko retornou 401 (chave ausente). Configure sua chave da CoinGecko nas variáveis de ambiente."
+        : "CoinGecko retornou 401 (verifique se a chave configurada é válida ou se possui acesso ao endpoint).";
+    }
+
+    if (status) {
+      return `${status} - ${error.response?.statusText || "Erro ao chamar CoinGecko"}`;
     }
 
     if (error.message) {
@@ -162,7 +232,6 @@ export async function getBitcoinPrice(): Promise<ApiResponse<any>> {
     };
   }
 }
-
 
 // =====================================================
 // 📈 FUNÇÕES DE HISTÓRICO 24H
@@ -416,7 +485,7 @@ function gerarDadosHistoricosRealistas(): HistoricoCompletoData {
     2021: 46281.00,  // Fim de 2021 (ATH $69k)
     2022: 16547.00,  // Fim de 2022 (crypto winter)
     2023: 42850.00,  // Fim de 2023
-    2024: 64500.00,  // Atual 2024 (ETF approved)
+    2024: 64500.00,  // Atual 2024 (ETF approved),
   };
   
   Object.entries(precosHistoricosReais).forEach(([ano, price]) => {
@@ -656,7 +725,6 @@ export async function getFeed(
     };
   }
 }
-
 
 // =====================================================
 // 📊 FUNÇÕES DE HISTÓRICO (30 DIAS, 1 ANO)
