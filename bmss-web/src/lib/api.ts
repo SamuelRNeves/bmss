@@ -10,6 +10,43 @@ const api = axios.create({
   baseURL: BASE_URL,
 });
 
+const COINCAP_BASE_URL = "https://api.coincap.io/v2";
+const BLOCKCHAIN_CHARTS_URL = "https://api.blockchain.info/charts";
+
+const coincap = axios.create({
+  baseURL: COINCAP_BASE_URL,
+  timeout: 10000,
+  headers: {
+    Accept: "application/json",
+  },
+});
+
+const blockchainCharts = axios.create({
+  baseURL: BLOCKCHAIN_CHARTS_URL,
+  timeout: 10000,
+  headers: {
+    Accept: "application/json",
+  },
+});
+
+async function obterCotacaoUsdBrl(): Promise<number | null> {
+  try {
+    const res = await axios.get("https://economia.awesomeapi.com.br/json/last/USD-BRL", {
+      timeout: 8000,
+      headers: { Accept: "application/json" },
+    });
+
+    const data = res.data?.USDBRL;
+    if (!data) return null;
+
+    const valor = Number(data.bid || data.ask || data.high || data.low);
+    return Number.isFinite(valor) ? valor : null;
+  } catch (error) {
+    console.warn("⚠️ Não foi possível obter cotação USD/BRL em tempo real.");
+    return null;
+  }
+}
+
 // =====================================================
 // 🧱 Interceptores globais
 // =====================================================
@@ -107,74 +144,77 @@ interface HistoricoData {
 // =====================================================
 export async function getBitcoinPrice(): Promise<ApiResponse<any>> {
   try {
-    console.group("💰 Buscando preço atual do Bitcoin...");
-    const res = await api.get("/crypto/bitcoin");
-    
-    const data = res.data;
-    console.info("💵 Resposta completa da API:", data);
-    
-    if (data && data.success) {
-      const processedData = {
-        price: data.price || 64500, // 🔥 Fallback garantido
-        change24h: data.change24h ? Number(data.change24h).toFixed(2) : "2.30",
-        lastUpdated: data.lastUpdated,
-        currency: data.currency || 'USD',
-        priceFormatted: new Intl.NumberFormat('pt-BR', {
-          style: 'currency',
-          currency: 'USD'
-        }).format(data.price || 64500), // 🔥 Fallback garantido
-        isFallback: data.isFallback || false
-      };
-      
-      console.info("💰 Preço processado:", processedData);
-      console.groupEnd();
-      
-      return { 
-        data: processedData, 
-        error: null, 
-        isFallback: data.isFallback || false 
-      };
-    } else {
-      console.warn("⚠️ API retornou sucesso=false, usando fallback");
-      // Fallback garantido
-      const fallbackData = {
-        price: 64500,
-        change24h: "2.30",
-        lastUpdated: new Date().toISOString(),
-        currency: 'USD',
-        priceFormatted: new Intl.NumberFormat('pt-BR', {
-          style: 'currency',
-          currency: 'USD'
-        }).format(64500),
-        isFallback: true
-      };
-      
-      return { 
-        data: fallbackData, 
-        error: data?.error || "Erro na API", 
-        isFallback: true 
-      };
+    console.group("💰 Buscando preço atual do Bitcoin (CoinCap)...");
+
+    const [assetRes, cotacaoUsdBrl] = await Promise.all([
+      coincap.get("/assets/bitcoin"),
+      obterCotacaoUsdBrl(),
+    ]);
+
+    const asset = assetRes.data?.data;
+
+    if (!asset || typeof asset.priceUsd === "undefined") {
+      throw new Error("Resposta inválida da CoinCap");
     }
+
+    const priceUSD = Number(asset.priceUsd);
+    const change24hValue = Number(asset.changePercent24Hr || 0);
+    const priceBRL = cotacaoUsdBrl ? priceUSD * cotacaoUsdBrl : null;
+    const lastUpdated = assetRes.data?.timestamp
+      ? new Date(Number(assetRes.data.timestamp)).toISOString()
+      : new Date().toISOString();
+
+    const processedData = {
+      price: priceUSD,
+      priceUSD,
+      priceBRL,
+      change24h: change24hValue.toFixed(2),
+      lastUpdated,
+      currency: "USD",
+      priceFormatted: new Intl.NumberFormat("pt-BR", {
+        style: "currency",
+        currency: "USD",
+      }).format(priceUSD),
+      priceFormattedBRL: priceBRL
+        ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(priceBRL)
+        : null,
+      source: "CoinCap",
+      isFallback: false,
+    };
+
+    console.info("💰 Preço processado:", processedData);
+    console.groupEnd();
+
+    return {
+      data: processedData,
+      error: null,
+      isFallback: false,
+      timestamp: lastUpdated,
+    };
   } catch (err: any) {
     console.error("❌ Erro ao buscar preço Bitcoin:", err.message);
-    
-    // Fallback garantido
+
     const fallbackData = {
       price: 64500,
+      priceUSD: 64500,
+      priceBRL: null,
       change24h: "2.30",
       lastUpdated: new Date().toISOString(),
-      currency: 'USD',
-      priceFormatted: new Intl.NumberFormat('pt-BR', {
-        style: 'currency',
-        currency: 'USD'
+      currency: "USD",
+      priceFormatted: new Intl.NumberFormat("pt-BR", {
+        style: "currency",
+        currency: "USD",
       }).format(64500),
-      isFallback: true
+      priceFormattedBRL: null,
+      source: "Fallback",
+      isFallback: true,
     };
-    
-    return { 
-      data: fallbackData, 
-      error: err.message, 
-      isFallback: true 
+
+    return {
+      data: fallbackData,
+      error: err.message,
+      isFallback: true,
+      timestamp: fallbackData.lastUpdated,
     };
   }
 }
@@ -185,48 +225,79 @@ export async function getBitcoinPrice(): Promise<ApiResponse<any>> {
 // =====================================================
 export async function getBitcoin24h(): Promise<ApiResponse<any>> {
   try {
-    console.group("📈 Buscando dados das últimas 24h...");
-    const res = await api.get("/crypto/bitcoin/24h");
-    
-    const data = res.data;
-    console.info("💹 Dados 24h recebidos:", data);
-    
-    if (data.success && data.data) {
-      const processedData = {
-        prices: data.data.map((item: any) => ({
-          timestamp: item.timestamp,
-          price: Number(item.price.toFixed(2)),
-          time: item.time,
-          priceFormatted: item.priceFormatted || new Intl.NumberFormat('pt-BR', {
-            style: 'currency',
-            currency: 'USD'
-          }).format(item.price)
-        })),
-        currentPrice: data.currentPrice,
-        change24h: data.change24h ? Number(data.change24h).toFixed(2) : "0.00",
-        isFallback: data.isFallback || false
-      };
-      
-      console.info("💹 Dados 24h processados:", processedData);
-      console.groupEnd();
-      
-      return { 
-        data: processedData, 
-        error: null, 
-        isFallback: data.isFallback || false 
-      };
-    } else {
-      throw new Error(data.error || "Erro ao buscar dados 24h");
+    console.group("📈 Buscando dados das últimas 24h (CoinCap)...");
+
+    const agora = Date.now();
+    const umDiaAtras = agora - 24 * 60 * 60 * 1000;
+
+    const [historicoRes, cotacaoUsdBrl] = await Promise.all([
+      coincap.get("/assets/bitcoin/history", {
+        params: {
+          interval: "m5",
+          start: umDiaAtras,
+          end: agora,
+        },
+      }),
+      obterCotacaoUsdBrl(),
+    ]);
+
+    const pontos: Array<{ priceUsd: string; time: number }> = historicoRes.data?.data;
+
+    if (!Array.isArray(pontos) || pontos.length === 0) {
+      throw new Error("Dados das últimas 24h indisponíveis");
     }
+
+    const prices = pontos.map((ponto) => {
+      const price = Number(ponto.priceUsd);
+      const timestamp = Number(ponto.time);
+      const date = new Date(timestamp);
+      return {
+        timestamp,
+        price: Number(price.toFixed(2)),
+        time: date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
+        priceFormatted: new Intl.NumberFormat("pt-BR", {
+          style: "currency",
+          currency: "USD",
+        }).format(price),
+      };
+    });
+
+    const firstPrice = prices[0].price;
+    const lastPrice = prices[prices.length - 1].price;
+    const change24hValue = firstPrice > 0 ? ((lastPrice - firstPrice) / firstPrice) * 100 : 0;
+    const lastUpdated = new Date(prices[prices.length - 1].timestamp).toISOString();
+
+    const currentPriceUSD = Number(lastPrice.toFixed(2));
+    const currentPriceBRL = cotacaoUsdBrl ? Number((currentPriceUSD * cotacaoUsdBrl).toFixed(2)) : null;
+
+    const processedData = {
+      prices,
+      currentPriceUSD,
+      currentPriceBRL,
+      change24h: change24hValue.toFixed(2),
+      source: "CoinCap",
+      isFallback: false,
+      lastUpdated,
+    };
+
+    console.info("💹 Dados 24h processados:", processedData);
+    console.groupEnd();
+
+    return {
+      data: processedData,
+      error: null,
+      isFallback: false,
+      timestamp: lastUpdated,
+    };
   } catch (err: any) {
     console.error("❌ Erro ao buscar dados 24h:", err.message);
-    
-    // Fallback com dados simulados
+
     const fallbackData = gerarDados24hFallback();
-    return { 
-      data: fallbackData, 
-      error: err.message, 
-      isFallback: true 
+    return {
+      data: fallbackData,
+      error: err.message,
+      isFallback: true,
+      timestamp: fallbackData.lastUpdated,
     };
   }
 }
@@ -263,9 +334,12 @@ function gerarDados24hFallback() {
   
   return {
     prices,
-    currentPrice: ultimoPreco,
+    currentPriceUSD: Number(ultimoPreco.toFixed(2)),
+    currentPriceBRL: null,
     change24h: variacao.toFixed(2),
-    isFallback: true
+    isFallback: true,
+    source: "Fallback",
+    lastUpdated: now.toISOString(),
   };
 }
 
@@ -274,34 +348,43 @@ function gerarDados24hFallback() {
 // =====================================================
 export async function getBitcoinHistoricoCompleto(): Promise<ApiResponse<HistoricoCompletoData>> {
   try {
-    console.group("📈 Buscando histórico COMPLETO do Bitcoin...");
-    const res = await api.get("/crypto/bitcoin/historico-completo");
-    
-    const data = res.data;
-    console.info("📊 Dados históricos completos recebidos:", data);
-    
-    if (data.success && data.data) {
-      const processedData = processarDadosHistoricosReais(data.data);
-      console.info("📈 Histórico completo processado:", processedData);
-      console.groupEnd();
-      
-      return { 
-        data: processedData, 
-        error: null, 
-        isFallback: false 
-      };
-    } else {
-      throw new Error(data.error || "Erro na resposta da API");
+    console.group("📈 Buscando histórico COMPLETO do Bitcoin (Blockchain.info)...");
+
+    const res = await blockchainCharts.get("/market-price", {
+      params: {
+        format: "json",
+        timespan: "all",
+        cors: true,
+      },
+    });
+
+    const valores: Array<{ x: number; y: number }> = res.data?.values;
+
+    if (!Array.isArray(valores) || valores.length === 0) {
+      throw new Error("Histórico completo indisponível");
     }
+
+    const prices: [number, number][] = valores.map((valor) => [valor.x * 1000, Number(valor.y)]);
+
+    const processedData = processarDadosHistoricosReais({ prices });
+    console.info("📈 Histórico completo processado:", processedData);
+    console.groupEnd();
+
+    return {
+      data: processedData,
+      error: null,
+      isFallback: false,
+      timestamp: processedData.atualizado,
+    };
   } catch (err: any) {
     console.error("❌ Erro ao buscar histórico completo:", err.message);
-    
-    // Usar fallback imediatamente sem tentar endpoint alternativo
+
     const fallbackData = gerarDadosHistoricosRealistas();
-    return { 
-      data: fallbackData, 
-      error: err.message, 
-      isFallback: true 
+    return {
+      data: fallbackData,
+      error: err.message,
+      isFallback: true,
+      timestamp: fallbackData.atualizado,
     };
   }
 }
@@ -313,7 +396,7 @@ function processarDadosHistoricosReais(data: any): HistoricoCompletoData {
   }
 
   const prices: [number, number][] = data.prices;
-  
+
   console.log(`📊 Processando ${prices.length} pontos de dados históricos...`);
   
   // Agrupar por anos para performance e legibilidade
@@ -327,7 +410,7 @@ function processarDadosHistoricosReais(data: any): HistoricoCompletoData {
     prices: dadosAgrupados,
     totalDias: prices.length,
     periodo: `${new Date(prices[0][0]).getFullYear()}-${new Date().getFullYear()}`,
-    atualizado: new Date().toISOString(),
+    atualizado: new Date(prices[prices.length - 1][0]).toISOString(),
     precoAtual,
     precoInicial,
     crescimento,
@@ -658,59 +741,82 @@ export async function getFeed(
 // =====================================================
 export async function getBitcoinHistorico(dias: number = 30): Promise<ApiResponse<HistoricoData>> {
   try {
-    console.group("📈 Buscando histórico Bitcoin...");
-    const endpoint = dias === 365 ? "/crypto/bitcoin/historico-1ano" : "/crypto/bitcoin/historico";
-    const res = await api.get(endpoint);
-    
-    const data = res.data;
-    const processedData = processarDadosHistoricos(data.data, dias);
-    
+    console.group("📈 Buscando histórico Bitcoin (CoinCap)...");
+
+    const agora = Date.now();
+    const inicio = agora - dias * 24 * 60 * 60 * 1000;
+
+    let interval = "m5";
+    if (dias > 7 && dias <= 30) interval = "m15";
+    else if (dias > 30 && dias <= 90) interval = "h2";
+    else if (dias > 90) interval = "d1";
+
+    const res = await coincap.get("/assets/bitcoin/history", {
+      params: {
+        interval,
+        start: inicio,
+        end: agora,
+      },
+    });
+
+    const processedData = processarDadosHistoricos(res.data, dias);
+
     console.info("📈 Histórico processado:", processedData);
     console.groupEnd();
-    
-    return { 
-      data: processedData, 
-      error: null, 
-      isFallback: !data.success 
+
+    return {
+      data: processedData,
+      error: null,
+      isFallback: false,
+      timestamp: processedData.atualizado,
     };
   } catch (err: any) {
     console.error("❌ Erro ao buscar histórico Bitcoin:", err.message);
-    
+
     const fallbackData = gerarDadosHistoricosFallback(dias);
-    return { 
-      data: fallbackData, 
-      error: err.message, 
-      isFallback: true 
+    return {
+      data: fallbackData,
+      error: err.message,
+      isFallback: true,
+      timestamp: fallbackData.atualizado,
     };
   }
 }
 
 // Função para processar dados da API (30 dias, 1 ano)
 function processarDadosHistoricos(data: any, dias: number): HistoricoData {
-  if (!data || !data.prices) {
+  const pontos: Array<{ priceUsd: string; time: number }> | undefined = data?.data;
+
+  if (!Array.isArray(pontos) || pontos.length === 0) {
     return gerarDadosHistoricosFallback(dias);
   }
 
-  const prices: [number, number][] = data.prices.slice(-dias);
-  const volumes: [number, number][] = data.total_volumes ? data.total_volumes.slice(-dias) : [];
-  
-  return {
-    prices: prices.map(([timestamp, price]) => ({
-      date: new Date(timestamp).toLocaleDateString('pt-BR'),
+  const prices: PricePoint[] = pontos.map((ponto) => {
+    const timestamp = Number(ponto.time);
+    const price = Number(ponto.priceUsd);
+    const dateObj = new Date(timestamp);
+    const dateLabel = dias <= 7
+      ? dateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+      : dateObj.toLocaleDateString('pt-BR');
+
+    return {
+      date: dateLabel,
       timestamp,
       price: Number(price.toFixed(2)),
       priceFormatted: new Intl.NumberFormat('pt-BR', {
         style: 'currency',
         currency: 'USD'
       }).format(price)
-    })),
-    volumes: volumes.map(([timestamp, volume]) => ({
-      date: new Date(timestamp).toLocaleDateString('pt-BR'),
-      timestamp,
-      volume: Math.round(volume / 1000000)
-    })),
+    };
+  });
+
+  const volumes: VolumePoint[] = [];
+
+  return {
+    prices,
+    volumes,
     periodo: `${dias} dias`,
-    atualizado: new Date().toISOString()
+    atualizado: new Date(prices[prices.length - 1].timestamp).toISOString()
   };
 }
 
