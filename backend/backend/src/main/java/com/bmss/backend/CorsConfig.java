@@ -16,12 +16,16 @@ public class CorsConfig {
 
     private static final List<String> ALLOWED_ORIGINS = List.of(
         "http://localhost:3000",
-        "http://127.0.0.1:3000"
+        "http://127.0.0.1:3000",
+        "https://bmss-sytem.vercel.app",
+        "https://bmss-backend.onrender.com"
     );
 
     private static final List<String> ALLOWED_ORIGIN_PATTERNS = List.of(
         "http://localhost:*",
-        "http://127.0.0.1:*"
+        "http://127.0.0.1:*",
+        "https://bmss-sytem.vercel.app",
+        "https://bmss-backend.onrender.com"
     );
 
     @Bean
