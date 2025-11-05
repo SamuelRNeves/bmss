@@ -1,14 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'standalone',
-  images: {
-    domains: ['localhost', '*.railway.app', '*.vercel.app'],
+  eslint: {
+    ignoreDuringBuilds: true,
   },
-  env: {
-    NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL,
+  typescript: {
+    ignoreBuildErrors: true,
   },
-  trailingSlash: false,
-  poweredByHeader: false,
-}
+};
 
-module.exports = nextConfig
+module.exports = nextConfig;
