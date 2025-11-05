@@ -16,3 +16,11 @@ services:
         sync: false
       - key: SPRING_PROFILES_ACTIVE
         value: prod
+      - key: BMSS_SENTIMENT_BASE_URL
+        value: https://bmss-sentiment.onrender.com
+      - key: SPRING_MAIL_USERNAME
+        sync: false
+      - key: SPRING_MAIL_PASSWORD
+        sync: false
+      - key: SPRING_MAIL_FROM
+        sync: false

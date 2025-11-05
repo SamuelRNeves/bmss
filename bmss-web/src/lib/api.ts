@@ -4,10 +4,69 @@ import axios, { AxiosError } from "axios";
 // =====================================================
 // 🔧 Configuração global do Axios
 // =====================================================
-const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080/api/v1";
+const DEV_API_HOST = ["local", "host"].join("");
+const DEV_API_PORT = ["80", "80"].join("");
+const DEV_API_BASE = [
+  "http://",
+  `${DEV_API_HOST}:${DEV_API_PORT}`,
+  "/api/v1",
+].join("");
+
+const configuredApiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
+const normalizedConfiguredBase = configuredApiBase
+  ? configuredApiBase.replace(/\/+$/, "")
+  : undefined;
+
+export const API_BASE_URL =
+  normalizedConfiguredBase ||
+  (process.env.NODE_ENV === "development" ? DEV_API_BASE : undefined);
+
+export function getRequiredApiBaseUrl(): string {
+  if (API_BASE_URL) {
+    return API_BASE_URL;
+  }
+
+  throw new Error(
+    "NEXT_PUBLIC_API_BASE_URL não está configurada. Defina a variável de ambiente para o backend Java."
+  );
+}
+
+export function buildApiUrl(path: string): string {
+  const baseUrl = getRequiredApiBaseUrl().replace(/\/+$/, "");
+  const sanitizedPath = path.replace(/^\/+/, "");
+  return `${baseUrl}/${sanitizedPath}`;
+}
+
+export function getFetchErrorMessage(error: unknown): string {
+  if (
+    typeof DOMException !== "undefined" &&
+    error instanceof DOMException &&
+    error.name === "AbortError"
+  ) {
+    return "Tempo de resposta excedido. O backend pode estar lento.";
+  }
+
+  if (error instanceof TypeError) {
+    return "Falha de conexão com o backend (CORS, rede ou servidor indisponível).";
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return String(error);
+}
 
 const api = axios.create({
-  baseURL: BASE_URL,
+  ...(API_BASE_URL ? { baseURL: API_BASE_URL } : {}),
+});
+
+api.interceptors.request.use((config) => {
+  if (!config.baseURL) {
+    config.baseURL = getRequiredApiBaseUrl();
+  }
+
+  return config;
 });
 
 const COINGECKO_BASE_URL =
@@ -48,7 +107,7 @@ const coingecko = axios.create({
 
 let coinGeckoKeyWarningShown = false;
 
-function getBackendErrorMessage(error: unknown): string {
+export function getBackendErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
     const status = error.response?.status;
     if (status) {

@@ -38,7 +38,14 @@ public class CryptoService {
 
     private static final Logger log = LoggerFactory.getLogger(CryptoService.class);
     private static final String SYMBOL = "BTCUSDT";
-    private static final long DAILY_CACHE_DURATION_MS = TimeUnit.HOURS.toMillis(24);
+    private static final long DEFAULT_CACHE_DURATION_MS = TimeUnit.MINUTES.toMillis(15);
+    private static final long PRICE_CACHE_DURATION_MS = TimeUnit.MINUTES.toMillis(1);
+    private static final long PRICE24H_CACHE_DURATION_MS = TimeUnit.MINUTES.toMillis(5);
+    private static final long HISTORY_SHORT_CACHE_DURATION_MS = TimeUnit.MINUTES.toMillis(10);
+    private static final long HISTORY_MEDIUM_CACHE_DURATION_MS = TimeUnit.HOURS.toMillis(1);
+    private static final long HISTORY_LONG_CACHE_DURATION_MS = TimeUnit.HOURS.toMillis(3);
+    private static final long HISTORY_FULL_CACHE_DURATION_MS = TimeUnit.HOURS.toMillis(12);
+    private static final String USER_AGENT = "BMSS-Backend/1.0 (+https://bmss-sytem.vercel.app)";
     private static final DateTimeFormatter ISO_FORMATTER = DateTimeFormatter.ISO_INSTANT;
 
     private final RestTemplate restTemplate;
@@ -53,6 +60,11 @@ public class CryptoService {
         this.restTemplate = restTemplateBuilder
                 .setConnectTimeout(java.time.Duration.ofSeconds(10))
                 .setReadTimeout(java.time.Duration.ofSeconds(10))
+                .additionalInterceptors((request, body, execution) -> {
+                    request.getHeaders().addIfAbsent(HttpHeaders.USER_AGENT, USER_AGENT);
+                    request.getHeaders().addIfAbsent(HttpHeaders.ACCEPT, "application/json");
+                    return execution.execute(request, body);
+                })
                 .build();
         this.coinGeckoApiKey = coinGeckoApiKey != null ? coinGeckoApiKey.trim() : "";
         this.coinGeckoHeaderName = resolveCoinGeckoHeaderName(coinGeckoApiKeyHeader, this.coinGeckoApiKey);
@@ -60,17 +72,31 @@ public class CryptoService {
 
     @PostConstruct
     public void primeCaches() {
-        refreshDailyCaches();
+        log.info("🚀 Priming Bitcoin caches...");
+        refreshPriceCache();
+        refresh24hCache();
+        refreshHistoryCaches();
     }
 
     // ============================================================
-    // 🔄 Atualização agendada diariamente às 12h (horário de Brasília)
+    // 🔄 Atualizações frequentes dos caches principais
     // ============================================================
-    @Scheduled(cron = "0 0 12 * * *", zone = "America/Sao_Paulo")
-    public void refreshDailyCaches() {
-        log.info("⏱️ Atualizando caches de dados do Bitcoin a partir da Binance...");
+    @Scheduled(fixedDelay = 60000, initialDelay = 15000)
+    public void refreshPriceCache() {
         refreshCache("price", this::buildPriceResponse, this::buildPriceFallbackResponse);
+    }
+
+    @Scheduled(fixedDelay = 300000, initialDelay = 30000)
+    public void refresh24hCache() {
         refreshCache("24h", this::build24hResponse, this::build24hFallbackResponse);
+    }
+
+    // ============================================================
+    // 🔁 Atualização programada dos históricos mais pesados
+    // ============================================================
+    @Scheduled(cron = "0 0 6,12,18 * * *", zone = "America/Sao_Paulo")
+    public void refreshHistoryCaches() {
+        log.info("⏱️ Atualizando caches de histórico do Bitcoin...");
         refreshCache("history_30", () -> buildHistoryResponse(30), () -> buildHistoryFallbackResponse(30));
         refreshCache("history_365", () -> buildHistoryResponse(365), () -> buildHistoryFallbackResponse(365));
         refreshCache("history_full", this::buildFullHistoryResponse, () -> buildHistoryFallbackResponse(Integer.MAX_VALUE));
@@ -118,7 +144,8 @@ public class CryptoService {
                                            Supplier<Map<String, Object>> fallbackSupplier) {
         long now = System.currentTimeMillis();
         CacheEntry cached = cache.get(key);
-        if (cached != null && now - cached.timestamp < DAILY_CACHE_DURATION_MS) {
+        long cacheDuration = resolveCacheDuration(key);
+        if (cached != null && now - cached.timestamp < cacheDuration) {
             return cached.payload;
         }
 
@@ -150,6 +177,33 @@ public class CryptoService {
         }
         response.put("timestamp", timestamp != null ? timestamp : ISO_FORMATTER.format(Instant.now()));
         return response;
+    }
+
+    private long resolveCacheDuration(String key) {
+        if ("price".equals(key)) {
+            return PRICE_CACHE_DURATION_MS;
+        }
+        if ("24h".equals(key)) {
+            return PRICE24H_CACHE_DURATION_MS;
+        }
+        if ("history_full".equals(key)) {
+            return HISTORY_FULL_CACHE_DURATION_MS;
+        }
+        if (key != null && key.startsWith("history_")) {
+            try {
+                int days = Integer.parseInt(key.substring("history_".length()));
+                if (days <= 30) {
+                    return HISTORY_SHORT_CACHE_DURATION_MS;
+                }
+                if (days <= 180) {
+                    return HISTORY_MEDIUM_CACHE_DURATION_MS;
+                }
+                return HISTORY_LONG_CACHE_DURATION_MS;
+            } catch (NumberFormatException ignored) {
+                return HISTORY_LONG_CACHE_DURATION_MS;
+            }
+        }
+        return DEFAULT_CACHE_DURATION_MS;
     }
 
     // ============================================================

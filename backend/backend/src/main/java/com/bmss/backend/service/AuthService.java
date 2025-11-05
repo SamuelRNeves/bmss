@@ -99,21 +99,14 @@ public class AuthService {
             // 🔥🔥🔥 ADICIONAR ESTA PARTE PARA ENVIAR EMAIL 🔥🔥🔥
             System.out.println("👤 Usuário salvo no banco: " + savedUser.getEmail());
             
-            // Enviar email de boas-vindas (assíncrono)
-            new Thread(() -> {
-                try {
-                    System.out.println("🔄 Iniciando thread de email para: " + savedUser.getEmail());
-                    emailService.enviarEmailBoasVindas(savedUser.getEmail(), savedUser.getName());
-                    System.out.println("✅ Thread de email finalizada para: " + savedUser.getEmail());
-                } catch (Exception e) {
-                    System.err.println("❌ Erro na thread de email: " + e.getMessage());
-                    e.printStackTrace();
-                }
-            }).start();
-            
-            System.out.println("📨 Thread de email iniciada em background");
-            // 🔥🔥🔥 FIM DA PARTE DO EMAIL 🔥🔥🔥
-    
+            // Enviar email de boas-vindas (assíncrono via @Async)
+            try {
+                System.out.println("📨 Agendando email de boas-vindas para: " + savedUser.getEmail());
+                emailService.enviarEmailBoasVindas(savedUser.getEmail(), savedUser.getName());
+            } catch (Exception emailException) {
+                logger.error("Erro ao agendar envio de email de boas-vindas", emailException);
+            }
+
             // CORREÇÃO: Usar HashMap em vez de Map.of() para evitar NullPointer
             Map<String, Object> userData = new HashMap<>();
             userData.put("id", savedUser.getId());
