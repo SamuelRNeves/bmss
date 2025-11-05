@@ -38,6 +38,13 @@ public class CryptoService {
 
     private static final Logger log = LoggerFactory.getLogger(CryptoService.class);
     private static final String SYMBOL = "BTCUSDT";
+    private static final List<String> BINANCE_API_BASES = List.of(
+            "https://api.binance.com",
+            "https://data.binance.com",
+            "https://api1.binance.com",
+            "https://api2.binance.com",
+            "https://api3.binance.com"
+    );
     private static final long DEFAULT_CACHE_DURATION_MS = TimeUnit.MINUTES.toMillis(15);
     private static final long PRICE_CACHE_DURATION_MS = TimeUnit.MINUTES.toMillis(1);
     private static final long PRICE24H_CACHE_DURATION_MS = TimeUnit.MINUTES.toMillis(5);
@@ -222,7 +229,7 @@ public class CryptoService {
         data.put("price", lastPrice);
         data.put("priceUSD", lastPrice);
         data.put("priceBRL", priceBrl);
-        data.put("change24h", String.format(Locale.US, "%.2f", changePercent));
+        data.put("change24h", roundTwoDecimals(changePercent));
         data.put("lastUpdated", ISO_FORMATTER.format(Instant.ofEpochMilli(closeTime)));
         data.put("currency", "USD");
         data.put("priceFormatted", formatCurrency(lastPrice, "USD"));
@@ -266,7 +273,7 @@ public class CryptoService {
         data.put("prices", prices);
         data.put("currentPriceUSD", roundTwoDecimals(lastPrice));
         data.put("currentPriceBRL", usdToBrl != null ? roundTwoDecimals(lastPrice * usdToBrl) : null);
-        data.put("change24h", String.format(Locale.US, "%.2f", changePercent));
+        data.put("change24h", roundTwoDecimals(changePercent));
         data.put("source", "Binance");
         data.put("isFallback", false);
         data.put("lastUpdated", ISO_FORMATTER.format(Instant.ofEpochMilli(closeTime)));
@@ -464,8 +471,8 @@ public class CryptoService {
     // 🔹 Utilidades
     // ============================================================
     private Map<String, Object> fetchTicker() {
-        Map<String, Object> body = restTemplate.getForObject(
-                "https://api.binance.com/api/v3/ticker/24hr?symbol=" + SYMBOL,
+        Map<String, Object> body = fetchFromBinance(
+                "/api/v3/ticker/24hr?symbol=" + SYMBOL,
                 Map.class
         );
         if (body == null || !body.containsKey("lastPrice")) {
@@ -496,7 +503,7 @@ public class CryptoService {
     }
 
     private List<List<Object>> fetchKlines(String interval, int limit, Long startTime, Long endTime) {
-        StringBuilder url = new StringBuilder("https://api.binance.com/api/v3/klines?symbol=")
+        StringBuilder url = new StringBuilder("/api/v3/klines?symbol=")
                 .append(SYMBOL)
                 .append("&interval=").append(interval)
                 .append("&limit=").append(limit);
@@ -507,14 +514,65 @@ public class CryptoService {
             url.append("&endTime=").append(endTime);
         }
 
-        ResponseEntity<List<List<Object>>> response = restTemplate.exchange(
+        List<List<Object>> body = exchangeFromBinance(
                 url.toString(),
-                HttpMethod.GET,
-                null,
                 new ParameterizedTypeReference<List<List<Object>>>() {}
         );
-        List<List<Object>> body = response.getBody();
         return body != null ? body : Collections.emptyList();
+    }
+
+    private <T> T fetchFromBinance(String pathWithQuery, Class<T> type) {
+        IllegalStateException failure = null;
+        for (String baseUrl : BINANCE_API_BASES) {
+            try {
+                T body = restTemplate.getForObject(baseUrl + pathWithQuery, type);
+                if (body != null) {
+                    return body;
+                }
+                log.warn("⚠️ Binance {} retornou corpo vazio para {}", baseUrl, pathWithQuery);
+            } catch (Exception ex) {
+                log.warn("⚠️ Falha ao chamar Binance {}{}: {}", baseUrl, pathWithQuery, ex.getMessage());
+                if (failure == null) {
+                    failure = new IllegalStateException("Falha ao chamar Binance: " + baseUrl + pathWithQuery, ex);
+                } else {
+                    failure.addSuppressed(ex);
+                }
+            }
+        }
+        if (failure != null) {
+            throw failure;
+        }
+        throw new IllegalStateException("A Binance retornou respostas vazias para " + pathWithQuery);
+    }
+
+    private <T> T exchangeFromBinance(String pathWithQuery, ParameterizedTypeReference<T> type) {
+        IllegalStateException failure = null;
+        for (String baseUrl : BINANCE_API_BASES) {
+            try {
+                ResponseEntity<T> response = restTemplate.exchange(
+                        baseUrl + pathWithQuery,
+                        HttpMethod.GET,
+                        null,
+                        type
+                );
+                T body = response.getBody();
+                if (body != null) {
+                    return body;
+                }
+                log.warn("⚠️ Binance {} retornou corpo vazio para {}", baseUrl, pathWithQuery);
+            } catch (Exception ex) {
+                log.warn("⚠️ Falha ao chamar Binance {}{}: {}", baseUrl, pathWithQuery, ex.getMessage());
+                if (failure == null) {
+                    failure = new IllegalStateException("Falha ao chamar Binance: " + baseUrl + pathWithQuery, ex);
+                } else {
+                    failure.addSuppressed(ex);
+                }
+            }
+        }
+        if (failure != null) {
+            throw failure;
+        }
+        throw new IllegalStateException("A Binance retornou respostas vazias para " + pathWithQuery);
     }
 
     private Map<String, Object> buildMarketChartPayload(List<List<Object>> klines) {
