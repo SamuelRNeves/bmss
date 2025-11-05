@@ -18,6 +18,7 @@ public class CorsConfig {
         "http://localhost:*",
         "http://127.0.0.1:*",
         "https://bmss-sytem.vercel.app", // URL exata do frontend
+        "https://bmss-sytem-*.vercel.app",
         "https://*.vercel.app", // Todos os subdomínios do Vercel
         "https://*.onrender.com"
     );
