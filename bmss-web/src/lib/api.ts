@@ -10,16 +10,24 @@ const api = axios.create({
   baseURL: BASE_URL,
 });
 
-const COINGECKO_BASE_URL = "https://api.coingecko.com/api/v3";
+function getBackendErrorMessage(error: unknown): string {
+  if (axios.isAxiosError(error)) {
+    const status = error.response?.status;
+    if (status) {
+      return `${status} - ${error.response?.statusText || "Erro ao chamar backend"}`;
+    }
 
-const coingecko = axios.create({
-  baseURL: COINGECKO_BASE_URL,
-  timeout: 10000,
-  headers: {
-    Accept: "application/json",
-    "User-Agent": "BMSS-Dashboard/1.0 (+https://github.com/)",
-  },
-});
+    if (error.message) {
+      return error.message;
+    }
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return String(error);
+}
 
 // =====================================================
 // 🧱 Interceptores globais
@@ -113,82 +121,61 @@ interface HistoricoData {
   isFallback?: boolean;
 }
 
+const HISTORICAL_BASELINE_USD: Record<number, number> = {
+  2009: 0.0008,
+  2010: 0.3,
+  2011: 4.6,
+  2012: 13.4,
+  2013: 805,
+  2014: 320,
+  2015: 430,
+  2016: 963,
+  2017: 14156,
+  2018: 3848,
+  2019: 7194,
+  2020: 29374,
+  2021: 46281,
+  2022: 16547,
+  2023: 42850,
+  2024: 64500,
+};
+
 // =====================================================
 // 💰 FUNÇÕES DE PREÇO ATUAL (REAIS)
 // =====================================================
 export async function getBitcoinPrice(): Promise<ApiResponse<any>> {
   try {
-    console.group("💰 Buscando preço atual do Bitcoin (CoinGecko)...");
+    console.group("💰 Buscando preço atual do Bitcoin (Binance via backend)...");
 
-    const res = await coingecko.get("/simple/price", {
-      params: {
-        ids: "bitcoin",
-        vs_currencies: "usd,brl",
-        include_24hr_change: "true",
-        precision: 4,
-      },
-    });
+    const res = await api.get("/crypto/bitcoin");
+    const payload = res.data;
 
-    const coinData = res.data?.bitcoin;
-
-    if (!coinData || typeof coinData.usd !== "number") {
-      throw new Error("Resposta inválida da CoinGecko");
+    if (!payload?.success || !payload?.data) {
+      throw new Error(payload?.error || "Resposta inválida do backend");
     }
 
-    const priceUSD = Number(coinData.usd);
-    const priceBRL = typeof coinData.brl === "number" ? Number(coinData.brl) : null;
-    const change24hValue = typeof coinData.usd_24h_change === "number" ? coinData.usd_24h_change : 0;
-    const lastUpdated = new Date().toISOString();
+    const data = payload.data;
+    const isFallback = Boolean(payload.isFallback || data.isFallback);
+    const timestamp =
+      payload.timestamp || data.lastUpdated || new Date().toISOString();
 
-    const processedData = {
-      price: priceUSD,
-      priceUSD,
-      priceBRL,
-      change24h: change24hValue.toFixed(2),
-      lastUpdated,
-      currency: "USD",
-      priceFormatted: new Intl.NumberFormat("pt-BR", {
-        style: "currency",
-        currency: "USD",
-      }).format(priceUSD),
-      priceFormattedBRL: priceBRL
-        ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(priceBRL)
-        : null,
-      source: "CoinGecko",
-      isFallback: false,
-    };
-
-    console.info("💰 Preço processado:", processedData);
+    console.info("💰 Preço recebido:", data);
     console.groupEnd();
 
     return {
-      data: processedData,
+      data,
       error: null,
-      isFallback: false,
-      timestamp: lastUpdated,
+      isFallback,
+      timestamp,
     };
   } catch (err: any) {
-    console.error("❌ Erro ao buscar preço Bitcoin:", err.message);
+    const errorMessage = getBackendErrorMessage(err);
+    console.error("❌ Erro ao buscar preço Bitcoin:", errorMessage);
 
-    const fallbackData = {
-      price: 64500,
-      priceUSD: 64500,
-      priceBRL: null,
-      change24h: "2.30",
-      lastUpdated: new Date().toISOString(),
-      currency: "USD",
-      priceFormatted: new Intl.NumberFormat("pt-BR", {
-        style: "currency",
-        currency: "USD",
-      }).format(64500),
-      priceFormattedBRL: null,
-      source: "Fallback",
-      isFallback: true,
-    };
-
+    const fallbackData = gerarPrecoFallback();
     return {
       data: fallbackData,
-      error: err.message,
+      error: errorMessage,
       isFallback: true,
       timestamp: fallbackData.lastUpdated,
     };
@@ -201,85 +188,62 @@ export async function getBitcoinPrice(): Promise<ApiResponse<any>> {
 // =====================================================
 export async function getBitcoin24h(): Promise<ApiResponse<any>> {
   try {
-    console.group("📈 Buscando dados das últimas 24h (CoinGecko)...");
+    console.group("📈 Buscando dados das últimas 24h (Binance via backend)...");
 
-    const [priceRes, chartRes] = await Promise.all([
-      coingecko.get("/simple/price", {
-        params: {
-          ids: "bitcoin",
-          vs_currencies: "usd,brl",
-          include_24hr_change: "true",
-          precision: 4,
-        },
-      }),
-      coingecko.get("/coins/bitcoin/market_chart", {
-        params: {
-          vs_currency: "usd",
-          days: 1,
-          interval: "minute",
-          precision: 4,
-        },
-      }),
-    ]);
+    const res = await api.get("/crypto/bitcoin/24h");
+    const payload = res.data;
 
-    const coinData = priceRes.data?.bitcoin;
-    const chartData: [number, number][] = chartRes.data?.prices;
-
-    if (!Array.isArray(chartData) || chartData.length === 0) {
-      throw new Error("Dados de gráfico indisponíveis");
+    if (!payload?.success || !payload?.data) {
+      throw new Error(payload?.error || "Resposta inválida do backend");
     }
 
-    const sampledPrices = chartData
-      .filter((_, index) => index % 15 === 0 || index === chartData.length - 1)
-      .map(([timestamp, price]) => {
-        const date = new Date(timestamp);
-        return {
-          timestamp,
-          price: Number(price.toFixed(2)),
-          time: date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
-          priceFormatted: new Intl.NumberFormat("pt-BR", {
-            style: "currency",
-            currency: "USD",
-          }).format(price),
-        };
-      });
+    const data = payload.data;
+    const isFallback = Boolean(payload.isFallback || data.isFallback);
+    const timestamp =
+      payload.timestamp || data.lastUpdated || new Date().toISOString();
 
-    const firstPrice = chartData[0][1];
-    const lastPrice = chartData[chartData.length - 1][1];
-    const change24hValue = firstPrice > 0 ? ((lastPrice - firstPrice) / firstPrice) * 100 : 0;
-    const lastUpdated = new Date(chartData[chartData.length - 1][0]).toISOString();
-
-    const processedData = {
-      prices: sampledPrices,
-      currentPriceUSD: Number(lastPrice.toFixed(2)),
-      currentPriceBRL:
-        coinData && typeof coinData.brl === "number" ? Number(coinData.brl.toFixed(2)) : null,
-      change24h: change24hValue.toFixed(2),
-      source: "CoinGecko",
-      isFallback: false,
-      lastUpdated,
-    };
-
-    console.info("💹 Dados 24h processados:", processedData);
+    console.info("💹 Dados 24h recebidos:", data);
     console.groupEnd();
 
     return {
-      data: processedData,
+      data,
       error: null,
-      isFallback: false,
-      timestamp: lastUpdated,
+      isFallback,
+      timestamp,
     };
   } catch (err: any) {
-    console.error("❌ Erro ao buscar dados 24h:", err.message);
+    const errorMessage = getBackendErrorMessage(err);
+    console.error("❌ Erro ao buscar dados 24h:", errorMessage);
 
     const fallbackData = gerarDados24hFallback();
     return {
       data: fallbackData,
-      error: err.message,
+      error: errorMessage,
       isFallback: true,
       timestamp: fallbackData.lastUpdated,
     };
   }
+}
+
+function gerarPrecoFallback() {
+  const price = 64500;
+  const lastUpdated = new Date().toISOString();
+
+  return {
+    price,
+    priceUSD: price,
+    priceBRL: null,
+    change24h: "0.00",
+    lastUpdated,
+    currency: "USD",
+    priceFormatted: new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "USD",
+    }).format(price),
+    priceFormattedBRL: null,
+    source: "Fallback",
+    isFallback: true,
+  };
 }
 
 function gerarDados24hFallback() {
@@ -328,36 +292,38 @@ function gerarDados24hFallback() {
 // =====================================================
 export async function getBitcoinHistoricoCompleto(): Promise<ApiResponse<HistoricoCompletoData>> {
   try {
-    console.group("📈 Buscando histórico COMPLETO do Bitcoin (CoinGecko)...");
+    console.group("📈 Buscando histórico COMPLETO do Bitcoin (Binance via backend)...");
 
-    const res = await coingecko.get("/coins/bitcoin/market_chart", {
-      params: {
-        vs_currency: "usd",
-        days: "max",
-        interval: "daily",
-        precision: 4,
-      },
-    });
+    const res = await api.get("/crypto/bitcoin/historico-completo");
+    const payload = res.data;
 
-    const data = res.data;
+    if (!payload?.success || !payload?.data) {
+      throw new Error(payload?.error || "Resposta inválida do backend");
+    }
 
-    const processedData = processarDadosHistoricosReais(data);
+    const processedData = processarDadosHistoricosReais(payload.data);
+    const isFallback = Boolean(
+      payload.isFallback || payload.data?.isFallback || processedData.isFallback
+    );
+    const timestamp = payload.timestamp || processedData.atualizado;
+
     console.info("📈 Histórico completo processado:", processedData);
     console.groupEnd();
 
     return {
       data: processedData,
       error: null,
-      isFallback: false,
-      timestamp: processedData.atualizado,
+      isFallback,
+      timestamp,
     };
   } catch (err: any) {
-    console.error("❌ Erro ao buscar histórico completo:", err.message);
+    const errorMessage = getBackendErrorMessage(err);
+    console.error("❌ Erro ao buscar histórico completo:", errorMessage);
 
     const fallbackData = gerarDadosHistoricosRealistas();
     return {
       data: fallbackData,
-      error: err.message,
+      error: errorMessage,
       isFallback: true,
       timestamp: fallbackData.atualizado,
     };
@@ -376,15 +342,18 @@ function processarDadosHistoricosReais(data: any): HistoricoCompletoData {
   
   // Agrupar por anos para performance e legibilidade
   const dadosAgrupados = agruparDadosReaisPorAno(prices);
-  
-  const precoAtual = prices[prices.length - 1]?.[1] || 0;
-  const precoInicial = prices[0]?.[1] || 0;
+  const dadosCompletos = complementarHistoricoComBase(dadosAgrupados);
+
+  const precoAtual = dadosCompletos[dadosCompletos.length - 1]?.price || 0;
+  const precoInicial = dadosCompletos[0]?.price || 0;
   const crescimento = precoInicial > 0 ? ((precoAtual - precoInicial) / precoInicial * 100) : 0;
-  
+
   return {
-    prices: dadosAgrupados,
+    prices: dadosCompletos,
     totalDias: prices.length,
-    periodo: `${new Date(prices[0][0]).getFullYear()}-${new Date().getFullYear()}`,
+    periodo: dadosCompletos.length
+      ? `${dadosCompletos[0].ano}-${dadosCompletos[dadosCompletos.length - 1].ano}`
+      : `${new Date().getFullYear()}`,
     atualizado: new Date(prices[prices.length - 1][0]).toISOString(),
     precoAtual,
     precoInicial,
@@ -416,7 +385,8 @@ function agruparDadosReaisPorAno(prices: [number, number][]): PriceData[] {
       const precoMedio = dados.prices.reduce((sum, price) => sum + price, 0) / dados.prices.length;
       // Encontrar o último preço do ano (fechamento)
       const ultimoTimestamp = Math.max(...dados.timestamps);
-      const ultimoPreco = dados.prices[dados.timestamps.indexOf(ultimoTimestamp)] || precoMedio;
+      const lastIndex = dados.timestamps.lastIndexOf(ultimoTimestamp);
+      const ultimoPreco = dados.prices[lastIndex >= 0 ? lastIndex : dados.timestamps.indexOf(ultimoTimestamp)] || precoMedio;
       
       return {
         ano: parseInt(ano),
@@ -430,6 +400,35 @@ function agruparDadosReaisPorAno(prices: [number, number][]): PriceData[] {
     })
     .sort((a, b) => a.ano - b.ano)
     .filter(item => item.ano >= 2009); // Filtrar apenas anos relevantes
+}
+
+function complementarHistoricoComBase(dadosAgrupados: PriceData[]): PriceData[] {
+  if (dadosAgrupados.length === 0) {
+    return dadosAgrupados;
+  }
+
+  const menorAnoExistente = Math.min(...dadosAgrupados.map(item => item.ano));
+  const existentes = new Set(dadosAgrupados.map(item => item.ano));
+  const adicionais: PriceData[] = [];
+
+  Object.entries(HISTORICAL_BASELINE_USD).forEach(([anoStr, precoBase]) => {
+    const ano = Number(anoStr);
+    if (ano < menorAnoExistente && !existentes.has(ano)) {
+      adicionais.push({
+        ano,
+        price: precoBase,
+        priceFormatted: new Intl.NumberFormat('pt-BR', {
+          style: 'currency',
+          currency: 'USD',
+          minimumFractionDigits: precoBase < 1 ? 6 : 2,
+          maximumFractionDigits: precoBase < 1 ? 6 : 2
+        }).format(precoBase),
+        marco: getMarcoHistoricoReal(ano)
+      });
+    }
+  });
+
+  return [...adicionais, ...dadosAgrupados].sort((a, b) => a.ano - b.ano);
 }
 
 // Marcos históricos baseados em anos REAIS
@@ -452,41 +451,23 @@ function getMarcoHistoricoReal(ano: number): string {
 function gerarDadosHistoricosRealistas(): HistoricoCompletoData {
   const prices: PriceData[] = [];
   
-  // Dados históricos REAIS aproximados do Bitcoin (preços de fechamento anual)
-  const precosHistoricosReais: { [key: number]: number } = {
-    2009: 0.0008,    // Primeiros preços
-    2010: 0.30,      // Fim de 2010
-    2011: 4.60,      // Fim de 2011  
-    2012: 13.40,     // Fim de 2012
-    2013: 805.00,    // Fim de 2013 (bolha)
-    2014: 320.00,    // Fim de 2014 (correção)
-    2015: 430.00,    // Fim de 2015
-    2016: 963.00,    // Fim de 2016
-    2017: 14156.00,  // Fim de 2017 (bull run)
-    2018: 3848.00,   // Fim de 2018 (bear market)
-    2019: 7194.00,   // Fim de 2019
-    2020: 29374.00,  // Fim de 2020 (halving + QE)
-    2021: 46281.00,  // Fim de 2021 (ATH $69k)
-    2022: 16547.00,  // Fim de 2022 (crypto winter)
-    2023: 42850.00,  // Fim de 2023
-    2024: 64500.00,  // Atual 2024 (ETF approved)
-  };
-  
-  Object.entries(precosHistoricosReais).forEach(([ano, price]) => {
+  Object.entries(HISTORICAL_BASELINE_USD).forEach(([ano, price]) => {
     const anoNum = parseInt(ano);
     prices.push({
       ano: anoNum,
       price,
       priceFormatted: new Intl.NumberFormat('pt-BR', {
         style: 'currency',
-        currency: 'USD'
+        currency: 'USD',
+        minimumFractionDigits: price < 1 ? 6 : 2,
+        maximumFractionDigits: price < 1 ? 6 : 2
       }).format(price),
       marco: getMarcoHistoricoReal(anoNum)
     });
   });
   
-  const precoAtual = precosHistoricosReais[2024] || 64500;
-  const precoInicial = precosHistoricosReais[2009] || 0.0008;
+  const precoAtual = HISTORICAL_BASELINE_USD[2024] || 64500;
+  const precoInicial = HISTORICAL_BASELINE_USD[2009] || 0.0008;
   const crescimento = ((precoAtual - precoInicial) / precoInicial * 100);
   
   return {
@@ -714,19 +695,24 @@ export async function getFeed(
 // =====================================================
 // 📊 FUNÇÕES DE HISTÓRICO (30 DIAS, 1 ANO)
 // =====================================================
-export async function getBitcoinHistorico(dias: number = 30): Promise<ApiResponse<HistoricoData>> {
+export async function getBitcoinHistorico(
+  dias: number = 30
+): Promise<ApiResponse<HistoricoData>> {
   try {
-    console.group("📈 Buscando histórico Bitcoin (CoinGecko)...");
+    console.group("📈 Buscando histórico Bitcoin (Binance via backend)...");
 
-    const params = {
-      vs_currency: "usd",
-      days: dias,
-      interval: dias > 90 ? "daily" : "hourly",
-      precision: 4,
-    } as const;
+    const res = await api.get("/crypto/bitcoin/historico", { params: { dias } });
+    const payload = res.data;
 
-    const res = await coingecko.get("/coins/bitcoin/market_chart", { params });
-    const processedData = processarDadosHistoricos(res.data, dias);
+    if (!payload?.success || !payload?.data) {
+      throw new Error(payload?.error || "Resposta inválida do backend");
+    }
+
+    const processedData = processarDadosHistoricos(payload.data, dias);
+    const isFallback = Boolean(
+      payload.isFallback || payload.data?.isFallback || processedData.isFallback
+    );
+    const timestamp = payload.timestamp || processedData.atualizado;
 
     console.info("📈 Histórico processado:", processedData);
     console.groupEnd();
@@ -734,16 +720,17 @@ export async function getBitcoinHistorico(dias: number = 30): Promise<ApiRespons
     return {
       data: processedData,
       error: null,
-      isFallback: false,
-      timestamp: processedData.atualizado,
+      isFallback,
+      timestamp,
     };
   } catch (err: any) {
-    console.error("❌ Erro ao buscar histórico Bitcoin:", err.message);
+    const errorMessage = getBackendErrorMessage(err);
+    console.error("❌ Erro ao buscar histórico Bitcoin:", errorMessage);
 
     const fallbackData = gerarDadosHistoricosFallback(dias);
     return {
       data: fallbackData,
-      error: err.message,
+      error: errorMessage,
       isFallback: true,
       timestamp: fallbackData.atualizado,
     };
@@ -782,7 +769,8 @@ function processarDadosHistoricos(data: any, dias: number): HistoricoData {
       volume: Math.round(volume / 1000000)
     })),
     periodo: `${dias} dias`,
-    atualizado: new Date(prices[prices.length - 1][0]).toISOString()
+    atualizado: new Date(prices[prices.length - 1][0]).toISOString(),
+    isFallback: false
   };
 }
 
