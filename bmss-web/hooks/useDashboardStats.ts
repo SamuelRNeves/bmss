@@ -24,6 +24,10 @@ export function useDashboardStats() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const API_BASE_URL =
+    process.env.NEXT_PUBLIC_API_BASE_URL ??
+    (process.env.NODE_ENV === 'development' ? 'http://localhost:8080/api/v1' : undefined);
+
   const fetchStats = async () => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 8000);
@@ -31,6 +35,10 @@ export function useDashboardStats() {
     try {
       setIsLoading(true);
       setError(null);
+
+      if (!API_BASE_URL) {
+        throw new Error('API base URL não configurada');
+      }
 
       const [newsResponse, tweetsResponse] = await Promise.allSettled([
         fetch(buildApiUrl("noticias/ultimas?limit=50&q=bitcoin"), {
@@ -50,14 +58,14 @@ export function useDashboardStats() {
         throw new Error("Não foi possível carregar estatísticas do backend");
       }
 
-        const newsData = await newsResponse.value.json();
-        const tweetsData = await tweetsResponse.value.json();
+      const newsData = await newsResponse.value.json();
+      const tweetsData = await tweetsResponse.value.json();
 
-        type SentimentEntry = { sentimento?: string; sentiment?: string };
+      type SentimentEntry = { sentimento?: string; sentiment?: string };
 
-        const newsItems: SentimentEntry[] = Array.isArray(newsData.data)
-          ? newsData.data
-          : [];
+      const newsItems: SentimentEntry[] = Array.isArray(newsData.data)
+        ? newsData.data
+        : [];
       const tweetItems: SentimentEntry[] = Array.isArray(tweetsData.data)
         ? tweetsData.data
         : [];

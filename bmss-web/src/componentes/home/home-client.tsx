@@ -88,12 +88,20 @@ export default function HomeClient() {
   const [isLoading, setIsLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<string>("");
 
+  const API_URL =
+    process.env.NEXT_PUBLIC_API_BASE_URL ??
+    (process.env.NODE_ENV === "development" ? "http://localhost:8080/api/v1" : undefined);
+
   const fetchStats = useCallback(async () => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 8000);
 
     try {
       setIsLoading(true);
+
+      if (!API_URL) {
+        throw new Error("API base URL não configurada");
+      }
 
       const [newsResponse, tweetsResponse] = await Promise.allSettled([
         fetch(buildApiUrl("noticias/ultimas?limit=50&q=bitcoin"), {
@@ -189,7 +197,7 @@ export default function HomeClient() {
       clearTimeout(timeoutId);
       setIsLoading(false);
     }
-  }, []);
+  }, [API_URL]);
 
   useEffect(() => {
     fetchStats();

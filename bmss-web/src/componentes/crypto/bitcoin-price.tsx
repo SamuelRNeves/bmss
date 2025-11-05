@@ -19,6 +19,10 @@ export function BitcoinPrice() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const API_BASE_URL =
+    process.env.NEXT_PUBLIC_API_BASE_URL ??
+    (process.env.NODE_ENV === "development" ? "http://localhost:8080/api/v1" : undefined);
+
   const fetchBitcoinPrice = async () => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
@@ -26,6 +30,10 @@ export function BitcoinPrice() {
     try {
       setIsRefreshing(true);
       setError(null);
+
+      if (!API_BASE_URL) {
+        throw new Error("API base URL não configurada");
+      }
 
       const response = await fetch(buildApiUrl("crypto/bitcoin"), {
         signal: controller.signal,
