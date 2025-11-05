@@ -2,7 +2,7 @@ services:
   - type: web
     name: bmss-backend
     env: docker
-    repo: https://github.com/SEU_USUARIO/SEU_REPO
+    repo: https://github.com/SamuelRNeves/bmss
     region: oregon
     plan: free
     dockerContext: ./backend/backend
