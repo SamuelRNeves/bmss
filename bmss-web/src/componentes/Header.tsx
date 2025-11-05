@@ -1,7 +1,6 @@
+import { useEffect, useState } from "react";
 import { RefreshCcw, Search, UserPlus } from "lucide-react";
-import { getFeed, getSentimentos } from "../lib/api";
-import { useState, useEffect } from "react";
-import axios from "axios";
+import api, { getFeed, getSentimentos, getBackendErrorMessage } from "@/lib/api";
 
 export default function Header() {
   const [loading, setLoading] = useState(false);
@@ -31,8 +30,8 @@ export default function Header() {
       setMessage("Analisando as últimas 5 notícias...");
 
       // ⚠️ importante: POST, não GET
-      const response = await axios.post(
-        "http://localhost:8080/api/v1/noticias/analisar",
+      const response = await api.post(
+        "/noticias/analisar",
         null,
         { params: { q: "bitcoin", limit: 5 } }
       );
@@ -45,7 +44,7 @@ export default function Header() {
       );
     } catch (error) {
       console.error("❌ Erro ao acionar análise:", error);
-      setMessage("❌ Erro ao analisar notícias");
+      setMessage(`❌ ${getBackendErrorMessage(error)}`);
     } finally {
       setLoading(false);
       setTimeout(() => setMessage(""), 5000);
