@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from "react";
+import { buildApiUrl, getFetchErrorMessage } from "@/lib/api";
 
 interface DashboardStats {
   totalNews: number;
@@ -9,60 +10,87 @@ interface DashboardStats {
   lastUpdated: string;
 }
 
+const INITIAL_STATS: DashboardStats = {
+  totalNews: 0,
+  totalTweets: 0,
+  positivePercentage: 0,
+  negativePercentage: 0,
+  neutralPercentage: 0,
+  lastUpdated: new Date().toISOString(),
+};
+
 export function useDashboardStats() {
-  const [stats, setStats] = useState<DashboardStats>({
-    totalNews: 0,
-    totalTweets: 0,
-    positivePercentage: 0,
-    negativePercentage: 0,
-    neutralPercentage: 0,
-    lastUpdated: new Date().toISOString()
-  });
+  const [stats, setStats] = useState<DashboardStats>(INITIAL_STATS);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchStats = async () => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+
     try {
-      const [newsResponse, tweetsResponse] = await Promise.all([
-        fetch('http://localhost:8080/api/v1/noticias/ultimas?limit=50&q=bitcoin'),
-        fetch('http://localhost:8080/api/v1/noticias/tweets/ultimos?limit=50&q=bitcoin')
+      setIsLoading(true);
+      setError(null);
+
+      const [newsResponse, tweetsResponse] = await Promise.allSettled([
+        fetch(buildApiUrl("noticias/ultimas?limit=50&q=bitcoin"), {
+          signal: controller.signal,
+        }),
+        fetch(buildApiUrl("noticias/tweets/ultimos?limit=50&q=bitcoin"), {
+          signal: controller.signal,
+        }),
       ]);
 
-      const newsData = await newsResponse.json();
-      const tweetsData = await tweetsResponse.json();
+      if (
+        newsResponse.status !== "fulfilled" ||
+        tweetsResponse.status !== "fulfilled" ||
+        !newsResponse.value.ok ||
+        !tweetsResponse.value.ok
+      ) {
+        throw new Error("Não foi possível carregar estatísticas do backend");
+      }
 
-      const newsItems = newsData.data || [];
-      const tweetItems = tweetsData.data || [];
-      const allItems = [...newsItems, ...tweetItems];
+        const newsData = await newsResponse.value.json();
+        const tweetsData = await tweetsResponse.value.json();
 
-      const sentimentCounts = {
-        positive: 0,
-        negative: 0,
-        neutral: 0
-      };
+        type SentimentEntry = { sentimento?: string; sentiment?: string };
 
-      allItems.forEach(item => {
-        if (item.sentimento === 'positive') sentimentCounts.positive++;
-        else if (item.sentimento === 'negative') sentimentCounts.negative++;
-        else sentimentCounts.neutral++;
-      });
+        const newsItems: SentimentEntry[] = Array.isArray(newsData.data)
+          ? newsData.data
+          : [];
+      const tweetItems: SentimentEntry[] = Array.isArray(tweetsData.data)
+        ? tweetsData.data
+        : [];
+      const allItems: SentimentEntry[] = [...newsItems, ...tweetItems];
 
-      const totalItems = allItems.length;
-      const positivePercentage = totalItems > 0 ? (sentimentCounts.positive / totalItems) * 100 : 0;
-      const negativePercentage = totalItems > 0 ? (sentimentCounts.negative / totalItems) * 100 : 0;
-      const neutralPercentage = totalItems > 0 ? (sentimentCounts.neutral / totalItems) * 100 : 0;
+      const sentimentCounts = allItems.reduce(
+        (acc, item) => {
+          const sentiment = (item.sentimento || item.sentiment || "neutral").toLowerCase();
+
+          if (sentiment.startsWith("pos")) acc.positive += 1;
+          else if (sentiment.startsWith("neg")) acc.negative += 1;
+          else acc.neutral += 1;
+
+          return acc;
+        },
+        { positive: 0, negative: 0, neutral: 0 }
+      );
+
+      const totalItems = allItems.length || 1;
 
       setStats({
         totalNews: newsItems.length,
         totalTweets: tweetItems.length,
-        positivePercentage: Math.round(positivePercentage),
-        negativePercentage: Math.round(negativePercentage),
-        neutralPercentage: Math.round(neutralPercentage),
-        lastUpdated: new Date().toISOString()
+        positivePercentage: Math.round((sentimentCounts.positive / totalItems) * 100),
+        negativePercentage: Math.round((sentimentCounts.negative / totalItems) * 100),
+        neutralPercentage: Math.round((sentimentCounts.neutral / totalItems) * 100),
+        lastUpdated: new Date().toISOString(),
       });
-
-    } catch (error) {
-      console.error('Erro ao buscar estatísticas:', error);
+    } catch (err) {
+      console.error("Erro ao buscar estatísticas:", err);
+      setError(getFetchErrorMessage(err));
     } finally {
+      clearTimeout(timeoutId);
       setIsLoading(false);
     }
   };
@@ -73,5 +101,5 @@ export function useDashboardStats() {
     return () => clearInterval(interval);
   }, []);
 
-  return { stats, isLoading, refetch: fetchStats };
+  return { stats, isLoading, error, refetch: fetchStats };
 }

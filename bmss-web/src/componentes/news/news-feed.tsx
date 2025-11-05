@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { RefreshCw } from "lucide-react";
 import { NewsCard } from "./news-card";
-import { ExternalLink, Calendar, RefreshCw } from "lucide-react";
+import { buildApiUrl, getFetchErrorMessage } from "@/lib/api";
 
 interface NewsItem {
   title: string;
@@ -22,39 +23,51 @@ export function NewsFeed() {
   const [error, setError] = useState<string | null>(null);
 
   const fetchNews = async () => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
     try {
       setIsLoading(true);
       setError(null);
-      
-      const response = await fetch('http://localhost:8080/api/v1/noticias/ultimas?limit=10&q=bitcoin');
-      
+
+      const response = await fetch(
+        buildApiUrl("noticias/ultimas?limit=10&q=bitcoin"),
+        { signal: controller.signal }
+      );
+
       if (!response.ok) {
         throw new Error(`Erro HTTP: ${response.status}`);
       }
-      
+
       const data = await response.json();
       setNews(data.data || []);
-      
-    } catch (error) {
-      console.error('Erro ao buscar notícias:', error);
-      setError('Erro ao carregar notícias');
+    } catch (err) {
+      console.error("Erro ao buscar notícias:", err);
+      setError(getFetchErrorMessage(err));
     } finally {
+      clearTimeout(timeoutId);
       setIsLoading(false);
     }
   };
 
   const analyzeNews = async () => {
     try {
-      const response = await fetch('http://localhost:8080/api/v1/noticias/analisar?limit=20&q=bitcoin', {
-        method: 'POST'
-      });
-      
+      const response = await fetch(
+        buildApiUrl("noticias/analisar?limit=20&q=bitcoin"),
+        {
+          method: "POST",
+        }
+      );
+
       if (response.ok) {
         setTimeout(fetchNews, 3000);
-        alert('Análise de notícias iniciada!');
+        alert("Análise de notícias iniciada!");
+      } else {
+        throw new Error(`Erro HTTP: ${response.status}`);
       }
-    } catch (error) {
-      console.error('Erro ao iniciar análise:', error);
+    } catch (err) {
+      console.error("Erro ao iniciar análise:", err);
+      setError(getFetchErrorMessage(err));
     }
   };
 
@@ -66,11 +79,14 @@ export function NewsFeed() {
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         {[...Array(6)].map((_, i) => (
-          <div key={i} className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 animate-pulse">
-            <div className="h-4 bg-neutral-800 rounded w-1/4 mb-4"></div>
-            <div className="h-6 bg-neutral-800 rounded w-3/4 mb-2"></div>
-            <div className="h-4 bg-neutral-800 rounded w-full mb-2"></div>
-            <div className="h-4 bg-neutral-800 rounded w-2/3"></div>
+          <div
+            key={i}
+            className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 animate-pulse"
+          >
+            <div className="h-4 bg-neutral-800 rounded w-1/4 mb-4" />
+            <div className="h-6 bg-neutral-800 rounded w-3/4 mb-2" />
+            <div className="h-4 bg-neutral-800 rounded w-full mb-2" />
+            <div className="h-4 bg-neutral-800 rounded w-2/3" />
           </div>
         ))}
       </div>
@@ -93,12 +109,14 @@ export function NewsFeed() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-      
-        <h2 className="text-2xl font-bold text-white mb-2">Notícias em Tempo Real</h2>
-            <p className="text-gray-400 mb-4">
-            {news.length} notícias analisadas • Atualizado em {new Date().toLocaleTimeString('pt-BR')}
-            </p>
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6 gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-white">Notícias em Tempo Real</h2>
+          <p className="text-gray-400">
+            {news.length} notícias analisadas • Atualizado em {" "}
+            {new Date().toLocaleTimeString("pt-BR")}
+          </p>
+        </div>
         <div className="flex gap-2">
           <button
             onClick={analyzeNews}
@@ -118,7 +136,7 @@ export function NewsFeed() {
 
       {news.length === 0 ? (
         <div className="text-center py-8 text-gray-400">
-          Nenhuma notícia encontrada. Clique em "Nova Análise" para buscar notícias.
+          Nenhuma notícia encontrada. Clique em &quot;Nova Análise&quot; para buscar notícias.
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
