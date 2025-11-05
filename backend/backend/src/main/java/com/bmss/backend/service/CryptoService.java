@@ -161,8 +161,8 @@ public class CryptoService {
         double changePercent = toDouble(ticker.get("priceChangePercent"));
         long closeTime = toLong(ticker.get("closeTime"));
 
-        double usdToBrl = fetchUsdToBrl();
-        double priceBrl = lastPrice * usdToBrl;
+        Double usdToBrl = tryFetchUsdToBrl();
+        Double priceBrl = usdToBrl != null ? lastPrice * usdToBrl : null;
 
         Map<String, Object> data = new HashMap<>();
         data.put("price", lastPrice);
@@ -172,7 +172,7 @@ public class CryptoService {
         data.put("lastUpdated", ISO_FORMATTER.format(Instant.ofEpochMilli(closeTime)));
         data.put("currency", "USD");
         data.put("priceFormatted", formatCurrency(lastPrice, "USD"));
-        data.put("priceFormattedBRL", formatCurrency(priceBrl, "BRL"));
+        data.put("priceFormattedBRL", priceBrl != null ? formatCurrency(priceBrl, "BRL") : null);
         data.put("source", "Binance");
         data.put("isFallback", false);
         return data;
@@ -188,7 +188,7 @@ public class CryptoService {
         double lastPrice = toDouble(ticker.get("lastPrice"));
         double changePercent = toDouble(ticker.get("priceChangePercent"));
         long closeTime = toLong(ticker.get("closeTime"));
-        double usdToBrl = fetchUsdToBrl();
+        Double usdToBrl = tryFetchUsdToBrl();
 
         List<Map<String, Object>> prices = new ArrayList<>();
         for (int i = 0; i < klines.size(); i++) {
@@ -211,7 +211,7 @@ public class CryptoService {
         Map<String, Object> data = new HashMap<>();
         data.put("prices", prices);
         data.put("currentPriceUSD", roundTwoDecimals(lastPrice));
-        data.put("currentPriceBRL", roundTwoDecimals(lastPrice * usdToBrl));
+        data.put("currentPriceBRL", usdToBrl != null ? roundTwoDecimals(lastPrice * usdToBrl) : null);
         data.put("change24h", String.format(Locale.US, "%.2f", changePercent));
         data.put("source", "Binance");
         data.put("isFallback", false);
@@ -420,20 +420,25 @@ public class CryptoService {
         return body;
     }
 
-    private double fetchUsdToBrl() {
-        Map<String, Object> body = restTemplate.getForObject(
-                "https://api.exchangerate.host/latest?base=USD&symbols=BRL",
-                Map.class
-        );
-        if (body == null || !body.containsKey("rates")) {
-            throw new IllegalStateException("Erro ao consultar taxa de câmbio USD/BRL");
+    private Double tryFetchUsdToBrl() {
+        try {
+            Map<String, Object> body = restTemplate.getForObject(
+                    "https://api.exchangerate.host/latest?base=USD&symbols=BRL",
+                    Map.class
+            );
+            if (body == null || !body.containsKey("rates")) {
+                throw new IllegalStateException("Resposta inválida da taxa de câmbio");
+            }
+            Map<String, Object> rates = (Map<String, Object>) body.get("rates");
+            Object rate = rates.get("BRL");
+            if (rate == null) {
+                throw new IllegalStateException("Taxa USD/BRL não encontrada");
+            }
+            return toDouble(rate);
+        } catch (Exception ex) {
+            log.warn("⚠️ Falha ao buscar taxa USD/BRL: {}", ex.getMessage());
+            return null;
         }
-        Map<String, Object> rates = (Map<String, Object>) body.get("rates");
-        Object rate = rates.get("BRL");
-        if (rate == null) {
-            throw new IllegalStateException("Taxa USD/BRL não encontrada");
-        }
-        return toDouble(rate);
     }
 
     private List<List<Object>> fetchKlines(String interval, int limit, Long startTime, Long endTime) {

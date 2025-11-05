@@ -237,9 +237,18 @@ export default function BitcoinHistoricoCompleto({ className = "" }: BitcoinHist
           </p>
         </div>
         <div className="text-center p-3 bg-neutral-800 rounded-lg">
-          <p className="text-gray-400 text-sm">Preço Inicial (2009)</p>
+          <p className="text-gray-400 text-sm">
+            Preço Inicial ({dados.prices[0]?.ano ?? "N/D"})
+          </p>
           <p className="text-white font-bold text-lg">
-            ${dados.precoInicial.toFixed(6)}
+            {dados.prices[0]
+              ? new Intl.NumberFormat('pt-BR', {
+                  style: 'currency',
+                  currency: 'USD',
+                  minimumFractionDigits: dados.precoInicial < 1 ? 6 : 2,
+                  maximumFractionDigits: dados.precoInicial < 1 ? 6 : 2
+                }).format(dados.precoInicial)
+              : 'N/D'}
           </p>
         </div>
         <div className="text-center p-3 bg-neutral-800 rounded-lg">
@@ -253,9 +262,7 @@ export default function BitcoinHistoricoCompleto({ className = "" }: BitcoinHist
         </div>
         <div className="text-center p-3 bg-neutral-800 rounded-lg">
           <p className="text-gray-400 text-sm">Período</p>
-          <p className="text-white font-bold text-lg">
-            {dados.prices.length} anos
-          </p>
+          <p className="text-white font-bold text-lg">{dados.periodo}</p>
         </div>
       </div>
 
