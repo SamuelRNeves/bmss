@@ -17,7 +17,8 @@ public class CorsConfig {
     private static final List<String> ALLOWED_ORIGIN_PATTERNS = List.of(
         "http://localhost:*",
         "http://127.0.0.1:*",
-        "https://bmss-sytem-*.vercel.app",
+        "https://bmss-sytem.vercel.app", // URL exata do frontend
+        "https://*.vercel.app", // Todos os subdomínios do Vercel
         "https://*.onrender.com"
     );
 
