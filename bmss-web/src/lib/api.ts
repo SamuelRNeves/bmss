@@ -4,13 +4,8 @@ import axios, { AxiosError } from "axios";
 // =====================================================
 // 🔧 Configuração global do Axios
 // =====================================================
-const DEV_API_HOST = ["local", "host"].join("");
-const DEV_API_PORT = ["80", "80"].join("");
-const DEV_API_BASE = [
-  "http://",
-  `${DEV_API_HOST}:${DEV_API_PORT}`,
-  "/api/v1",
-].join("");
+const DEV_API_BASE = "http://localhost:8080/api/v1";
+const PROD_DEFAULT_API_BASE = "https://bmss-backend.onrender.com/api/v1";
 
 const configuredApiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
 const normalizedConfiguredBase = configuredApiBase
@@ -19,22 +14,12 @@ const normalizedConfiguredBase = configuredApiBase
 
 export const API_BASE_URL =
   normalizedConfiguredBase ||
-  (process.env.NODE_ENV === "development" ? DEV_API_BASE : undefined);
-
-if (!API_BASE_URL && process.env.NODE_ENV !== "development") {
-  console.warn(
-    "NEXT_PUBLIC_API_BASE_URL não está configurada. As requisições serão feitas relativas ao domínio atual."
-  );
-}
+  (process.env.NODE_ENV === "development"
+    ? DEV_API_BASE
+    : PROD_DEFAULT_API_BASE);
 
 export function getRequiredApiBaseUrl(): string {
-  if (API_BASE_URL) {
-    return API_BASE_URL;
-  }
-
-  throw new Error(
-    "NEXT_PUBLIC_API_BASE_URL não está configurada. Defina a variável de ambiente para o backend Java."
-  );
+  return API_BASE_URL;
 }
 
 export function buildApiUrl(path: string): string {
