@@ -10,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.HttpStatusCodeException;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -24,6 +25,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
@@ -34,6 +36,10 @@ public class CryptoService {
     private static final Logger log = LoggerFactory.getLogger(CryptoService.class);
     private static final String SYMBOL = "BTCUSDT";
     private static final long DAILY_CACHE_DURATION_MS = TimeUnit.HOURS.toMillis(24);
+    private static final List<String> BINANCE_BASE_URLS = List.of(
+            "https://api.binance.com",
+            "https://data-api.binance.vision"
+    );
     private static final DateTimeFormatter ISO_FORMATTER = DateTimeFormatter.ISO_INSTANT;
 
     private final RestTemplate restTemplate;
@@ -132,7 +138,6 @@ public class CryptoService {
     }
 
     private Map<String, Object> wrapSuccess(Map<String, Object> data, boolean fallback) {
-        // Resolvendo o conflito: combinar as duas abordagens
         boolean isFallback = fallback || toBoolean(data.get("isFallback"));
         data.put("isFallback", isFallback);
 
@@ -317,29 +322,27 @@ public class CryptoService {
     }
 
     // ============================================================
-    // 🔹 Utilidades
+    // 🔹 Utilidades - Versão atualizada com fallback de URLs
     // ============================================================
     private Map<String, Object> fetchCurrentPriceTicker() {
-        String url = "https://api.binance.com/api/v3/ticker/price?symbol=" + SYMBOL;
-        log.info("➡️ Iniciando chamada HTTP GET para {}", url);
-        ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.GET, null, Map.class);
-        log.info("✅ Chamada concluída para {} com status {}", url, response.getStatusCode());
-
-        Map<String, Object> body = response.getBody();
-        if (body == null || !body.containsKey("price")) {
+        Map<String, Object> body = fetchFromBinance(
+                "/api/v3/ticker/price?symbol=" + SYMBOL,
+                new ParameterizedTypeReference<Map<String, Object>>() {},
+                "preço atual"
+        );
+        if (!body.containsKey("price")) {
             throw new IllegalStateException("Resposta inválida do preço atual da Binance");
         }
         return body;
     }
 
     private Map<String, Object> fetch24hTicker() {
-        String url = "https://api.binance.com/api/v3/ticker/24hr?symbol=" + SYMBOL;
-        log.info("➡️ Iniciando chamada HTTP GET para {}", url);
-        ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.GET, null, Map.class);
-        log.info("✅ Chamada concluída para {} com status {}", url, response.getStatusCode());
-
-        Map<String, Object> body = response.getBody();
-        if (body == null || !body.containsKey("lastPrice")) {
+        Map<String, Object> body = fetchFromBinance(
+                "/api/v3/ticker/24hr?symbol=" + SYMBOL,
+                new ParameterizedTypeReference<Map<String, Object>>() {},
+                "ticker 24h"
+        );
+        if (!body.containsKey("lastPrice")) {
             throw new IllegalStateException("Resposta inválida do ticker 24h da Binance");
         }
         return body;
@@ -369,28 +372,60 @@ public class CryptoService {
     }
 
     private List<List<Object>> fetchKlines(String interval, int limit, Long startTime, Long endTime) {
-        StringBuilder url = new StringBuilder("https://api.binance.com/api/v3/klines?symbol=")
+        StringBuilder path = new StringBuilder("/api/v3/klines?symbol=")
                 .append(SYMBOL)
                 .append("&interval=").append(interval)
                 .append("&limit=").append(limit);
         if (startTime != null) {
-            url.append("&startTime=").append(startTime);
+            path.append("&startTime=").append(startTime);
         }
         if (endTime != null) {
-            url.append("&endTime=").append(endTime);
+            path.append("&endTime=").append(endTime);
         }
 
-        String finalUrl = url.toString();
-        log.info("➡️ Iniciando chamada HTTP GET para {}", finalUrl);
-        ResponseEntity<List<List<Object>>> response = restTemplate.exchange(
-                finalUrl,
-                HttpMethod.GET,
-                null,
-                new ParameterizedTypeReference<List<List<Object>>>() {}
+        List<List<Object>> body = fetchFromBinance(
+                path.toString(),
+                new ParameterizedTypeReference<List<List<Object>>>() {},
+                "klines"
         );
-        log.info("✅ Chamada concluída para {} com status {}", finalUrl, response.getStatusCode());
-        List<List<Object>> body = response.getBody();
         return body != null ? body : Collections.emptyList();
+    }
+
+    private <T> T fetchFromBinance(String path,
+                                   ParameterizedTypeReference<T> type,
+                                   String description) {
+        RuntimeException lastError = null;
+        for (String baseUrl : BINANCE_BASE_URLS) {
+            String url = baseUrl + path;
+            log.info("➡️ Iniciando chamada HTTP GET para {} ({})", url, description);
+            try {
+                ResponseEntity<T> response = restTemplate.exchange(url, HttpMethod.GET, null, type);
+                log.info("✅ Chamada concluída para {} com status {}", url, response.getStatusCode());
+                T body = response.getBody();
+                if (body == null) {
+                    throw new IllegalStateException("Resposta vazia da Binance para " + description);
+                }
+                return body;
+            } catch (HttpStatusCodeException httpEx) {
+                String sanitizedMessage = sanitizeHttpError(httpEx.getResponseBodyAsString());
+                log.warn("⚠️ Erro HTTP {} ao chamar {}: {}", httpEx.getRawStatusCode(), url, sanitizedMessage);
+                lastError = new IllegalStateException("Erro HTTP " + httpEx.getRawStatusCode() + " da Binance em " + description, httpEx);
+            } catch (Exception ex) {
+                log.warn("⚠️ Falha ao chamar {}: {}", url, ex.getMessage());
+                lastError = new IllegalStateException("Falha ao acessar Binance para " + description, ex);
+            }
+        }
+        if (lastError != null) {
+            throw lastError;
+        }
+        throw new IllegalStateException("Falha desconhecida ao acessar Binance para " + description);
+    }
+
+    private String sanitizeHttpError(String rawBody) {
+        return Optional.ofNullable(rawBody)
+                .map(body -> body.replaceAll("\n", " ").trim())
+                .map(body -> body.length() > 300 ? body.substring(0, 300) + "..." : body)
+                .orElse("(sem corpo)");
     }
 
     private Map<String, Object> buildMarketChartPayload(List<List<Object>> klines) {
