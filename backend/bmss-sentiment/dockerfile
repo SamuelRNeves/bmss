@@ -1,0 +1,42 @@
+# ================================
+# 🔥 BMSS Sentiment Microservice
+# Flask + Transformers + Torch (CPU)
+# ================================
+FROM python:3.10-slim
+
+# Evita buffering e garante logs imediatos
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+# Instalar dependências do sistema
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git wget curl && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copiar dependências
+COPY requirements.txt .
+
+# Instalar libs sem GPU (CPU only)
+RUN pip install --upgrade pip && pip install -r requirements.txt
+
+# 🔥 Baixar o modelo ANTES do runtime (evita delay)
+RUN python - <<EOF
+from transformers import pipeline
+print("📦 Baixando modelo FinBERT...")
+pipeline(
+    "sentiment-analysis",
+    model="mrm8488/distilroberta-finetuned-financial-news-sentiment-analysis"
+)
+print("✅ Modelo baixado com sucesso!")
+EOF
+
+# Copia o app depois do build (boa prática)
+COPY . .
+
+# Porta exposta para o Render
+EXPOSE 5000
+
+# Gunicorn como servidor de produção
+CMD ["gunicorn", "-w", "2", "-b", "0.0.0.0:5000", "app:app"]

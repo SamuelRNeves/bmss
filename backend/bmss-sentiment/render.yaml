@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: bmss-sentiment
+    env: docker
+    region: oregon
+    plan: free
+    repo: https://github.com/SamuelRNeves/bmss
+    dockerContext: ./backend/bmss-sentiment
+    dockerfilePath: ./backend/bmss-sentiment/Dockerfile
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: PORT
+        value: "5000"
