@@ -21,17 +21,25 @@ export function NewsFeed() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const API_BASE_URL =
+    process.env.NEXT_PUBLIC_API_BASE_URL ??
+    (process.env.NODE_ENV === "development" ? "http://localhost:8080/api/v1" : undefined);
+
   const fetchNews = async () => {
     try {
       setIsLoading(true);
       setError(null);
-      
-      const response = await fetch('http://localhost:8080/api/v1/noticias/ultimas?limit=10&q=bitcoin');
-      
+
+      if (!API_BASE_URL) {
+        throw new Error("API base URL não configurada");
+      }
+
+      const response = await fetch(`${API_BASE_URL}/noticias/ultimas?limit=10&q=bitcoin`);
+
       if (!response.ok) {
         throw new Error(`Erro HTTP: ${response.status}`);
       }
-      
+
       const data = await response.json();
       setNews(data.data || []);
       
@@ -45,10 +53,14 @@ export function NewsFeed() {
 
   const analyzeNews = async () => {
     try {
-      const response = await fetch('http://localhost:8080/api/v1/noticias/analisar?limit=20&q=bitcoin', {
+      if (!API_BASE_URL) {
+        throw new Error("API base URL não configurada");
+      }
+
+      const response = await fetch(`${API_BASE_URL}/noticias/analisar?limit=20&q=bitcoin`, {
         method: 'POST'
       });
-      
+
       if (response.ok) {
         setTimeout(fetchNews, 3000);
         alert('Análise de notícias iniciada!');

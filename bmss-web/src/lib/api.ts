@@ -4,10 +4,18 @@ import axios, { AxiosError } from "axios";
 // =====================================================
 // 🔧 Configuração global do Axios
 // =====================================================
-const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080/api/v1";
+export const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL ??
+  (process.env.NODE_ENV === "development" ? "http://localhost:8080/api/v1" : undefined);
+
+if (!API_BASE_URL && process.env.NODE_ENV !== "development") {
+  console.warn(
+    "NEXT_PUBLIC_API_BASE_URL não está configurada. As requisições serão feitas relativas ao domínio atual."
+  );
+}
 
 const api = axios.create({
-  baseURL: BASE_URL,
+  ...(API_BASE_URL ? { baseURL: API_BASE_URL } : {}),
 });
 
 const COINGECKO_BASE_URL =

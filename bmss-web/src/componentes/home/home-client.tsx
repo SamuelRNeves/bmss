@@ -58,7 +58,13 @@ export default function HomeClient() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 8000);
 
-      const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080/api/v1";
+      const API_URL =
+        process.env.NEXT_PUBLIC_API_BASE_URL ??
+        (process.env.NODE_ENV === "development" ? "http://localhost:8080/api/v1" : undefined);
+
+      if (!API_URL) {
+        throw new Error("API base URL não configurada");
+      }
 
 const fetchStats = async () => {
   try {

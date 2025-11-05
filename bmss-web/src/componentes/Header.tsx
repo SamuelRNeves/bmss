@@ -7,6 +7,10 @@ export default function Header() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
+  const API_BASE_URL =
+    process.env.NEXT_PUBLIC_API_BASE_URL ??
+    (process.env.NODE_ENV === "development" ? "http://localhost:8080/api/v1" : undefined);
+
   // 🔹 Atualiza dashboard normalmente
   const atualizarDashboard = async (msgInicio: string, msgSucesso: string) => {
     try {
@@ -31,8 +35,12 @@ export default function Header() {
       setMessage("Analisando as últimas 5 notícias...");
 
       // ⚠️ importante: POST, não GET
+      if (!API_BASE_URL) {
+        throw new Error("API base URL não configurada");
+      }
+
       const response = await axios.post(
-        "http://localhost:8080/api/v1/noticias/analisar",
+        `${API_BASE_URL}/noticias/analisar`,
         null,
         { params: { q: "bitcoin", limit: 5 } }
       );
