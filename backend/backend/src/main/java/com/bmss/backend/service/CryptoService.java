@@ -132,6 +132,7 @@ public class CryptoService {
     }
 
     private Map<String, Object> wrapSuccess(Map<String, Object> data, boolean fallback) {
+        // Resolvendo o conflito: combinar as duas abordagens
         boolean isFallback = fallback || toBoolean(data.get("isFallback"));
         data.put("isFallback", isFallback);
 
@@ -139,6 +140,7 @@ public class CryptoService {
         response.put("success", true);
         response.put("data", data);
         response.put("isFallback", isFallback);
+        
         Object timestamp = data.get("lastUpdated");
         if (timestamp == null) {
             timestamp = data.get("atualizado");
