@@ -502,7 +502,7 @@ public void fetchAndStoreTweets(String keyword) {
 
     try {
         //  TOKEN VÁLIDO DA API DO TWITTER 
-        String bearerToken = "AAAAAAAAAAAAAAAAAAAAANJA5AEAAAAA6hIwdxjae3peiYVm3equauT1z74%3DcNHzAZesIp7f9sloSYrEoRPJv5VaDzpGTgOUJsWNJGznSjUeA7"; // TODO: Colocar token real
+        String bearerToken = "AAAAAAAAAAAAAAAAAAAAAPUm5QEAAAAAsVmaPixVJE0AEiLWHLimAf0Ilw8%3DxcU1G3JVGtiHoyqMcIKgeLamtd2LwqexlO5XTESZYSvOUtWpFi"; // TODO: Colocar token real
         
         String url = "https://api.twitter.com/2/tweets/search/recent?query="
                 + URLEncoder.encode("bitcoin OR criptomoeda", StandardCharsets.UTF_8)
