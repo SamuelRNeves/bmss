@@ -22,6 +22,10 @@ export function TweetsFeed() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const API_BASE_URL =
+    process.env.NEXT_PUBLIC_API_BASE_URL ??
+    (process.env.NODE_ENV === "development" ? "http://localhost:8080/api/v1" : undefined);
+
   const fetchTweets = async () => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
@@ -29,6 +33,10 @@ export function TweetsFeed() {
     try {
       setIsLoading(true);
       setError(null);
+
+      if (!API_BASE_URL) {
+        throw new Error("API base URL não configurada");
+      }
 
       const response = await fetch(
         buildApiUrl("noticias/tweets/ultimos?limit=10&q=bitcoin"),
@@ -52,6 +60,10 @@ export function TweetsFeed() {
 
   const analyzeTweets = async () => {
     try {
+      if (!API_BASE_URL) {
+        throw new Error("API base URL não configurada");
+      }
+
       const response = await fetch(
         buildApiUrl("noticias/analisar-tweets?q=bitcoin"),
         {

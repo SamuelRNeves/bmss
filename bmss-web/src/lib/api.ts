@@ -57,6 +57,12 @@ export function getFetchErrorMessage(error: unknown): string {
   return String(error);
 }
 
+if (!API_BASE_URL && process.env.NODE_ENV !== "development") {
+  console.warn(
+    "NEXT_PUBLIC_API_BASE_URL não está configurada. As requisições serão feitas relativas ao domínio atual."
+  );
+}
+
 const api = axios.create({
   ...(API_BASE_URL ? { baseURL: API_BASE_URL } : {}),
 });
