@@ -21,6 +21,12 @@ export const API_BASE_URL =
   normalizedConfiguredBase ||
   (process.env.NODE_ENV === "development" ? DEV_API_BASE : undefined);
 
+if (!API_BASE_URL && process.env.NODE_ENV !== "development") {
+  console.warn(
+    "NEXT_PUBLIC_API_BASE_URL não está configurada. As requisições serão feitas relativas ao domínio atual."
+  );
+}
+
 export function getRequiredApiBaseUrl(): string {
   if (API_BASE_URL) {
     return API_BASE_URL;
@@ -55,12 +61,6 @@ export function getFetchErrorMessage(error: unknown): string {
   }
 
   return String(error);
-}
-
-if (!API_BASE_URL && process.env.NODE_ENV !== "development") {
-  console.warn(
-    "NEXT_PUBLIC_API_BASE_URL não está configurada. As requisições serão feitas relativas ao domínio atual."
-  );
 }
 
 const api = axios.create({
