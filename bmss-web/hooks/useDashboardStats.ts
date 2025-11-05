@@ -20,11 +20,19 @@ export function useDashboardStats() {
   });
   const [isLoading, setIsLoading] = useState(true);
 
+  const API_BASE_URL =
+    process.env.NEXT_PUBLIC_API_BASE_URL ??
+    (process.env.NODE_ENV === 'development' ? 'http://localhost:8080/api/v1' : undefined);
+
   const fetchStats = async () => {
     try {
+      if (!API_BASE_URL) {
+        throw new Error('API base URL não configurada');
+      }
+
       const [newsResponse, tweetsResponse] = await Promise.all([
-        fetch('http://localhost:8080/api/v1/noticias/ultimas?limit=50&q=bitcoin'),
-        fetch('http://localhost:8080/api/v1/noticias/tweets/ultimos?limit=50&q=bitcoin')
+        fetch(`${API_BASE_URL}/noticias/ultimas?limit=50&q=bitcoin`),
+        fetch(`${API_BASE_URL}/noticias/tweets/ultimos?limit=50&q=bitcoin`)
       ]);
 
       const newsData = await newsResponse.json();
