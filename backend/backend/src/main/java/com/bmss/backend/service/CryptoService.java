@@ -145,6 +145,7 @@ public class CryptoService {
         response.put("success", true);
         response.put("data", data);
         response.put("isFallback", isFallback);
+        
         Object timestamp = data.get("lastUpdated");
         if (timestamp == null) {
             timestamp = data.get("atualizado");
@@ -321,13 +322,12 @@ public class CryptoService {
     }
 
     // ============================================================
-    // 🔹 Utilidades
+    // 🔹 Utilidades - Versão atualizada com fallback de URLs
     // ============================================================
     private Map<String, Object> fetchCurrentPriceTicker() {
         Map<String, Object> body = fetchFromBinance(
                 "/api/v3/ticker/price?symbol=" + SYMBOL,
-                new ParameterizedTypeReference<Map<String, Object>>() {
-                },
+                new ParameterizedTypeReference<Map<String, Object>>() {},
                 "preço atual"
         );
         if (!body.containsKey("price")) {
@@ -339,8 +339,7 @@ public class CryptoService {
     private Map<String, Object> fetch24hTicker() {
         Map<String, Object> body = fetchFromBinance(
                 "/api/v3/ticker/24hr?symbol=" + SYMBOL,
-                new ParameterizedTypeReference<Map<String, Object>>() {
-                },
+                new ParameterizedTypeReference<Map<String, Object>>() {},
                 "ticker 24h"
         );
         if (!body.containsKey("lastPrice")) {
@@ -386,8 +385,7 @@ public class CryptoService {
 
         List<List<Object>> body = fetchFromBinance(
                 path.toString(),
-                new ParameterizedTypeReference<List<List<Object>>>() {
-                },
+                new ParameterizedTypeReference<List<List<Object>>>() {},
                 "klines"
         );
         return body != null ? body : Collections.emptyList();
