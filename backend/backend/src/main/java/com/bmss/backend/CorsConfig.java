@@ -14,18 +14,11 @@ import java.util.List;
 @Configuration
 public class CorsConfig {
 
-    private static final List<String> ALLOWED_ORIGINS = List.of(
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "https://bmss-sytem.vercel.app",
-        "https://bmss-backend.onrender.com"
-    );
-
     private static final List<String> ALLOWED_ORIGIN_PATTERNS = List.of(
         "http://localhost:*",
         "http://127.0.0.1:*",
         "https://bmss-sytem.vercel.app",
-        "https://bmss-backend.onrender.com"
+        "https://*.onrender.com"
     );
 
     @Bean
@@ -34,7 +27,6 @@ public class CorsConfig {
             @Override
             public void addCorsMappings(CorsRegistry registry) {
                 registry.addMapping("/**")
-                        .allowedOrigins(ALLOWED_ORIGINS.toArray(new String[0]))
                         .allowedOriginPatterns(ALLOWED_ORIGIN_PATTERNS.toArray(new String[0]))
                         .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                         .allowedHeaders("*")
@@ -48,7 +40,6 @@ public class CorsConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(ALLOWED_ORIGINS);
         configuration.setAllowedOriginPatterns(ALLOWED_ORIGIN_PATTERNS);
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));

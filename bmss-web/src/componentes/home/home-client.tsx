@@ -58,14 +58,24 @@ export default function HomeClient() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 8000);
 
-      const [newsResponse, tweetsResponse] = await Promise.allSettled([
-        fetch('http://localhost:8080/api/v1/noticias/ultimas?limit=50&q=bitcoin', {
-          signal: controller.signal
-        }),
-        fetch('http://localhost:8080/api/v1/noticias/tweets/ultimos?limit=50&q=bitcoin', {
-          signal: controller.signal
-        })
-      ]);
+      const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080/api/v1";
+
+const fetchStats = async () => {
+  try {
+    setIsLoading(true);
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+    const [newsResponse, tweetsResponse] = await Promise.allSettled([
+      fetch(`${API_URL}/noticias/ultimas?limit=50&q=bitcoin`, {
+        signal: controller.signal
+      }),
+      fetch(`${API_URL}/noticias/tweets/ultimos?limit=50&q=bitcoin`, {
+        signal: controller.signal
+      })
+    ]);
+
 
       clearTimeout(timeoutId);
 
