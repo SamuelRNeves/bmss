@@ -106,7 +106,11 @@ public class CryptoService {
                                            Supplier<Map<String, Object>> fallbackSupplier) {
         long now = System.currentTimeMillis();
         CacheEntry cached = cache.get(key);
-        if (cached != null && now - cached.timestamp < DAILY_CACHE_DURATION_MS) {
+        boolean hasCached = cached != null;
+        boolean cachedFallback = hasCached && isFallbackPayload(cached.payload);
+        boolean cacheValid = hasCached && !cachedFallback && now - cached.timestamp < DAILY_CACHE_DURATION_MS;
+
+        if (cacheValid) {
             return cached.payload;
         }
 
@@ -116,7 +120,7 @@ public class CryptoService {
             return response;
         } catch (Exception ex) {
             log.warn("⚠️ Falha ao buscar '{}': {}", key, ex.getMessage());
-            if (cached != null) {
+            if (hasCached) {
                 log.info("♻️ Retornando valor em cache anterior para '{}' após falha na atualização.", key);
                 return cached.payload;
             }
@@ -128,15 +132,15 @@ public class CryptoService {
     }
 
     private Map<String, Object> wrapSuccess(Map<String, Object> data, boolean fallback) {
-        if (fallback) {
-            data.put("isFallback", true);
-        } else if (!data.containsKey("isFallback")) {
-            data.put("isFallback", false);
-        }
+        // Resolvendo o conflito: combinar as duas abordagens
+        boolean isFallback = fallback || toBoolean(data.get("isFallback"));
+        data.put("isFallback", isFallback);
 
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
         response.put("data", data);
+        response.put("isFallback", isFallback);
+        
         Object timestamp = data.get("lastUpdated");
         if (timestamp == null) {
             timestamp = data.get("atualizado");
@@ -445,6 +449,29 @@ public class CryptoService {
             return ((Number) value).longValue();
         }
         return Long.parseLong(String.valueOf(value));
+    }
+
+    @SuppressWarnings("unchecked")
+    private boolean isFallbackPayload(Map<String, Object> payload) {
+        if (payload == null) {
+            return false;
+        }
+        if (toBoolean(payload.get("isFallback"))) {
+            return true;
+        }
+        Object data = payload.get("data");
+        if (data instanceof Map<?, ?> dataMap) {
+            Object nested = ((Map<String, Object>) dataMap).get("isFallback");
+            return toBoolean(nested);
+        }
+        return false;
+    }
+
+    private boolean toBoolean(Object value) {
+        if (value instanceof Boolean) {
+            return (Boolean) value;
+        }
+        return value != null && Boolean.parseBoolean(String.valueOf(value));
     }
 
     private static class CacheEntry {
