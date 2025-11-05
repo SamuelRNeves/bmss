@@ -277,46 +277,47 @@ def forced_analysis(text):
 
 @app.route("/analyze-batch", methods=["POST"])
 def analyze_batch():
-    """Análise em lote ULTRA-AGGRESSIVA."""
+    """Análise em lote ULTRA-AGRESSIVA."""
     try:
         textos = request.get_json()
         if not textos:
             return jsonify({"error": "Nenhum texto recebido"}), 400
 
-        logger.info(f"📨 Recebido lote com {len(textos)} textos para análise ULTRA-AGGRESSIVA")
+        logger.info(f"📨 Recebido lote com {len(textos)} textos para análise ULTRA-AGRESSIVA")
 
         resultados = []
         for i, texto in enumerate(textos):
             result = forced_analysis(texto)
-            
+
             resultados.append({
                 "label": result["label"],
                 "score": result["score"]
             })
-            
+
             # Log SUPER DETALHADO
             logger.info(f"🎯 ANÁLISE {i+1}:")
             logger.info(f"   📝 Texto: '{texto[:80]}...'")
             logger.info(f"   🎪 Resultado: {result['label'].upper()} ({result['score']})")
             logger.info(f"   ⚙️  Método: {result['method']}")
-            
+
             if 'keyword_analysis' in result:
                 kw = result['keyword_analysis']
                 logger.info(f"   🔑 Keywords: {kw['sentiment']} (score: {kw['final_score']})")
                 logger.info(f"   📊 Detalhes: +{kw['positive_score']} / -{kw['negative_score']} / boosts:{kw['boosts']}")
                 logger.info(f"   💥 Super Positivo: {kw['has_super_positive']}")
-            
+
             if 'model_sentiment' in result:
                 logger.info(f"   🤖 Modelo: {result['model_sentiment']} ({result['model_confidence']})")
-            
+
             logger.info(f"   ⏱  Tempo: {result['processing_time']}s")
             logger.info("")
 
         return jsonify(resultados)
-    
+
     except Exception as e:
         logger.error(f"❌ Erro em analyze-batch: {e}")
         return jsonify({"error": str(e)}), 500
+
 
 @app.route("/analyze-tweets", methods=["POST"])
 def analyze_tweets():
@@ -644,8 +645,9 @@ if __name__ == "__main__":
         logger.info("")
     
     
-   import os
+import os
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
