@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { BitcoinPriceSafe } from "@/componentes/BitcoinPriceSafe";
 import { StatsCard } from "@/componentes/dashboard/stats-cards";
 import { SentimentChart } from "@/componentes/charts/sentiment-chart";
@@ -9,11 +10,18 @@ import { TweetsFeed } from "@/componentes/tweets/tweets-feed";
 import { StatusBar } from "@/componentes/status/status-bar";
 import { ToastNotifier, showToast } from "@/componentes/notifications/toast-notifier";
 import { SentimentBadge } from "@/componentes/status/sentiment-badge";
-import { Newspaper, TrendingUp, TrendingDown, Twitter, BarChart3, RefreshCw } from "lucide-react";
-import { useState, useEffect } from "react";
+import {
+  Newspaper,
+  TrendingUp,
+  TrendingDown,
+  Twitter,
+  BarChart3,
+  RefreshCw,
+} from "lucide-react";
 import BitcoinHistoricoCompleto from "../charts/BitcoinHistoricoCompleto";
 import PriceChartSafe from "../charts/PriceChartSafe";
 import BitcoinHistoricoChart from "../charts/BitcoinHistoricoChart";
+import { buildApiUrl, getFetchErrorMessage } from "@/lib/api";
 
 interface NewsItem {
   id: number;
@@ -40,168 +48,207 @@ interface ApiResponse<T> {
   message?: string;
 }
 
-export default function HomeClient() {
-  const [stats, setStats] = useState({
-    totalNews: 0,
-    totalTweets: 0,
-    positiveSentiment: 0,
-    negativeSentiment: 0,
-    neutralSentiment: 0
-  });
-  const [isLoading, setIsLoading] = useState(true);
-  const [lastUpdate, setLastUpdate] = useState<string>('');
+interface DashboardStats {
+  totalNews: number;
+  totalTweets: number;
+  positiveSentiment: number;
+  negativeSentiment: number;
+  neutralSentiment: number;
+}
 
-  const fetchStats = async () => {
+const INITIAL_STATS: DashboardStats = {
+  totalNews: 0,
+  totalTweets: 0,
+  positiveSentiment: 0,
+  negativeSentiment: 0,
+  neutralSentiment: 0,
+};
+
+const generateFallbackNews = (): NewsItem[] =>
+  Array.from({ length: 24 }, (_, i) => ({
+    id: i + 1,
+    titulo: `Notícia Bitcoin ${i + 1}`,
+    descricao: `Descrição da notícia sobre Bitcoin ${i + 1}`,
+    sentiment: ["positive", "negative", "neutral"][i % 3] as string,
+    dataPublicacao: new Date().toISOString(),
+    fonte: "Fallback Source",
+  }));
+
+const generateFallbackTweets = (): TweetItem[] =>
+  Array.from({ length: 156 }, (_, i) => ({
+    id: i + 1,
+    text: `Tweet sobre Bitcoin ${i + 1} #BTC #Crypto`,
+    usuario: `user${i + 1}`,
+    sentiment: ["positive", "negative", "neutral"][i % 3] as string,
+    dataCriacao: new Date().toISOString(),
+  }));
+
+export default function HomeClient() {
+  const [stats, setStats] = useState<DashboardStats>(INITIAL_STATS);
+  const [isLoading, setIsLoading] = useState(true);
+  const [lastUpdate, setLastUpdate] = useState<string>("");
+
+  const API_URL =
+    process.env.NEXT_PUBLIC_API_BASE_URL ??
+    (process.env.NODE_ENV === "development" ? "http://localhost:8080/api/v1" : undefined);
+
+  const fetchStats = useCallback(async () => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+
     try {
       setIsLoading(true);
-      
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
-
-      const API_URL =
-        process.env.NEXT_PUBLIC_API_BASE_URL ??
-        (process.env.NODE_ENV === "development" ? "http://localhost:8080/api/v1" : undefined);
 
       if (!API_URL) {
         throw new Error("API base URL não configurada");
       }
 
-const fetchStats = async () => {
-  try {
-    setIsLoading(true);
-    
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
-
-    const [newsResponse, tweetsResponse] = await Promise.allSettled([
-      fetch(`${API_URL}/noticias/ultimas?limit=50&q=bitcoin`, {
-        signal: controller.signal
-      }),
-      fetch(`${API_URL}/noticias/tweets/ultimos?limit=50&q=bitcoin`, {
-        signal: controller.signal
-      })
-    ]);
-
-
-      clearTimeout(timeoutId);
+      const [newsResponse, tweetsResponse] = await Promise.allSettled([
+        fetch(buildApiUrl("noticias/ultimas?limit=50&q=bitcoin"), {
+          signal: controller.signal,
+        }),
+        fetch(buildApiUrl("noticias/tweets/ultimos?limit=50&q=bitcoin"), {
+          signal: controller.signal,
+        }),
+      ]);
 
       let newsItems: NewsItem[] = [];
       let tweetItems: TweetItem[] = [];
 
-      if (newsResponse.status === 'fulfilled' && newsResponse.value.ok) {
+      if (newsResponse.status === "fulfilled" && newsResponse.value.ok) {
         const newsData: ApiResponse<NewsItem> = await newsResponse.value.json();
         newsItems = newsData.data || [];
       } else {
-        console.warn('Falha ao carregar notícias, usando fallback');
+        console.warn("Falha ao carregar notícias, usando fallback");
         newsItems = generateFallbackNews();
       }
 
-      if (tweetsResponse.status === 'fulfilled' && tweetsResponse.value.ok) {
+      if (tweetsResponse.status === "fulfilled" && tweetsResponse.value.ok) {
         const tweetsData: ApiResponse<TweetItem> = await tweetsResponse.value.json();
         tweetItems = tweetsData.data || [];
       } else {
-        console.warn('Falha ao carregar tweets, usando fallback');
+        console.warn("Falha ao carregar tweets, usando fallback");
         tweetItems = generateFallbackTweets();
       }
 
       const allItems = [...newsItems, ...tweetItems];
+      const sentimentCounts = allItems.reduce(
+        (acc, item) => {
+          const sentiment = (item.sentimento || item.sentiment || "neutral").toLowerCase();
 
-      const sentimentCounts = { positive: 0, negative: 0, neutral: 0 };
-      
-      allItems.forEach(item => {
-        const sentiment = item.sentimento || item.sentiment || 'neutral';
-        
-        if (sentiment === 'positive' || sentiment === 'positivo') sentimentCounts.positive++;
-        else if (sentiment === 'negative' || sentiment === 'negativo') sentimentCounts.negative++;
-        else sentimentCounts.neutral++;
-      });
+          if (sentiment.startsWith("pos")) {
+            acc.positive += 1;
+          } else if (sentiment.startsWith("neg")) {
+            acc.negative += 1;
+          } else {
+            acc.neutral += 1;
+          }
 
-      const totalItems = allItems.length;
-      const positivePercentage = totalItems > 0 ? (sentimentCounts.positive / totalItems) * 100 : 0;
-      const negativePercentage = totalItems > 0 ? (sentimentCounts.negative / totalItems) * 100 : 0;
-      const neutralPercentage = totalItems > 0 ? (sentimentCounts.neutral / totalItems) * 100 : 0;
+          return acc;
+        },
+        { positive: 0, negative: 0, neutral: 0 }
+      );
+
+      const totalItems = allItems.length || 1;
+      const positivePercentage = (sentimentCounts.positive / totalItems) * 100;
+      const negativePercentage = (sentimentCounts.negative / totalItems) * 100;
+      const neutralPercentage = (sentimentCounts.neutral / totalItems) * 100;
 
       setStats({
         totalNews: newsItems.length,
         totalTweets: tweetItems.length,
         positiveSentiment: Math.round(positivePercentage),
         negativeSentiment: Math.round(negativePercentage),
-        neutralSentiment: Math.round(neutralPercentage)
+        neutralSentiment: Math.round(neutralPercentage),
       });
 
-      setLastUpdate(new Date().toLocaleTimeString('pt-BR'));
+      setLastUpdate(new Date().toLocaleTimeString("pt-BR"));
 
-      if (positivePercentage > 60 && totalItems > 10) {
-        showToast('success', 'Sentimento Positivo Alto', `${Math.round(positivePercentage)}% das notícias são positivas`);
-      } else if (negativePercentage > 50 && totalItems > 10) {
-        showToast('warning', 'Alerta de Negatividade', `${Math.round(negativePercentage)}% das notícias são negativas`);
+      if (positivePercentage > 60 && allItems.length > 10) {
+        showToast(
+          "success",
+          "Sentimento Positivo Alto",
+          `${Math.round(positivePercentage)}% das notícias são positivas`
+        );
+      } else if (negativePercentage > 50 && allItems.length > 10) {
+        showToast(
+          "warning",
+          "Alerta de Negatividade",
+          `${Math.round(negativePercentage)}% das notícias são negativas`
+        );
       }
+    } catch (err) {
+      console.error("Erro ao buscar estatísticas:", err);
 
-    } catch (error) {
-      console.error('Erro ao buscar estatísticas:', error);
-      
       setStats({
         totalNews: 24,
         totalTweets: 156,
         positiveSentiment: 42,
         negativeSentiment: 28,
-        neutralSentiment: 30
+        neutralSentiment: 30,
       });
-      
-      showToast('error', 'Erro de Conexão', 'Usando dados de exemplo. Verifique sua conexão.');
+
+      showToast(
+        "error",
+        "Erro de Conexão",
+        `${getFetchErrorMessage(err)}. Usando dados de exemplo.`
+      );
     } finally {
+      clearTimeout(timeoutId);
       setIsLoading(false);
     }
-  };
-
-  const generateFallbackNews = (): NewsItem[] => {
-    return Array.from({ length: 24 }, (_, i) => ({
-      id: i + 1,
-      titulo: `Notícia Bitcoin ${i + 1}`,
-      descricao: `Descrição da notícia sobre Bitcoin ${i + 1}`,
-      sentiment: ['positive', 'negative', 'neutral'][i % 3] as string,
-      dataPublicacao: new Date().toISOString(),
-      fonte: 'Fallback Source'
-    }));
-  };
-
-  const generateFallbackTweets = (): TweetItem[] => {
-    return Array.from({ length: 156 }, (_, i) => ({
-      id: i + 1,
-      text: `Tweet sobre Bitcoin ${i + 1} #BTC #Crypto`,
-      usuario: `user${i + 1}`,
-      sentiment: ['positive', 'negative', 'neutral'][i % 3] as string,
-      dataCriacao: new Date().toISOString()
-    }));
-  };
+  }, [API_URL]);
 
   useEffect(() => {
     fetchStats();
     const interval = setInterval(fetchStats, 60000);
-    return () => clearInterval(interval);
-  }, []);
 
-  const handleManualRefresh = () => {
+    return () => clearInterval(interval);
+  }, [fetchStats]);
+
+  const handleManualRefresh = useCallback(() => {
     fetchStats();
-    showToast('info', 'Atualizando', 'Buscando dados mais recentes...', 2000);
-  };
+    showToast("info", "Atualizando", "Buscando dados mais recentes...", 2000);
+  }, [fetchStats]);
+
+  const sentimentBadges = useMemo(
+    () => (
+      <div className="flex flex-wrap items-center gap-3">
+        <SentimentBadge
+          sentiment="positive"
+          score={stats.positiveSentiment / 100}
+          count={stats.positiveSentiment}
+          showTrend
+        />
+        <SentimentBadge
+          sentiment="negative"
+          score={stats.negativeSentiment / 100}
+          count={stats.negativeSentiment}
+          showTrend
+        />
+        <SentimentBadge
+          sentiment="neutral"
+          score={stats.neutralSentiment / 100}
+          count={stats.neutralSentiment}
+        />
+      </div>
+    ),
+    [stats.negativeSentiment, stats.neutralSentiment, stats.positiveSentiment]
+  );
 
   return (
     <div className="min-h-screen bg-neutral-950 text-white">
       <StatusBar />
       <ToastNotifier />
-      
+
       <div className="p-6 lg:p-8">
-        {/* Header */}
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-8 gap-4">
           <div>
             <h1 className="text-3xl font-bold text-white">Dashboard Bitcoin</h1>
             <p className="text-gray-400 mt-2">
               Análise de sentimento em tempo real
               {lastUpdate && (
-                <span className="text-gray-500 text-sm ml-2">
-                  • Atualizado: {lastUpdate}
-                </span>
+                <span className="text-gray-500 text-sm ml-2">• Atualizado: {lastUpdate}</span>
               )}
             </p>
           </div>
@@ -215,47 +262,26 @@ const fetchStats = async () => {
           </button>
         </div>
 
-        {/* Resumo de Sentimentos */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-8 p-4 bg-neutral-900 rounded-lg">
           <span className="text-gray-400 text-sm whitespace-nowrap">Sentimento Geral:</span>
-          <div className="flex flex-wrap items-center gap-3">
-            <SentimentBadge 
-              sentiment="positive" 
-              score={stats.positiveSentiment / 100}
-              count={stats.positiveSentiment}
-              showTrend
-            />
-            <SentimentBadge 
-              sentiment="negative" 
-              score={stats.negativeSentiment / 100}
-              count={stats.negativeSentiment}
-              showTrend
-            />
-            <SentimentBadge 
-              sentiment="neutral" 
-              score={stats.neutralSentiment / 100}
-              count={stats.neutralSentiment}
-            />
-          </div>
+          {sentimentBadges}
         </div>
 
-        {/* Preço do Bitcoin */}
         <div className="mb-8">
           <BitcoinPriceSafe />
         </div>
 
-        {/* ✅ CORREÇÃO: Removida a propriedade isLoading dos StatsCard */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <StatsCard
             title="Notícias Analisadas"
-            value={isLoading ? "..." : stats.totalNews.toLocaleString('pt-BR')}
+            value={isLoading ? "..." : stats.totalNews.toLocaleString("pt-BR")}
             change={8.2}
             icon={<Newspaper size={24} />}
             sentiment="positive"
           />
           <StatsCard
             title="Tweets Monitorados"
-            value={isLoading ? "..." : stats.totalTweets.toLocaleString('pt-BR')}
+            value={isLoading ? "..." : stats.totalTweets.toLocaleString("pt-BR")}
             change={15.7}
             icon={<Twitter size={24} />}
             sentiment="positive"
@@ -276,53 +302,47 @@ const fetchStats = async () => {
           />
         </div>
 
-        {/* Gráficos de Sentimento */}
         <div className="mb-8">
           <div className="flex items-center gap-2 mb-6">
             <BarChart3 className="text-yellow-400" size={24} />
             <h2 className="text-2xl font-bold text-white">Análise de Sentimento</h2>
           </div>
-          
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
             <SentimentChart />
-            <SentimentDistribution 
+            <SentimentDistribution
               distribution={{
                 positive: stats.positiveSentiment,
                 negative: stats.negativeSentiment,
-                neutral: stats.neutralSentiment
+                neutral: stats.neutralSentiment,
               }}
             />
           </div>
         </div>
 
-        {/* Gráficos de Preço */}
         <div className="mb-8">
           <div className="flex items-center gap-2 mb-6">
             <TrendingUp className="text-yellow-400" size={24} />
             <h2 className="text-2xl font-bold text-white">Análise de Preço</h2>
           </div>
-          
+
           <div className="grid grid-cols-1 gap-8">
             <PriceChartSafe />
           </div>
         </div>
 
-        {/* Histórico Completo */}
         <div className="mb-8">
           <BitcoinHistoricoCompleto />
         </div>
 
-        {/* Histórico Interativo */}
         <div className="mb-12">
           <BitcoinHistoricoChart />
         </div>
 
-        {/* Feed de Notícias */}
         <div className="mb-12">
           <NewsFeed />
         </div>
 
-        {/* Feed de Tweets */}
         <div className="mb-8">
           <TweetsFeed />
         </div>

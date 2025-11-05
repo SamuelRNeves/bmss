@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Bitcoin, TrendingUp, TrendingDown, RefreshCw, WifiOff } from "lucide-react";
+import { buildApiUrl, getFetchErrorMessage } from "@/lib/api";
 
 interface BitcoinData {
   usd: number;
@@ -23,6 +24,9 @@ export function BitcoinPrice() {
     (process.env.NODE_ENV === "development" ? "http://localhost:8080/api/v1" : undefined);
 
   const fetchBitcoinPrice = async () => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
     try {
       setIsRefreshing(true);
       setError(null);
@@ -31,7 +35,9 @@ export function BitcoinPrice() {
         throw new Error("API base URL não configurada");
       }
 
-      const response = await fetch(`${API_BASE_URL}/crypto/bitcoin`);
+      const response = await fetch(buildApiUrl("crypto/bitcoin"), {
+        signal: controller.signal,
+      });
 
       if (!response.ok) {
         throw new Error(`Erro HTTP: ${response.status}`);
@@ -39,21 +45,20 @@ export function BitcoinPrice() {
 
       const data = await response.json();
       setBitcoinData(data);
-      
-    } catch (error) {
-      console.error('Erro ao buscar preço do Bitcoin:', error);
-      setError('Erro ao carregar dados do Bitcoin');
-      
-      // Fallback mínimo
+    } catch (err) {
+      console.error("Erro ao buscar preço do Bitcoin:", err);
+      setError(getFetchErrorMessage(err));
+
       setBitcoinData({
         usd: 45000,
         brl: 225000,
         change24h: 0,
         success: false,
         source: "Erro",
-        lastUpdated: new Date().toISOString()
+        lastUpdated: new Date().toISOString(),
       });
     } finally {
+      clearTimeout(timeoutId);
       setIsLoading(false);
       setIsRefreshing(false);
     }
@@ -70,9 +75,9 @@ export function BitcoinPrice() {
     return (
       <div className="bg-gradient-to-r from-yellow-500/10 to-orange-500/10 border border-yellow-400/20 rounded-xl p-6">
         <div className="animate-pulse">
-          <div className="h-4 bg-yellow-400/20 rounded w-1/4 mb-2"></div>
-          <div className="h-8 bg-yellow-400/20 rounded w-1/2 mb-2"></div>
-          <div className="h-4 bg-yellow-400/20 rounded w-1/3"></div>
+          <div className="h-4 bg-yellow-400/20 rounded w-1/4 mb-2" />
+          <div className="h-8 bg-yellow-400/20 rounded w-1/2 mb-2" />
+          <div className="h-4 bg-yellow-400/20 rounded w-1/3" />
         </div>
       </div>
     );
@@ -85,7 +90,7 @@ export function BitcoinPrice() {
           <WifiOff className="text-red-400" size={24} />
           <div>
             <p className="text-white font-semibold">Erro de Conexão</p>
-            <p className="text-gray-400 text-sm">Não foi possível conectar à API</p>
+            <p className="text-gray-400 text-sm">{error}</p>
           </div>
         </div>
       </div>
@@ -95,9 +100,7 @@ export function BitcoinPrice() {
   if (!bitcoinData) {
     return (
       <div className="bg-gradient-to-r from-yellow-500/10 to-orange-500/10 border border-yellow-400/20 rounded-xl p-6">
-        <div className="text-center text-gray-400">
-          Dados do Bitcoin não disponíveis
-        </div>
+        <div className="text-center text-gray-400">Dados do Bitcoin não disponíveis</div>
       </div>
     );
   }
@@ -105,11 +108,13 @@ export function BitcoinPrice() {
   const isPositive = bitcoinData.change24h > 0;
 
   return (
-    <div className={`border rounded-xl p-6 transition-all duration-300 ${
-      bitcoinData.success 
-        ? 'bg-gradient-to-r from-yellow-500/10 to-orange-500/10 border-yellow-400/20 hover:border-yellow-400/40' 
-        : 'bg-gradient-to-r from-gray-500/10 to-gray-600/10 border-gray-400/20'
-    }`}>
+    <div
+      className={`border rounded-xl p-6 transition-all duration-300 ${
+        bitcoinData.success
+          ? "bg-gradient-to-r from-yellow-500/10 to-orange-500/10 border-yellow-400/20 hover:border-yellow-400/40"
+          : "bg-gradient-to-r from-gray-500/10 to-gray-600/10 border-gray-400/20"
+      }`}
+    >
       <div className="flex items-center justify-between">
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-2">
@@ -128,29 +133,33 @@ export function BitcoinPrice() {
               </span>
             )}
           </div>
-          
+
           <div className="flex items-baseline gap-2 mb-1">
             <span className="text-2xl font-bold text-white">
-              ${bitcoinData.usd.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              ${bitcoinData.usd.toLocaleString("en-US", { minimumFractionDigits: 2 })}
             </span>
-            <div className={`flex items-center gap-1 text-sm ${
-              isPositive ? 'text-green-400' : 'text-red-400'
-            }`}>
+            <div
+              className={`flex items-center gap-1 text-sm ${
+                isPositive ? "text-green-400" : "text-red-400"
+              }`}
+            >
               {isPositive ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
               <span>{Math.abs(bitcoinData.change24h).toFixed(2)}%</span>
             </div>
           </div>
 
           <p className="text-gray-400 text-sm">
-            R$ {bitcoinData.brl.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            R$ {bitcoinData.brl.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
           </p>
         </div>
 
         <div className="text-right">
           <p className="text-xs text-gray-500 mb-1">Fonte: {bitcoinData.source}</p>
-          <div className={`w-3 h-3 rounded-full animate-pulse ${
-            bitcoinData.success ? 'bg-green-400' : 'bg-yellow-400'
-          }`}></div>
+          <div
+            className={`w-3 h-3 rounded-full animate-pulse ${
+              bitcoinData.success ? "bg-green-400" : "bg-yellow-400"
+            }`}
+          />
         </div>
       </div>
     </div>
