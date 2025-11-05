@@ -5,20 +5,20 @@
 # ======================================================
 
 # 🔹 Servidor web
-flask==2.3.3
-gunicorn==21.2.0
+flask
+gunicorn
 
 # 🔹 Modelos de IA (Hugging Face Transformers + PyTorch)
-transformers==4.44.2
+transformers
 torch
 
 # 🔹 Dependências auxiliares
-numpy==1.26.4
-requests==2.32.3
-deep-translator==1.11.4
+numpy
+requests
+deep-translator
 
 # 🔹 Utilitários e configuração
-python-dotenv==1.0.1
+python-dotenv
 
 # (Opcional, mas recomendado para evitar warnings)
-tqdm==4.66.5
+tqdm
