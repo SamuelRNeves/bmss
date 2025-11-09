@@ -713,64 +713,47 @@ function generateRealisticTrends() {
 // =====================================================
 // 👤 FUNÇÕES DE CADASTRO
 // =====================================================
-export async function cadastrarUsuario(data: RegisterData): Promise<RegisterResponse> {
+export async function cadastrarUsuario(dados: {
+  name: string;
+  email: string;
+  password: string;
+  notificationPreference: string;
+  investorProfile: string;
+}) {
   try {
-    console.group("📝 Cadastrando usuário...");
-    console.info("Dados do cadastro:", data);
-
-    const response = await api.post("/auth/register", data, {
-      headers: {
-        'Content-Type': 'application/json'
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_API_BASE_URL || "https://bmss-backend.onrender.com"}/auth/register`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: dados.name,
+          email: dados.email,
+          password: dados.password,
+          notificationPreference: dados.notificationPreference,
+          investorProfile: dados.investorProfile,
+        }),
       }
-    });
-    
-    console.info("✅ Cadastro realizado com sucesso:", response.data);
-    console.groupEnd();
+    );
 
-    return {
-      success: true,
-      message: response.data.message,
-      user: response.data.user
-    };
-  } catch (error: any) {
-    console.error("❌ Erro detalhado no cadastro:", error);
-    
-    if (error.response) {
-      console.error("📊 Resposta do servidor:", {
-        status: error.response.status,
-        data: error.response.data,
-        headers: error.response.headers
-      });
-    }
-    
-    if (error.response?.data?.error) {
+    const data = await response.json();
+
+    if (!response.ok) {
       return {
         success: false,
-        error: error.response.data.error
-      };
-    } else if (error.code === "ECONNABORTED") {
-      return {
-        success: false,
-        error: "Tempo de conexão esgotado. Tente novamente."
-      };
-    } else if (error.response?.status === 400) {
-      return {
-        success: false,
-        error: "Dados inválidos enviados ao servidor."
-      };
-    } else if (error.response?.status === 500) {
-      return {
-        success: false,
-        error: "Erro interno do servidor. Tente novamente mais tarde."
-      };
-    } else {
-      return {
-        success: false,
-        error: "Erro de conexão com o servidor. Verifique sua internet."
+        error: data.error || "Erro ao cadastrar usuário.",
       };
     }
+
+    return { success: true, ...data };
+  } catch (error) {
+    console.error("Erro ao cadastrar usuário:", error);
+    return { success: false, error: "Erro de conexão com o servidor." };
   }
 }
+
 
 // =====================================================
 // 📰 NOTÍCIAS e TWEETS

@@ -2,62 +2,61 @@
 
 import { useState } from "react";
 import { cadastrarUsuario } from "@/lib/api";
-import { Bell, Mail, User, Check, AlertCircle, Bitcoin, BarChart3 } from "lucide-react";
+import { Bell, Mail, User, Lock, Check, AlertCircle, Bitcoin, BarChart3, LineChart } from "lucide-react";
 
 export default function CadastrarPage() {
   const [nome, setNome] = useState("");
   const [email, setEmail] = useState("");
+  const [senha, setSenha] = useState("");
+  const [perfil, setPerfil] = useState("MODERADO");
   const [preferencia, setPreferencia] = useState("diario");
   const [loading, setLoading] = useState(false);
-  const [mensagem, setMensagem] = useState<{
-    tipo: "sucesso" | "erro";
-    texto: string;
-  } | null>(null);
+  const [mensagem, setMensagem] = useState<{ tipo: "sucesso" | "erro"; texto: string } | null>(null);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setMensagem(null);
 
-    // Validações
-    if (!nome || !email) {
+    if (!nome || !email || !senha) {
       setMensagem({ tipo: "erro", texto: "Preencha todos os campos obrigatórios." });
       return;
     }
 
-    if (!email.includes('@')) {
+    if (!email.includes("@")) {
       setMensagem({ tipo: "erro", texto: "Digite um email válido." });
       return;
     }
 
     try {
       setLoading(true);
-      const resultado = await cadastrarUsuario({ 
-        name: nome, 
+      const resultado = await cadastrarUsuario({
+        name: nome,
         email: email,
-        notificationPreference: preferencia
+        password: senha,
+        notificationPreference: preferencia,
+        investorProfile: perfil,
       });
-      
+
       if (resultado.success) {
-        setMensagem({ 
-          tipo: "sucesso", 
-          texto: "✅ Cadastro realizado com sucesso! Verifique seu email para confirmar o recebimento dos alertas." 
+        setMensagem({
+          tipo: "sucesso",
+          texto: "Cadastro realizado com sucesso! Você pode fazer login agora.",
         });
-        
-        // Limpar formulário
         setNome("");
         setEmail("");
-        
+        setSenha("");
+        setPerfil("MODERADO");
       } else {
-        setMensagem({ 
-          tipo: "erro", 
-          texto: resultado.error || "Erro ao realizar cadastro. Tente novamente." 
+        setMensagem({
+          tipo: "erro",
+          texto: resultado.error || "Erro ao realizar cadastro. Tente novamente.",
         });
       }
     } catch (error) {
       console.error("Erro no cadastro:", error);
-      setMensagem({ 
-        tipo: "erro", 
-        texto: "Erro de conexão com o servidor. Tente novamente." 
+      setMensagem({
+        tipo: "erro",
+        texto: "Erro de conexão com o servidor. Tente novamente.",
       });
     } finally {
       setLoading(false);
@@ -81,13 +80,13 @@ export default function CadastrarPage() {
         </div>
 
         <div className="grid md:grid-cols-2 gap-8 items-start">
-          {/* Card de Benefícios */}
+          {/* Card lateral de informações */}
           <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-8">
             <h2 className="text-2xl font-bold text-yellow-400 mb-6 flex items-center gap-3">
               <BarChart3 size={28} />
               Por que se cadastrar?
             </h2>
-            
+
             <div className="space-y-4">
               <div className="flex items-start gap-3">
                 <div className="bg-green-500/20 p-2 rounded-full mt-1">
@@ -95,7 +94,9 @@ export default function CadastrarPage() {
                 </div>
                 <div>
                   <h3 className="text-white font-semibold">📊 Análises Diárias</h3>
-                  <p className="text-gray-400 text-sm">Resumo completo do sentimento do mercado todos os dias às 18h</p>
+                  <p className="text-gray-400 text-sm">
+                    Resumo completo do sentimento do mercado todos os dias às 18h
+                  </p>
                 </div>
               </div>
 
@@ -105,7 +106,9 @@ export default function CadastrarPage() {
                 </div>
                 <div>
                   <h3 className="text-white font-semibold">🚨 Alertas Inteligentes</h3>
-                  <p className="text-gray-400 text-sm">Notificações sobre mudanças bruscas no sentimento do mercado</p>
+                  <p className="text-gray-400 text-sm">
+                    Notificações sobre mudanças bruscas no sentimento do mercado
+                  </p>
                 </div>
               </div>
 
@@ -115,17 +118,9 @@ export default function CadastrarPage() {
                 </div>
                 <div>
                   <h3 className="text-white font-semibold">🎯 Dados em Tempo Real</h3>
-                  <p className="text-gray-400 text-sm">Análises baseadas em notícias, redes sociais e fóruns especializados</p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3">
-                <div className="bg-orange-500/20 p-2 rounded-full mt-1">
-                  <Check className="text-orange-400" size={16} />
-                </div>
-                <div>
-                  <h3 className="text-white font-semibold">💡 Insights Valiosos</h3>
-                  <p className="text-gray-400 text-sm">Entenda o que o mercado está sentindo sobre o Bitcoin</p>
+                  <p className="text-gray-400 text-sm">
+                    Análises baseadas em notícias, redes sociais e fóruns especializados
+                  </p>
                 </div>
               </div>
             </div>
@@ -146,140 +141,127 @@ export default function CadastrarPage() {
             </div>
           </div>
 
-          {/* Formulário de Cadastro */}
+          {/* Formulário */}
           <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-8">
-            <h2 className="text-2xl font-bold text-white mb-2">Cadastre-se para Alertas</h2>
-            <p className="text-gray-400 mb-6">Preencha os dados abaixo para receber nossas análises</p>
+            <h2 className="text-2xl font-bold text-white mb-2">Criar Conta</h2>
+            <p className="text-gray-400 mb-6">Preencha seus dados para acessar o sistema</p>
 
             <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Campo Nome */}
+              {/* Nome */}
               <div className="space-y-2">
-                <label htmlFor="nome" className="text-sm font-medium text-gray-300 flex items-center gap-2">
-                  <User size={16} />
-                  Nome completo *
+                <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
+                  <User size={16} /> Nome completo *
                 </label>
                 <input
-                  id="nome"
                   type="text"
                   placeholder="Seu nome completo"
                   value={nome}
-                  onChange={(event) => setNome(event.target.value)}
-                  className="w-full bg-neutral-800 border border-neutral-700 text-white p-4 rounded-xl outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent transition-all"
-                  disabled={loading}
+                  onChange={(e) => setNome(e.target.value)}
+                  className="w-full bg-neutral-800 border border-neutral-700 text-white p-4 rounded-xl"
                   required
                 />
               </div>
 
-              {/* Campo Email */}
+              {/* Email */}
               <div className="space-y-2">
-                <label htmlFor="email" className="text-sm font-medium text-gray-300 flex items-center gap-2">
-                  <Mail size={16} />
-                  E-mail para notificações *
+                <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
+                  <Mail size={16} /> E-mail *
                 </label>
                 <input
-                  id="email"
                   type="email"
                   placeholder="seu@email.com"
                   value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  className="w-full bg-neutral-800 border border-neutral-700 text-white p-4 rounded-xl outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent transition-all"
-                  disabled={loading}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full bg-neutral-800 border border-neutral-700 text-white p-4 rounded-xl"
                   required
                 />
               </div>
 
-              {/* Campo Preferência */}
+              {/* Senha */}
               <div className="space-y-2">
-                <label htmlFor="preferencia" className="text-sm font-medium text-gray-300 flex items-center gap-2">
-                  <Bell size={16} />
-                  Tipo de Notificação
+                <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
+                  <Lock size={16} /> Senha *
+                </label>
+                <input
+                  type="password"
+                  placeholder="Crie uma senha"
+                  value={senha}
+                  onChange={(e) => setSenha(e.target.value)}
+                  className="w-full bg-neutral-800 border border-neutral-700 text-white p-4 rounded-xl"
+                  required
+                />
+              </div>
+
+              {/* Perfil de Investidor */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
+                  <LineChart size={16} /> Perfil de Investidor
                 </label>
                 <select
-                  id="preferencia"
-                  value={preferencia}
-                  onChange={(event) => setPreferencia(event.target.value)}
-                  className="w-full bg-neutral-800 border border-neutral-700 text-white p-4 rounded-xl outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent transition-all"
-                  disabled={loading}
+                  value={perfil}
+                  onChange={(e) => setPerfil(e.target.value)}
+                  className="w-full bg-neutral-800 border border-neutral-700 text-white p-4 rounded-xl"
                 >
-                  <option value="diario">📊 Resumo Diário (Recomendado)</option>
-                  <option value="imediato">🚨 Alertas Imediatos</option>
-                  <option value="desativado">🔕 Sem Notificações</option>
+                  <option value="CONSERVADOR">Conservador</option>
+                  <option value="MODERADO">Moderado</option>
+                  <option value="AGRESSIVO">Agressivo</option>
                 </select>
-                <p className="text-xs text-gray-500">
-                  💡 <strong>Resumo diário:</strong> Um email completo com análise detalhada todos os dias às 18h
-                </p>
               </div>
 
-              {/* Termos */}
-              <div className="flex items-start gap-3 p-4 bg-neutral-800 rounded-xl">
-                <div className="bg-blue-500/20 p-1 rounded-full mt-1">
-                  <AlertCircle className="text-blue-400" size={14} />
-                </div>
-                <p className="text-gray-400 text-sm">
-                  Ao se cadastrar, você concorda em receber comunicações sobre análise de sentimentos do Bitcoin. 
-                  Pode cancelar a qualquer momento.
-                </p>
+              {/* Preferência de Notificação */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
+                  <Bell size={16} /> Tipo de Notificação
+                </label>
+                <select
+                  value={preferencia}
+                  onChange={(e) => setPreferencia(e.target.value)}
+                  className="w-full bg-neutral-800 border border-neutral-700 text-white p-4 rounded-xl"
+                >
+                  <option value="diario">Resumo Diário</option>
+                  <option value="imediato">Alertas Imediatos</option>
+                  <option value="desativado">Sem Notificações</option>
+                </select>
               </div>
 
-              {/* Botão Submit */}
+              {/* Botão */}
               <button
                 type="submit"
                 disabled={loading}
                 className={`w-full ${
-                  loading 
-                    ? "bg-yellow-700 cursor-not-allowed" 
-                    : "bg-yellow-500 hover:bg-yellow-400 transform hover:scale-[1.02]"
+                  loading
+                    ? "bg-yellow-700 cursor-not-allowed"
+                    : "bg-yellow-500 hover:bg-yellow-400"
                 } text-black font-bold p-4 rounded-xl transition-all duration-200 flex items-center justify-center gap-3`}
               >
-                {loading ? (
-                  <>
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-black"></div>
-                    Processando...
-                  </>
-                ) : (
-                  <>
-                    <Mail size={20} />
-                    Cadastrar e Receber Alertas
-                  </>
-                )}
+                {loading ? "Processando..." : "Cadastrar e Acessar"}
               </button>
             </form>
 
-            {/* Mensagem de Status */}
             {mensagem && (
               <div
                 className={`mt-6 p-4 rounded-xl border ${
-                  mensagem.tipo === "sucesso" 
-                    ? "bg-green-500/20 border-green-500 text-green-400" 
+                  mensagem.tipo === "sucesso"
+                    ? "bg-green-500/20 border-green-500 text-green-400"
                     : "bg-red-500/20 border-red-500 text-red-400"
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  {mensagem.tipo === "sucesso" ? (
-                    <Check size={20} />
-                  ) : (
-                    <AlertCircle size={20} />
-                  )}
+                  {mensagem.tipo === "sucesso" ? <Check size={20} /> : <AlertCircle size={20} />}
                   <span>{mensagem.texto}</span>
                 </div>
               </div>
             )}
 
-            {/* Link Voltar */}
             <div className="mt-6 text-center">
-              <a 
-                href="/" 
+              <a
+                href="/login"
                 className="text-yellow-400 hover:text-yellow-300 underline transition-colors inline-flex items-center gap-2"
               >
-                ← Voltar para o dashboard principal
+                Já tem uma conta? Faça login →
               </a>
             </div>
           </div>
-        </div>
-
-        {/* Footer */}
-        <div className="text-center mt-12 text-gray-500 text-sm">
-          <p>Bitcoin Sentiment Analysis • Monitoramento 24/7 do mercado • Análises baseadas em IA</p>
         </div>
       </div>
     </div>

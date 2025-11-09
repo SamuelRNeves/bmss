@@ -61,4 +61,16 @@ public class JwtService {
                 .getBody();
         return claimsResolver.apply(claims);
     }
+    // ✅ Extrai o username a partir do header Authorization: Bearer <token>
+public String extractUsernameFromAuthHeader(String authHeader) {
+    if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+        throw new RuntimeException("Token ausente ou inválido");
+    }
+
+    String token = authHeader.substring(7); // remove "Bearer "
+    return extractUsername(token);
+}
+
+
+
 }

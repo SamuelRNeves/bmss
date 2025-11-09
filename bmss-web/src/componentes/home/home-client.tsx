@@ -10,6 +10,8 @@ import { TweetsFeed } from "@/componentes/tweets/tweets-feed";
 import { StatusBar } from "@/componentes/status/status-bar";
 import { ToastNotifier, showToast } from "@/componentes/notifications/toast-notifier";
 import { SentimentBadge } from "@/componentes/status/sentiment-badge";
+import LegendaSentimentos from "../status/LegendaSentimentos";
+
 import {
   Newspaper,
   TrendingUp,
@@ -22,6 +24,10 @@ import BitcoinHistoricoCompleto from "../charts/BitcoinHistoricoCompleto";
 import PriceChartSafe from "../charts/PriceChartSafe";
 import BitcoinHistoricoChart from "../charts/BitcoinHistoricoChart";
 import { buildApiUrl, getFetchErrorMessage } from "@/lib/api";
+import { useAuth } from "@/lib/useAuth";
+import Header from "@/componentes/layout/Header";
+import Recomendacoes from "../Recomendacoes";
+
 
 interface NewsItem {
   id: number;
@@ -84,6 +90,13 @@ const generateFallbackTweets = (): TweetItem[] =>
   }));
 
 export default function HomeClient() {
+
+  const { user, loading } = useAuth();
+
+  if (loading) return <div className="text-white p-6">Carregando...</div>;
+  if (!user) return null; // redirecionamento já ocorre no hook
+
+  
   const [stats, setStats] = useState<DashboardStats>(INITIAL_STATS);
   const [isLoading, setIsLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<string>("");
@@ -211,6 +224,36 @@ export default function HomeClient() {
     showToast("info", "Atualizando", "Buscando dados mais recentes...", 2000);
   }, [fetchStats]);
 
+  // 🔔 Monitorar mudanças bruscas no sentimento e gerar notificações automáticas
+const [previousStats, setPreviousStats] = useState<DashboardStats | null>(null);
+
+useEffect(() => {
+  if (!previousStats) {
+    setPreviousStats(stats);
+    return;
+  }
+
+  const diffPositive = Math.abs(stats.positiveSentiment - previousStats.positiveSentiment);
+  const diffNegative = Math.abs(stats.negativeSentiment - previousStats.negativeSentiment);
+
+  if (diffPositive > 15) {
+    showToast(
+      "success",
+      "📈 Alta no Sentimento Positivo",
+      `O sentimento positivo subiu ${diffPositive.toFixed(1)}% desde a última análise.`
+    );
+  } else if (diffNegative > 15) {
+    showToast(
+      "warning",
+      "📉 Aumento no Sentimento Negativo",
+      `O sentimento negativo aumentou ${diffNegative.toFixed(1)}% — mercado em alerta.`
+    );
+  }
+
+  setPreviousStats(stats);
+}, [stats]);
+
+
   const sentimentBadges = useMemo(
     () => (
       <div className="flex flex-wrap items-center gap-3">
@@ -237,7 +280,9 @@ export default function HomeClient() {
   );
 
   return (
+    
     <div className="min-h-screen bg-neutral-950 text-white">
+      <Header />
       <StatusBar />
       <ToastNotifier />
 
@@ -301,6 +346,9 @@ export default function HomeClient() {
             sentiment="negative"
           />
         </div>
+        <div className="mb-8">
+          <Recomendacoes />
+        </div>
 
         <div className="mb-8">
           <div className="flex items-center gap-2 mb-6">
@@ -337,6 +385,11 @@ export default function HomeClient() {
 
         <div className="mb-12">
           <BitcoinHistoricoChart />
+        </div>
+
+        {/* ✅ Adicione aqui a legenda de sentimentos */}
+        <div className="mb-8">
+          <LegendaSentimentos />
         </div>
 
         <div className="mb-12">
