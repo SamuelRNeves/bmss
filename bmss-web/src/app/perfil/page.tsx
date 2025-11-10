@@ -13,29 +13,32 @@ export default function PerfilPage() {
   const [investorProfile, setInvestorProfile] = useState("MODERADO");
   const [notificationPreference, setNotificationPreference] = useState("diario");
 
-  useEffect(() => {
-    const token = localStorage.getItem("jwtToken");
-    if (!token) {
-      router.push("/login");
-      return;
-    }
+ useEffect(() => {
+  const token = localStorage.getItem("jwtToken");
+  if (!token) {
+    router.push("/login");
+    return;
+  }
 
-    fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || "https://bmss-backend.onrender.com"}/auth/me`, {
-      headers: { Authorization: `Bearer ${token}` },
+  fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || "https://bmss-backend.onrender.com"}/auth/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+    .then(async (res) => {
+      if (!res.ok) throw new Error("Sessão expirada");
+      const data = await res.json();
+      if (!data || !data.email) throw new Error("Resposta inválida do servidor");
+
+      setUser(data);
+      setInvestorProfile(data.investorProfile || "MODERADO");
+      setNotificationPreference(data.notificationPreference || "diario");
     })
-      .then(async (res) => {
-        if (!res.ok) throw new Error("Sessão expirada");
-        const data = await res.json();
-        setUser(data);
-        setInvestorProfile(data.investorProfile);
-        setNotificationPreference(data.notificationPreference || "diario");
-      })
-      .catch(() => {
-        localStorage.removeItem("token");
-        router.push("/login");
-      })
-      .finally(() => setLoading(false));
-  }, [router]);
+    .catch(() => {
+      localStorage.removeItem("jwtToken");
+      router.push("/login");
+    })
+    .finally(() => setLoading(false));
+}, [router]);
+
 
   const handleSalvar = async () => {
     if (!user) return;
