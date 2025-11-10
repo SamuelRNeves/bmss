@@ -74,19 +74,27 @@ public class JwtService {
 public String extractUsernameFromAuthHeader(String authHeader) {
     try {
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            System.out.println("🚫 Authorization header ausente ou malformado: " + authHeader);
             throw new IllegalArgumentException("Cabeçalho Authorization ausente ou inválido");
         }
 
         String token = authHeader.substring(7);
-        return extractUsername(token);
+        System.out.println("🔍 Token recebido: " + token);
+
+        String username = extractUsername(token);
+        System.out.println("✅ Username extraído do token: " + username);
+        return username;
+
     } catch (io.jsonwebtoken.ExpiredJwtException e) {
         System.out.println("⚠️ Token expirado: " + e.getMessage());
         throw new IllegalStateException("Token expirado");
     } catch (Exception e) {
-        System.out.println("❌ Erro ao extrair usuário do token: " + e.getMessage());
+        System.out.println("❌ Erro ao extrair usuário do token: " + e.getClass().getSimpleName() + " - " + e.getMessage());
+        e.printStackTrace();
         throw new IllegalStateException("Token inválido");
     }
 }
+
 
 
 

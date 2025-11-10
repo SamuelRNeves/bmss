@@ -16,20 +16,30 @@ export function useAuth() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem("jwtToken"); // <- padronizado
-    if (!token) {
-      setLoading(false);
-      return;
-    }
+  const token = localStorage.getItem("jwtToken");
+  if (!token) {
+    setLoading(false);
+    return;
+  }
 
-    api.get("/auth/me") // <- herda baseURL e Authorization
-      .then((res) => setUser(res.data))
-      .catch(() => {
+  api
+    .get("/auth/me")
+    .then((res) => {
+      setUser(res.data);
+    })
+    .catch((error) => {
+      // Só remove o token se for 401 (token expirado/inválido)
+      if (error.response?.status === 401) {
+        console.warn("🔒 Token expirado ou inválido, removendo...");
         localStorage.removeItem("jwtToken");
         setUser(null);
-      })
-      .finally(() => setLoading(false));
-  }, []);
+      } else {
+        console.error("⚠️ Erro inesperado em /auth/me:", error);
+      }
+    })
+    .finally(() => setLoading(false));
+}, []);
+
 
   const logout = () => {
     localStorage.removeItem("jwtToken");
