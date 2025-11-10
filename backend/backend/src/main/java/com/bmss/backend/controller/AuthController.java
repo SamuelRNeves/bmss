@@ -1,5 +1,8 @@
 package com.bmss.backend.controller;
 
+import com.bmss.backend.dto.AuthRequest;
+import com.bmss.backend.dto.AuthResponse;
+import com.bmss.backend.dto.RegisterRequest;
 import com.bmss.backend.model.User;
 import com.bmss.backend.repository.UserRepository;
 import com.bmss.backend.service.AuthService;
@@ -33,21 +36,47 @@ public class AuthController {
         this.userRepository = userRepository;
     }
 
-    // ... outros métodos (register, login)
+    // ==========================================================
+    // 🔹 POST: Registro de usuário
+    // ==========================================================
+    @PostMapping("/register")
+    public ResponseEntity<?> register(@RequestBody RegisterRequest request) {
+        try {
+            return authService.register(request);
+        } catch (Exception e) {
+            log.error("❌ Erro no registro de usuário: {}", e.getMessage(), e);
+            return ResponseEntity.status(500).body(Map.of("error", "Erro interno no registro"));
+        }
+    }
 
+    // ==========================================================
+    // 🔹 POST: Login
+    // ==========================================================
+    @PostMapping("/login")
+    public ResponseEntity<AuthResponse> login(@RequestBody AuthRequest request) {
+        try {
+            AuthResponse response = authService.login(request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("❌ Erro no login: {}", e.getMessage(), e);
+            return ResponseEntity.status(401).body(new AuthResponse(null, null, null));
+        }
+    }
+
+    // ==========================================================
+    // 🔹 GET: Retornar usuário autenticado (/me)
+    // ==========================================================
     @GetMapping("/me")
     public ResponseEntity<?> me() {
         try {
-            // Obtém a autenticação do SecurityContext (já validada pelo filtro JWT)
             Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-            
-            if (authentication == null || !authentication.isAuthenticated() || 
-                authentication.getPrincipal() == null || 
+
+            if (authentication == null || !authentication.isAuthenticated() ||
+                authentication.getPrincipal() == null ||
                 authentication.getPrincipal().equals("anonymousUser")) {
                 return ResponseEntity.status(401).body(Map.of("error", "Não autenticado"));
             }
 
-            // Obtém o email do usuário autenticado
             String email;
             if (authentication.getPrincipal() instanceof UserDetails) {
                 email = ((UserDetails) authentication.getPrincipal()).getUsername();
@@ -60,24 +89,22 @@ public class AuthController {
 
             log.info("🔍 Buscando usuário: {}", email);
 
-            // Busca o usuário no banco
             User user = userRepository.findByEmail(email);
             if (user == null) {
                 log.error("❌ Usuário não encontrado para email: {}", email);
                 return ResponseEntity.status(404).body(Map.of("error", "Usuário não encontrado"));
             }
 
-            // ✅ Tratamento seguro de campos nulos
-            String investorProfile = (user.getInvestorProfile() != null) 
-                    ? user.getInvestorProfile().name() 
+            String investorProfile = (user.getInvestorProfile() != null)
+                    ? user.getInvestorProfile().name()
                     : "MODERADO";
 
-            String roleName = (user.getRole() != null) 
-                    ? user.getRole().getName() 
+            String roleName = (user.getRole() != null)
+                    ? user.getRole().getName()
                     : "USER";
 
-            String notificationPref = (user.getNotificationPreference() != null) 
-                    ? user.getNotificationPreference() 
+            String notificationPref = (user.getNotificationPreference() != null)
+                    ? user.getNotificationPreference()
                     : "diario";
 
             log.info("✅ [AuthController] Usuário autenticado: {}", user.getEmail());

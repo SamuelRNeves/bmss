@@ -50,27 +50,26 @@ public class AuthService {
     // 🔹 LOGIN
     // ========================================
     public AuthResponse login(AuthRequest request) {
-        try {
-            authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
-            );
+    try {
+        authenticationManager.authenticate(
+                new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
+        );
 
-            var user = userRepository.findByEmail(request.getEmail());
-            if (user == null) {
-                throw new BadCredentialsException("Credenciais inválidas");
-            }
-
-            var jwtToken = jwtService.generateToken(user.getEmail());
-
-           return new AuthResponse(jwtToken);
-
-
-        } catch (BadCredentialsException e) {
-            throw e;
-        } catch (AuthenticationException e) {
-            throw new BadCredentialsException("Credenciais inválidas", e);
+        var user = userRepository.findByEmail(request.getEmail());
+        if (user == null) {
+            throw new BadCredentialsException("Credenciais inválidas");
         }
+
+        var jwtToken = jwtService.generateToken(user.getEmail());
+
+        return new AuthResponse(jwtToken, null, "Login bem-sucedido");
+    } catch (BadCredentialsException e) {
+        throw e;
+    } catch (AuthenticationException e) {
+        throw new BadCredentialsException("Credenciais inválidas", e);
     }
+}
+
 
     // ========================================
     // 🔹 CADASTRO

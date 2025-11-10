@@ -1,11 +1,16 @@
 package com.bmss.backend.dto;
 
-import com.bmss.backend.model.InvestorProfile;
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
-@Data @AllArgsConstructor
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class AuthResponse {
     private String token;
-    
+    private String refreshToken;
+    private String message;
 }
