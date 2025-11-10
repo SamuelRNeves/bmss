@@ -52,13 +52,23 @@ const api = axios.create({
   ...(API_BASE_URL ? { baseURL: API_BASE_URL } : {}),
 });
 
+// =====================================================
+// 🔐 Interceptor para enviar automaticamente o token JWT
+// =====================================================
 api.interceptors.request.use((config) => {
+  const token = localStorage.getItem("token");
+  if (token) {
+    config.headers = config.headers || {};
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+
   if (!config.baseURL) {
     config.baseURL = getRequiredApiBaseUrl();
   }
 
   return config;
 });
+
 
 const COINGECKO_BASE_URL =
   process.env.NEXT_PUBLIC_COINGECKO_BASE_URL ||
