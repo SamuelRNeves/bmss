@@ -1,5 +1,6 @@
 package com.bmss.backend.controller;
 
+import com.bmss.backend.dto.AuthMeResponse;
 import com.bmss.backend.dto.AuthRequest;
 import com.bmss.backend.dto.AuthResponse;
 import com.bmss.backend.dto.RegisterRequest;
@@ -10,6 +11,8 @@ import com.bmss.backend.service.AuthService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -39,49 +42,35 @@ public class AuthController {
 
     @GetMapping("/me")
     public ResponseEntity<?> me(@RequestHeader(value = "Authorization", required = false) String authHeader) {
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            return ResponseEntity.status(401).body(java.util.Map.of("error", "Token ausente ou inválido"));
-        }
-
         try {
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                return ResponseEntity.status(401).body(Map.of("error", "Token ausente ou inválido"));
+            }
+
             String email = jwtService.extractUsernameFromAuthHeader(authHeader);
             if (email == null || email.isBlank()) {
-                return ResponseEntity.status(401).body(java.util.Map.of("error", "Token inválido"));
+                return ResponseEntity.status(401).body(Map.of("error", "Token inválido"));
             }
 
             User u = userRepository.findByEmail(email);
             if (u == null) {
-                return ResponseEntity.status(404).body(java.util.Map.of("error", "Usuário não encontrado"));
+                return ResponseEntity.status(404).body(Map.of("error", "Usuário não encontrado"));
             }
 
-            // ✅ Tratamento de campos nulos
-            String investorProfile = (u.getInvestorProfile() != null)
-                    ? u.getInvestorProfile().name()
-                    : "MODERADO"; // valor padrão se vier nulo
+            AuthMeResponse response = AuthMeResponse.fromUser(u);
 
-            String roleName = (u.getRole() != null)
-                    ? u.getRole().getName()
-                    : "USER";
+            log.info("Usuário autenticado: {}", u.getEmail());
+            log.debug("InvestorProfile resolvido: {}", response.getInvestorProfile());
 
-            log.info("✅ [AuthController] Usuário autenticado: {}", u.getEmail());
-            log.debug("📊 InvestorProfile: {}", investorProfile);
-
-            return ResponseEntity.ok(java.util.Map.of(
-                    "id", u.getId(),
-                    "name", u.getName(),
-                    "email", u.getEmail(),
-                    "notificationPreference", u.getNotificationPreference(),
-                    "investorProfile", investorProfile,
-                    "role", roleName
-            ));
+            return ResponseEntity.ok(response);
 
         } catch (IllegalStateException e) {
-            log.warn("⚠️ Token inválido ou expirado: {}", e.getMessage());
-            return ResponseEntity.status(401).body(java.util.Map.of("error", e.getMessage()));
+            log.warn("Token inválido ou expirado: {}", e.getMessage());
+            return ResponseEntity.status(401).body(Map.of("error", e.getMessage()));
 
         } catch (Exception e) {
-            log.error("❌ Erro interno em /auth/me", e);
-            return ResponseEntity.status(500).body(java.util.Map.of("error", "Erro interno ao processar token"));
+            log.error("Erro interno em /auth/me", e);
+            return ResponseEntity.status(500).body(Map.of("error", "Erro interno ao processar token"));
         }
     }
 }
