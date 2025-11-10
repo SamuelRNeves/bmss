@@ -54,22 +54,40 @@ public class JwtService {
 
     // Método genérico para extrair qualquer claim (atributo do token)
     public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
-        Claims claims = Jwts.parser() // ✅ disponível no JJWT 0.11.5
+    try {
+        Claims claims = Jwts.parserBuilder() // ✅ versão moderna
                 .setSigningKey(getSignInKey())
-                //.build()
+                .build()
                 .parseClaimsJws(token)
                 .getBody();
         return claimsResolver.apply(claims);
+    } catch (io.jsonwebtoken.ExpiredJwtException e) {
+        System.out.println("⚠️ Token expirado: " + e.getMessage());
+        throw e;
+    } catch (Exception e) {
+        System.out.println("❌ Erro ao validar token: " + e.getMessage());
+        throw new IllegalStateException("Token inválido");
     }
+}
+
     // ✅ Extrai o username a partir do header Authorization: Bearer <token>
 public String extractUsernameFromAuthHeader(String authHeader) {
-    if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-        throw new RuntimeException("Token ausente ou inválido");
-    }
+    try {
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            throw new IllegalArgumentException("Cabeçalho Authorization ausente ou inválido");
+        }
 
-    String token = authHeader.substring(7); // remove "Bearer "
-    return extractUsername(token);
+        String token = authHeader.substring(7);
+        return extractUsername(token);
+    } catch (io.jsonwebtoken.ExpiredJwtException e) {
+        System.out.println("⚠️ Token expirado: " + e.getMessage());
+        throw new IllegalStateException("Token expirado");
+    } catch (Exception e) {
+        System.out.println("❌ Erro ao extrair usuário do token: " + e.getMessage());
+        throw new IllegalStateException("Token inválido");
+    }
 }
+
 
 
 

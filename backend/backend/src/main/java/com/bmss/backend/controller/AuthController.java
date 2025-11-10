@@ -45,25 +45,33 @@ public ResponseEntity<?> me(@RequestHeader(value = "Authorization", required = f
 
     try {
         var email = jwtService.extractUsernameFromAuthHeader(authHeader);
+
+        if (email == null || email.isBlank()) {
+            return ResponseEntity.status(401).body(java.util.Map.of("error", "Token inválido"));
+        }
+
         User u = userRepository.findByEmail(email);
 
         if (u == null) {
             return ResponseEntity.status(404).body(java.util.Map.of("error", "Usuário não encontrado"));
         }
 
-        return ResponseEntity.ok(
-            java.util.Map.of(
+        return ResponseEntity.ok(java.util.Map.of(
                 "id", u.getId(),
                 "name", u.getName(),
                 "email", u.getEmail(),
                 "notificationPreference", u.getNotificationPreference(),
                 "investorProfile", u.getInvestorProfile().name(),
                 "role", u.getRole() != null ? u.getRole().getName() : "USER"
-            )
-        );
+        ));
+
+    } catch (IllegalStateException e) {
+        return ResponseEntity.status(401).body(java.util.Map.of("error", e.getMessage()));
     } catch (Exception e) {
-        return ResponseEntity.status(401).body(java.util.Map.of("error", "Token inválido ou expirado"));
+        e.printStackTrace();
+        return ResponseEntity.status(500).body(java.util.Map.of("error", "Erro interno ao processar token"));
     }
 }
+
 
 }
