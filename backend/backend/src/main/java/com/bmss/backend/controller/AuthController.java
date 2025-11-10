@@ -13,8 +13,15 @@ import org.springframework.web.bind.annotation.*;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/v1/auth")
-@CrossOrigin(origins = {"http://localhost:3000", "https://bmss-sytem.vercel.app"}, allowCredentials = "true")
+@RequestMapping({"/api/v1/auth", "/auth"})
+@CrossOrigin(
+        origins = {
+                "http://localhost:3000",
+                "https://bmss-sytem.vercel.app",
+                "https://bmss-sytem-1b8p5pt9k-samuel-neves-projects.vercel.app"
+        },
+        allowCredentials = "true"
+)
 @Slf4j
 public class AuthController {
 
