@@ -62,7 +62,8 @@ public class AuthService {
 
             var jwtToken = jwtService.generateToken(user.getEmail());
 
-            return new AuthResponse(jwtToken, jwtToken, jwtToken, null);
+           return new AuthResponse(jwtToken);
+
 
         } catch (BadCredentialsException e) {
             throw e;
