@@ -9,36 +9,56 @@ export default function PerfilPage() {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-
   const [investorProfile, setInvestorProfile] = useState("MODERADO");
   const [notificationPreference, setNotificationPreference] = useState("diario");
 
- useEffect(() => {
-  const token = localStorage.getItem("jwtToken");
-  if (!token) {
-    router.push("/login");
-    return;
-  }
-
-  fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || "https://bmss-backend.onrender.com"}/auth/me`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-    .then(async (res) => {
-      if (!res.ok) throw new Error("Sessão expirada");
-      const data = await res.json();
-      if (!data || !data.email) throw new Error("Resposta inválida do servidor");
-
-      setUser(data);
-      setInvestorProfile(data.investorProfile || "MODERADO");
-      setNotificationPreference(data.notificationPreference || "diario");
-    })
-    .catch(() => {
-      localStorage.removeItem("jwtToken");
+  // ✅ useEffect CORRIGIDO - sem loop
+  useEffect(() => {
+    const token = localStorage.getItem("jwtToken");
+    if (!token) {
       router.push("/login");
-    })
-    .finally(() => setLoading(false));
-}, [router]);
+      return;
+    }
 
+    let mounted = true;
+
+    const fetchUser = async () => {
+      try {
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_BASE_URL || "https://bmss-backend.onrender.com"}/auth/me`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+
+        if (!response.ok) throw new Error("Sessão expirada");
+        
+        const data = await response.json();
+        if (!data || !data.email) throw new Error("Resposta inválida do servidor");
+
+        if (mounted) {
+          setUser(data);
+          setInvestorProfile(data.investorProfile || "MODERADO");
+          setNotificationPreference(data.notificationPreference || "diario");
+        }
+      } catch (error) {
+        console.error("Erro ao carregar perfil:", error);
+        if (mounted) {
+          localStorage.removeItem("jwtToken");
+          // ✅ Navigate sem causar re-render
+          setTimeout(() => router.push("/login"), 0);
+        }
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    fetchUser();
+
+    return () => {
+      mounted = false;
+    };
+  }, []); // ✅ Array VAZIO - executa apenas uma vez
 
   const handleSalvar = async () => {
     if (!user) return;
@@ -71,8 +91,9 @@ export default function PerfilPage() {
     }
   };
 
-  if (loading)
+  if (loading) {
     return <div className="text-gray-400 p-8 text-center">Carregando perfil...</div>;
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-neutral-950 to-neutral-900 text-white py-8 px-4">
