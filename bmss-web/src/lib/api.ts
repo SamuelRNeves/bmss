@@ -1,6 +1,8 @@
 // lib/api.ts
 import axios, { AxiosError } from "axios";
 
+
+
 // =====================================================
 // 🔧 Configuração global do Axios
 // =====================================================
@@ -53,21 +55,24 @@ const api = axios.create({
 });
 
 // =====================================================
-// 🔐 Interceptor para enviar automaticamente o token JWT
+// 🔐 Interceptor único — garante baseURL e injeta JWT
 // =====================================================
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("token");
-  if (token) {
-    config.headers = config.headers || {};
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-
+  // Garante baseURL
   if (!config.baseURL) {
     config.baseURL = getRequiredApiBaseUrl();
   }
 
+  // Injeta token JWT automaticamente
+  const token = localStorage.getItem("jwtToken");
+  if (token && !config.headers?.Authorization) {
+    config.headers = config.headers || {};
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+
   return config;
 });
+
 
 
 const COINGECKO_BASE_URL =
@@ -723,6 +728,10 @@ function generateRealisticTrends() {
 // =====================================================
 // 👤 FUNÇÕES DE CADASTRO
 // =====================================================
+// =====================================================
+// 👤 FUNÇÃO DE CADASTRO (CORRIGIDA)
+// =====================================================
+
 export async function cadastrarUsuario(dados: {
   name: string;
   email: string;
@@ -731,38 +740,27 @@ export async function cadastrarUsuario(dados: {
   investorProfile: string;
 }) {
   try {
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_API_BASE_URL || "https://bmss-backend.onrender.com"}/auth/register`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name: dados.name,
-          email: dados.email,
-          password: dados.password,
-          notificationPreference: dados.notificationPreference,
-          investorProfile: dados.investorProfile,
-        }),
-      }
-    );
+    const res = await api.post("/auth/register", {
+      name: dados.name,
+      email: dados.email,
+      password: dados.password,
+      notificationPreference: dados.notificationPreference,
+      investorProfile: dados.investorProfile,
+    });
 
-    const data = await response.json();
-
-    if (!response.ok) {
-      return {
-        success: false,
-        error: data.error || "Erro ao cadastrar usuário.",
-      };
-    }
-
-    return { success: true, ...data };
-  } catch (error) {
-    console.error("Erro ao cadastrar usuário:", error);
-    return { success: false, error: "Erro de conexão com o servidor." };
+    return {
+      success: true,
+      ...res.data,
+    };
+  } catch (err: any) {
+    console.error("❌ Erro ao cadastrar usuário:", err);
+    return {
+      success: false,
+      error: getBackendErrorMessage(err),
+    };
   }
 }
+
 
 
 // =====================================================

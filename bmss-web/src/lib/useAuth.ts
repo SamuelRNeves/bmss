@@ -1,6 +1,7 @@
+// useAuth.ts
 "use client";
-
 import { useEffect, useState } from "react";
+import api from "@/lib/api"; // use o axios configurado
 
 interface UserData {
   id?: number;
@@ -14,33 +15,24 @@ export function useAuth() {
   const [user, setUser] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // ✅ Carrega o usuário automaticamente com o token JWT correto
   useEffect(() => {
-    const token = localStorage.getItem("token");
+    const token = localStorage.getItem("jwtToken"); // <- padronizado
     if (!token) {
       setLoading(false);
       return;
     }
 
-    fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || "https://bmss-backend.onrender.com/api/v1"}/auth/me`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    })
-      .then(async (res) => {
-        if (!res.ok) throw new Error("Token inválido ou expirado");
-        const data = await res.json();
-        setUser(data);
-      })
+    api.get("/auth/me") // <- herda baseURL e Authorization
+      .then((res) => setUser(res.data))
       .catch(() => {
-        localStorage.removeItem("token");
+        localStorage.removeItem("jwtToken");
         setUser(null);
       })
       .finally(() => setLoading(false));
   }, []);
 
   const logout = () => {
-    localStorage.removeItem("token");
+    localStorage.removeItem("jwtToken");
     setUser(null);
     window.location.href = "/login";
   };
