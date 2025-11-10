@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { BitcoinPriceSafe } from "@/componentes/BitcoinPriceSafe";
 import { StatsCard } from "@/componentes/dashboard/stats-cards";
 import { SentimentChart } from "@/componentes/charts/sentiment-chart";
@@ -27,7 +27,6 @@ import { buildApiUrl, getFetchErrorMessage } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
 import Header from "@/componentes/layout/Header";
 import Recomendacoes from "../Recomendacoes";
-
 
 interface NewsItem {
   id: number;
@@ -90,22 +89,26 @@ const generateFallbackTweets = (): TweetItem[] =>
   }));
 
 export default function HomeClient() {
-
   const { user, loading } = useAuth();
 
+  // ✅ Já temos redirecionamento no page.tsx, então apenas loading
   if (loading) return <div className="text-white p-6">Carregando...</div>;
-  if (!user) return null; // redirecionamento já ocorre no hook
+  if (!user) return null;
 
-  
   const [stats, setStats] = useState<DashboardStats>(INITIAL_STATS);
   const [isLoading, setIsLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<string>("");
+  const previousStatsRef = useRef<DashboardStats | null>(null); // ✅ useRef em vez de useState
+  const mountedRef = useRef(true);
 
   const API_URL =
     process.env.NEXT_PUBLIC_API_BASE_URL ??
     (process.env.NODE_ENV === "development" ? "http://localhost:8080/api/v1" : undefined);
 
+  // ✅ useCallback com dependências fixas
   const fetchStats = useCallback(async () => {
+    if (!mountedRef.current) return;
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 8000);
 
@@ -167,14 +170,36 @@ export default function HomeClient() {
       const negativePercentage = (sentimentCounts.negative / totalItems) * 100;
       const neutralPercentage = (sentimentCounts.neutral / totalItems) * 100;
 
-      setStats({
+      const newStats = {
         totalNews: newsItems.length,
         totalTweets: tweetItems.length,
         positiveSentiment: Math.round(positivePercentage),
         negativeSentiment: Math.round(negativePercentage),
         neutralSentiment: Math.round(neutralPercentage),
-      });
+      };
 
+      // ✅ Notificações de mudança brusca
+      if (previousStatsRef.current) {
+        const diffPositive = Math.abs(newStats.positiveSentiment - previousStatsRef.current.positiveSentiment);
+        const diffNegative = Math.abs(newStats.negativeSentiment - previousStatsRef.current.negativeSentiment);
+
+        if (diffPositive > 15) {
+          showToast(
+            "success",
+            "📈 Alta no Sentimento Positivo",
+            `O sentimento positivo subiu ${diffPositive.toFixed(1)}% desde a última análise.`
+          );
+        } else if (diffNegative > 15) {
+          showToast(
+            "warning",
+            "📉 Aumento no Sentimento Negativo",
+            `O sentimento negativo aumentou ${diffNegative.toFixed(1)}% — mercado em alerta.`
+          );
+        }
+      }
+
+      previousStatsRef.current = newStats;
+      setStats(newStats);
       setLastUpdate(new Date().toLocaleTimeString("pt-BR"));
 
       if (positivePercentage > 60 && allItems.length > 10) {
@@ -193,13 +218,16 @@ export default function HomeClient() {
     } catch (err) {
       console.error("Erro ao buscar estatísticas:", err);
 
-      setStats({
+      const fallbackStats = {
         totalNews: 24,
         totalTweets: 156,
         positiveSentiment: 42,
         negativeSentiment: 28,
         neutralSentiment: 30,
-      });
+      };
+
+      setStats(fallbackStats);
+      previousStatsRef.current = fallbackStats;
 
       showToast(
         "error",
@@ -208,51 +236,30 @@ export default function HomeClient() {
       );
     } finally {
       clearTimeout(timeoutId);
-      setIsLoading(false);
+      if (mountedRef.current) {
+        setIsLoading(false);
+      }
     }
-  }, [API_URL]);
+  }, [API_URL]); // ✅ Apenas API_URL como dependência
 
+  // ✅ useEffect CORRIGIDO - sem dependências que causam loop
   useEffect(() => {
-    fetchStats();
-    const interval = setInterval(fetchStats, 60000);
+    mountedRef.current = true;
+    
+    fetchStats(); // Chamada inicial
+    
+    const interval = setInterval(fetchStats, 60000); // Atualização a cada minuto
 
-    return () => clearInterval(interval);
-  }, [fetchStats]);
+    return () => {
+      mountedRef.current = false;
+      clearInterval(interval);
+    };
+  }, []); // ✅ Array VAZIO - executa apenas uma vez
 
   const handleManualRefresh = useCallback(() => {
     fetchStats();
     showToast("info", "Atualizando", "Buscando dados mais recentes...", 2000);
   }, [fetchStats]);
-
-  // 🔔 Monitorar mudanças bruscas no sentimento e gerar notificações automáticas
-const [previousStats, setPreviousStats] = useState<DashboardStats | null>(null);
-
-useEffect(() => {
-  if (!previousStats) {
-    setPreviousStats(stats);
-    return;
-  }
-
-  const diffPositive = Math.abs(stats.positiveSentiment - previousStats.positiveSentiment);
-  const diffNegative = Math.abs(stats.negativeSentiment - previousStats.negativeSentiment);
-
-  if (diffPositive > 15) {
-    showToast(
-      "success",
-      "📈 Alta no Sentimento Positivo",
-      `O sentimento positivo subiu ${diffPositive.toFixed(1)}% desde a última análise.`
-    );
-  } else if (diffNegative > 15) {
-    showToast(
-      "warning",
-      "📉 Aumento no Sentimento Negativo",
-      `O sentimento negativo aumentou ${diffNegative.toFixed(1)}% — mercado em alerta.`
-    );
-  }
-
-  setPreviousStats(stats);
-}, [stats]);
-
 
   const sentimentBadges = useMemo(
     () => (
@@ -280,7 +287,6 @@ useEffect(() => {
   );
 
   return (
-    
     <div className="min-h-screen bg-neutral-950 text-white">
       <Header />
       <StatusBar />
@@ -387,7 +393,6 @@ useEffect(() => {
           <BitcoinHistoricoChart />
         </div>
 
-        {/* ✅ Adicione aqui a legenda de sentimentos */}
         <div className="mb-8">
           <LegendaSentimentos />
         </div>
