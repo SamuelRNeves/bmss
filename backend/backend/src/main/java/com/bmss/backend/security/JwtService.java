@@ -13,90 +13,75 @@ import java.util.function.Function;
 @Service
 public class JwtService {
 
-    // Chave secreta - precisa ter no mínimo 256 bits
-    private static final String SECRET_KEY = "my-secret-key-my-secret-key-my-secret-key-my-secret-key";
+    private static final String SECRET_KEY = "my-secret-key-my-secret-key-my-secret-key-my-secret-key-256bit";
 
-    // Retorna a chave criptográfica para assinatura e verificação
     private Key getSignInKey() {
         return Keys.hmacShaKeyFor(SECRET_KEY.getBytes());
     }
 
-    // Gera o token JWT com tempo de expiração de 1 hora
     public String generateToken(String username) {
         return Jwts.builder()
                 .setSubject(username)
                 .setIssuedAt(new Date(System.currentTimeMillis()))
-                .setExpiration(new Date(System.currentTimeMillis() + 1000 * 60 * 60)) // 1 hora
-                .signWith(SignatureAlgorithm.HS256, getSignInKey()) // ✅ ordem correta para JJWT 0.11.5
+                .setExpiration(new Date(System.currentTimeMillis() + 1000 * 60 * 60 * 24)) // 24 horas
+                .signWith(getSignInKey(), SignatureAlgorithm.HS256)
                 .compact();
     }
 
-    // Extrai o nome de usuário (email) do token
     public String extractUsername(String token) {
         return extractClaim(token, Claims::getSubject);
     }
 
-    // Verifica se o token é válido comparando o usuário e a expiração
     public boolean isTokenValid(String token, String username) {
-        String extractedUsername = extractUsername(token);
-        return extractedUsername.equals(username) && !isTokenExpired(token);
+        final String extractedUsername = extractUsername(token);
+        return (extractedUsername.equals(username)) && !isTokenExpired(token);
     }
 
-    // Verifica se o token está expirado
     private boolean isTokenExpired(String token) {
         return extractExpiration(token).before(new Date());
     }
 
-    // Extrai a data de expiração
     private Date extractExpiration(String token) {
         return extractClaim(token, Claims::getExpiration);
     }
 
-    // Método genérico para extrair qualquer claim (atributo do token)
     public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
-    try {
-        Claims claims = Jwts.parserBuilder() // ✅ versão moderna
-                .setSigningKey(getSignInKey())
-                .build()
-                .parseClaimsJws(token)
-                .getBody();
+        final Claims claims = extractAllClaims(token);
         return claimsResolver.apply(claims);
-    } catch (io.jsonwebtoken.ExpiredJwtException e) {
-        System.out.println("⚠️ Token expirado: " + e.getMessage());
-        throw e;
-    } catch (Exception e) {
-        System.out.println("❌ Erro ao validar token: " + e.getMessage());
-        throw new IllegalStateException("Token inválido");
     }
-}
 
-    // ✅ Extrai o username a partir do header Authorization: Bearer <token>
-public String extractUsernameFromAuthHeader(String authHeader) {
-    try {
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            System.out.println("🚫 Authorization header ausente ou malformado: " + authHeader);
-            throw new IllegalArgumentException("Cabeçalho Authorization ausente ou inválido");
+    private Claims extractAllClaims(String token) {
+        try {
+            return Jwts.parserBuilder()
+                    .setSigningKey(getSignInKey())
+                    .build()
+                    .parseClaimsJws(token)
+                    .getBody();
+        } catch (Exception e) {
+            System.err.println("❌ Erro ao extrair claims do token: " + e.getMessage());
+            throw new IllegalStateException("Token inválido ou expirado: " + e.getMessage());
         }
-
-        String token = authHeader.substring(7);
-        System.out.println("🔍 Token recebido: " + token);
-
-        String username = extractUsername(token);
-        System.out.println("✅ Username extraído do token: " + username);
-        return username;
-
-    } catch (io.jsonwebtoken.ExpiredJwtException e) {
-        System.out.println("⚠️ Token expirado: " + e.getMessage());
-        throw new IllegalStateException("Token expirado");
-    } catch (Exception e) {
-        System.out.println("❌ Erro ao extrair usuário do token: " + e.getClass().getSimpleName() + " - " + e.getMessage());
-        e.printStackTrace();
-        throw new IllegalStateException("Token inválido");
     }
-}
 
+    public String extractUsernameFromAuthHeader(String authHeader) {
+        try {
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                throw new IllegalArgumentException("Authorization header inválido");
+            }
 
+            String token = authHeader.substring(7).trim();
+            if (token.isEmpty()) {
+                throw new IllegalArgumentException("Token vazio");
+            }
 
+            return extractUsername(token);
 
-
+        } catch (io.jsonwebtoken.ExpiredJwtException e) {
+            System.err.println("⚠️ Token expirado: " + e.getMessage());
+            throw new IllegalStateException("Token expirado");
+        } catch (Exception e) {
+            System.err.println("❌ Erro ao processar token: " + e.getClass().getSimpleName() + " - " + e.getMessage());
+            throw new IllegalStateException("Token inválido: " + e.getMessage());
+        }
+    }
 }
