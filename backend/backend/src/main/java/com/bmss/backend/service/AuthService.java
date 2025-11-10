@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -56,15 +57,17 @@ public class AuthService {
 
             var user = userRepository.findByEmail(request.getEmail());
             if (user == null) {
-                throw new RuntimeException("Credenciais inválidas");
+                throw new BadCredentialsException("Credenciais inválidas");
             }
 
             var jwtToken = jwtService.generateToken(user.getEmail());
 
             return new AuthResponse(jwtToken, jwtToken, jwtToken, null);
 
+        } catch (BadCredentialsException e) {
+            throw e;
         } catch (AuthenticationException e) {
-            throw new RuntimeException("Credenciais inválidas");
+            throw new BadCredentialsException("Credenciais inválidas", e);
         }
     }
 
