@@ -18,3 +18,5 @@ services:
         value: prod
       - key: BMSS_SENTIMENT_BASE_URL
         value: https://bmss-sentiment.onrender.com
+      - key: RESEND_API_KEY
+        sync: false
