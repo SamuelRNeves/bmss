@@ -213,30 +213,36 @@ public class NoticiasService {
         return isRelevant;
     }
 
-            public List<FeedDTO> buscarNoticiasPorSentimento(String sentiment, int limit) {
-    log.info("📊 Buscando notícias com sentimento '{}'", sentiment);
-    try {
-        // 🔹 Converte "neutro" → "neutral", "positivo" → "positive", etc.
-        String normalized = normalizeSentimentToEnglish(sentiment);
+    public List<FeedDTO> buscarNoticiasPorSentimento(String sentiment, int limit) {
+        log.info("📊 Buscando notícias com sentimento '{}'", sentiment);
+        try {
+            // 🔹 Converte "neutro" → "neutral", "positivo" → "positive", etc.
+            String normalized = normalizeSentimentToEnglish(sentiment);
 
-        var allNews = itemRepository.findTop20BySourceNameOrderByPublishedAtDesc("News");
+            if (normalized == null || normalized.isBlank()) {
+                log.warn("⚠️ Sentimento recebido vazio ou nulo. Retornando lista vazia.");
+                return List.of();
+            }
 
-        // 🔹 Agora a comparação é sempre com valores do banco (em inglês)
-        List<FeedDTO> filtradas = allNews.stream()
-                .filter(item -> normalized.equalsIgnoreCase(item.getSentimentLabel()))
-                .limit(limit)
-                .map(FeedDTO::fromEntity)
-                .toList();
+            var allNews = itemRepository.findTop50ByIsTweetFalseOrIsTweetIsNullOrderByPublishedAtDesc();
 
-        log.info("✅ {} notícias encontradas com sentimento '{}'", filtradas.size(), normalized);
+            // 🔹 Agora a comparação é sempre com valores do banco (em inglês)
+            List<FeedDTO> filtradas = allNews.stream()
+                    .filter(item -> item.getSentimentLabel() != null)
+                    .filter(item -> normalized.equalsIgnoreCase(item.getSentimentLabel()))
+                    .limit(limit)
+                    .map(FeedDTO::fromEntity)
+                    .toList();
 
-        return filtradas;
+            log.info("✅ {} notícias encontradas com sentimento '{}'", filtradas.size(), normalized);
 
-    } catch (Exception e) {
-        log.error("❌ Erro ao buscar notícias por sentimento: {}", e.getMessage());
-        return List.of();
+            return filtradas;
+
+        } catch (Exception e) {
+            log.error("❌ Erro ao buscar notícias por sentimento: {}", e.getMessage());
+            return List.of();
+        }
     }
-}
 
 
 /**
