@@ -213,30 +213,36 @@ public class NoticiasService {
         return isRelevant;
     }
 
-            public List<FeedDTO> buscarNoticiasPorSentimento(String sentiment, int limit) {
-    log.info("📊 Buscando notícias com sentimento '{}'", sentiment);
-    try {
-        // 🔹 Converte "neutro" → "neutral", "positivo" → "positive", etc.
-        String normalized = normalizeSentimentToEnglish(sentiment);
+    public List<FeedDTO> buscarNoticiasPorSentimento(String sentiment, int limit) {
+        log.info("📊 Buscando notícias com sentimento '{}'", sentiment);
+        try {
+            // 🔹 Converte "neutro" → "neutral", "positivo" → "positive", etc.
+            String normalized = normalizeSentimentToEnglish(sentiment);
 
-        var allNews = itemRepository.findTop20BySourceNameOrderByPublishedAtDesc("News");
+            if (normalized == null || normalized.isBlank()) {
+                log.warn("⚠️ Sentimento recebido vazio ou nulo. Retornando lista vazia.");
+                return List.of();
+            }
 
-        // 🔹 Agora a comparação é sempre com valores do banco (em inglês)
-        List<FeedDTO> filtradas = allNews.stream()
-                .filter(item -> normalized.equalsIgnoreCase(item.getSentimentLabel()))
-                .limit(limit)
-                .map(FeedDTO::fromEntity)
-                .toList();
+            var allNews = itemRepository.findTop50ByIsTweetFalseOrIsTweetIsNullOrderByPublishedAtDesc();
 
-        log.info("✅ {} notícias encontradas com sentimento '{}'", filtradas.size(), normalized);
+            // 🔹 Agora a comparação é sempre com valores do banco (em inglês)
+            List<FeedDTO> filtradas = allNews.stream()
+                    .filter(item -> item.getSentimentLabel() != null)
+                    .filter(item -> normalized.equalsIgnoreCase(item.getSentimentLabel()))
+                    .limit(limit)
+                    .map(FeedDTO::fromEntity)
+                    .toList();
 
-        return filtradas;
+            log.info("✅ {} notícias encontradas com sentimento '{}'", filtradas.size(), normalized);
 
-    } catch (Exception e) {
-        log.error("❌ Erro ao buscar notícias por sentimento: {}", e.getMessage());
-        return List.of();
+            return filtradas;
+
+        } catch (Exception e) {
+            log.error("❌ Erro ao buscar notícias por sentimento: {}", e.getMessage());
+            return List.of();
+        }
     }
-}
 
 
 /**
@@ -714,45 +720,69 @@ private LocalDateTime parseTwitterDate(Object dateObj) {
 // ============================================================
 // 🔹 Buscar últimos tweets salvos no banco e mapear para FeedDTO
 // ============================================================
-public List<FeedDTO> buscarTweets(int limit, String keyword) {
-    log.info("🐦 Buscando últimos tweets armazenados no banco para '{}'", keyword);
+    public List<FeedDTO> buscarTweets(int limit, String keyword) {
+        log.info("🐦 Buscando últimos tweets armazenados no banco para '{}'", keyword);
 
-    try {
-        // Busca os itens mais recentes cuja fonte é "Twitter"
-        List<Item> tweets = itemRepository.findTop20BySourceNameOrderByPublishedAtDesc("Twitter");
+        try {
+            List<Item> tweets = itemRepository.findTop50ByIsTweetTrueOrderByPublishedAtDesc();
 
-        if (tweets == null || tweets.isEmpty()) {
-            log.warn("⚠️ Nenhum tweet encontrado no banco.");
+            if (tweets == null || tweets.isEmpty()) {
+                log.warn("⚠️ Nenhum tweet encontrado usando flag isTweet. Tentando fallback por fonte.");
+                tweets = itemRepository.findTop20BySourceNameOrderByPublishedAtDesc("Twitter");
+            }
+
+            if (tweets == null || tweets.isEmpty()) {
+                log.warn("⚠️ Nenhum tweet encontrado no banco.");
+                return Collections.emptyList();
+            }
+
+            return tweets.stream()
+                    .limit(limit)
+                    .map(FeedDTO::fromEntity)
+                    .collect(Collectors.toList());
+
+        } catch (Exception e) {
+            log.error("❌ Erro ao buscar tweets do banco: {}", e.getMessage());
             return Collections.emptyList();
         }
-
-        // Converte cada Item em FeedDTO
-        return tweets.stream()
-                .limit(limit)
-                .map(item -> {
-                    FeedDTO dto = new FeedDTO();
-                    dto.setTitle(item.getTitle());
-                    dto.setDescription(item.getText());
-                    dto.setUrl(item.getUrl());
-                    dto.setSource(item.getSourceName());
-                    dto.setPublishedAt(
-                            item.getPublishedAt() != null
-                                    ? item.getPublishedAt().toString()
-                                    : LocalDateTime.now().toString()
-                    );
-                    dto.setSentimento(item.getSentimentLabel());
-                    dto.setScore(item.getSentimentScore());
-                    dto.setTweet(true);
-                    dto.setTweetUrl(item.getUrl());
-                    return dto;
-                })
-                .collect(Collectors.toList());
-
-    } catch (Exception e) {
-        log.error("❌ Erro ao buscar tweets do banco: {}", e.getMessage());
-        return Collections.emptyList();
     }
-}
+
+    public List<FeedDTO> buscarTweetsPorSentimento(String sentiment, int limit) {
+        try {
+            String normalized = normalizeSentimentToEnglish(sentiment);
+
+            if (normalized == null || normalized.isBlank()) {
+                log.warn("⚠️ Sentimento para tweets vazio. Retornando lista vazia.");
+                return List.of();
+            }
+
+            List<Item> tweets = itemRepository.findTop50ByIsTweetTrueOrderByPublishedAtDesc();
+
+            if (tweets == null || tweets.isEmpty()) {
+                log.warn("⚠️ Nenhum tweet encontrado usando flag isTweet. Tentando fallback por fonte.");
+                tweets = itemRepository.findTop20BySourceNameOrderByPublishedAtDesc("Twitter");
+            }
+
+            if (tweets == null || tweets.isEmpty()) {
+                return List.of();
+            }
+
+            List<FeedDTO> filtrados = tweets.stream()
+                    .filter(item -> item.getSentimentLabel() != null)
+                    .filter(item -> normalized.equalsIgnoreCase(item.getSentimentLabel()))
+                    .limit(limit)
+                    .map(FeedDTO::fromEntity)
+                    .collect(Collectors.toList());
+
+            log.info("✅ {} tweets encontrados com sentimento '{}'", filtrados.size(), normalized);
+
+            return filtrados;
+
+        } catch (Exception e) {
+            log.error("❌ Erro ao buscar tweets por sentimento: {}", e.getMessage());
+            return List.of();
+        }
+    }
 
 
     private static class CacheEntry {

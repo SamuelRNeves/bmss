@@ -215,11 +215,11 @@ public ResponseEntity<Map<String, Object>> getUltimasNoticias(
     // ======================================================
 // 🔹 Filtro de notícias por sentimento
 // ======================================================
-@GetMapping("/filtrar")
-public ResponseEntity<Map<String, Object>> filtrarPorSentimento(
-        @RequestParam(defaultValue = "positivo") String sentiment,
-        @RequestParam(defaultValue = "10") int limit
-) {
+    @GetMapping("/filtrar")
+    public ResponseEntity<Map<String, Object>> filtrarPorSentimento(
+            @RequestParam(defaultValue = "positivo") String sentiment,
+            @RequestParam(defaultValue = "10") int limit
+    ) {
     log.info("🎯 GET /noticias/filtrar?sentiment={}", sentiment);
     try {
         // Busca direta no repositório
@@ -239,6 +239,30 @@ public ResponseEntity<Map<String, Object>> filtrarPorSentimento(
         ));
     }
 }
+
+    @GetMapping("/tweets/filtrar")
+    public ResponseEntity<Map<String, Object>> filtrarTweetsPorSentimento(
+            @RequestParam(defaultValue = "positivo") String sentiment,
+            @RequestParam(defaultValue = "10") int limit
+    ) {
+        log.info("🎯 GET /noticias/tweets/filtrar?sentiment={}", sentiment);
+        try {
+            var itens = noticiasService.buscarTweetsPorSentimento(sentiment, limit);
+
+            return ResponseEntity.ok(Map.of(
+                    "data", itens,
+                    "meta", Map.of("total", itens.size(), "sentiment", sentiment),
+                    "message", "✅ Tweets filtrados com sucesso (" + sentiment + ")"
+            ));
+        } catch (Exception e) {
+            log.error("❌ Erro ao filtrar tweets por sentimento: {}", e.getMessage());
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "data", Collections.emptyList(),
+                    "meta", Map.of("total", 0),
+                    "message", "❌ Erro ao filtrar tweets: " + e.getMessage()
+            ));
+        }
+    }
 
     // ==========================
     // Helpers seguros
