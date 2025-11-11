@@ -1,65 +1,72 @@
-// component/ErrorBoundary.tsx (ou onde estiver)
+// component/ErrorBoundary.tsx → VERSÃO CORRETA E SEGURA (2025)
 "use client";
 
-import React, { Component, ErrorInfo, ReactNode } from "react";
+import React, { ReactNode, useEffect } from "react";
 
-interface Props {
+interface ErrorBoundaryProps {
   children: ReactNode;
-  fallback?: ReactNode; // Agora aceita fallback!
+  fallback?: ReactNode;
 }
 
-interface State {
+interface ErrorBoundaryState {
   hasError: boolean;
   error?: Error;
 }
 
-export class ErrorBoundary extends Component<Props, State> {
-  public state: State = {
-    hasError: false,
-  };
+function ErrorBoundary({ children, fallback }: ErrorBoundaryProps) {
+  const [hasError, setHasError] = React.useState(false);
+  const [error, setError] = React.useState<Error | null>(null);
 
-  public static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error };
-  }
+  useEffect(() => {
+    const handleErrors = (event: ErrorEvent) => {
+      event.preventDefault();
+      setHasError(true);
+      setError(event.error);
+      console.error("ErrorBoundary capturou:", event.error);
+    };
 
-  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error("ErrorBoundary capturou um erro:", error, errorInfo);
-  }
+    window.addEventListener("error", handleErrors);
+    return () => window.removeEventListener("error", handleErrors);
+  }, []);
 
-  public render() {
-    if (this.state.hasError) {
-      // Se você passou um fallback personalizado
-      if (this.props.fallback) {
-        return this.props.fallback;
-      }
-
-      // Fallback padrão
-      return (
-        <div className="min-h-screen flex items-center justify-center bg-neutral-950 text-white p-8">
-          <div className="text-center max-w-md">
-            <h2 className="text-2xl font-bold text-red-500 mb-4">
-              Ops! Algo deu errado
-            </h2>
-            <p className="text-gray-400 mb-6">
-              Ocorreu um erro inesperado no dashboard.
-            </p>
-            <button
-              onClick={() => window.location.reload()}
-              className="px-6 py-3 bg-yellow-500 text-black rounded-lg hover:bg-yellow-400 transition"
-            >
-              Recarregar Página
-            </button>
-            <details className="mt-6 text-left text-sm text-gray-500">
-              <summary className="cursor-pointer">Ver detalhes do erro</summary>
-              <pre className="mt-2 p-4 bg-neutral-900 rounded overflow-auto text-xs">
-                {this.state.error?.message}
-              </pre>
-            </details>
-          </div>
-        </div>
-      );
+  if (hasError) {
+    if (fallback) {
+      return <>{fallback}</>;
     }
 
-    return this.props.children;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-neutral-950 text-white p-8">
+        <div className="text-center max-w-md">
+          <h2 className="text-3xl font-bold text-red-500 mb-4">
+            Ops! Ocorreu um erro
+          </h2>
+          <p className="text-gray-400 mb-6">
+            Não conseguimos carregar o dashboard no momento.
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-6 py-3 bg-yellow-500 text-black rounded-lg hover:bg-yellow-400 transition font-semibold"
+          >
+            Recarregar Página
+          </button>
+          {error && (
+            <details className="mt-8 text-left text-sm text-gray-500">
+              <summary className="cursor-pointer hover:text-gray-300">
+                Detalhes técnicos
+              </summary>
+              <pre className="mt-4 p-4 bg-neutral-900 rounded text-xs overflow-auto">
+                {error.message}
+                {"\n"}
+                {error.stack}
+              </pre>
+            </details>
+          )}
+        </div>
+      </div>
+    );
   }
+
+  return <>{children}</>;
 }
+
+export default ErrorBoundary;

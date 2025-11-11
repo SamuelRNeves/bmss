@@ -27,7 +27,8 @@ import { buildApiUrl, getFetchErrorMessage } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
 import Header from "@/componentes/layout/Header";
 import Recomendacoes from "../Recomendacoes";
-import { ErrorBoundary } from "../ErrorBoundary";
+import ErrorBoundary from "../ErrorBoundary";
+
 
 interface NewsItem {
   id: number;
