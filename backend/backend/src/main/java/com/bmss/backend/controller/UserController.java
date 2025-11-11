@@ -1,7 +1,6 @@
 package com.bmss.backend.controller;
 
 import com.bmss.backend.model.User;
-import com.bmss.backend.model.InvestorProfile;
 import com.bmss.backend.repository.UserRepository;
 import com.bmss.backend.security.JwtService;
 import org.springframework.beans.factory.annotation.Autowired;

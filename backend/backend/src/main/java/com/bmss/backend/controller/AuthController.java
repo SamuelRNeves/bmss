@@ -6,6 +6,7 @@ import com.bmss.backend.dto.RegisterRequest;
 import com.bmss.backend.model.User;
 import com.bmss.backend.repository.UserRepository;
 import com.bmss.backend.service.AuthService;
+import com.bmss.backend.config.UserService; // IMPORT
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -30,21 +31,25 @@ public class AuthController {
 
     private final AuthService authService;
     private final UserRepository userRepository;
+    private final UserService userService; // CAMPO INJETADO
 
-    public AuthController(AuthService authService, UserRepository userRepository) {
+    // CONSTRUTOR COM INJEÇÃO
+    public AuthController(AuthService authService, UserRepository userRepository, UserService userService) {
         this.authService = authService;
         this.userRepository = userRepository;
+        this.userService = userService;
     }
 
-    // ==========================================================
-    // 🔹 POST: Registro de usuário
-    // ==========================================================
+    // REGISTRO COM AUTO-LOGIN
     @PostMapping("/register")
     public ResponseEntity<?> register(@RequestBody RegisterRequest request) {
         try {
-            return authService.register(request);
+            AuthResponse response = userService.registerWithAutoLogin(request); // usa a instância
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
-            log.error("❌ Erro no registro de usuário: {}", e.getMessage(), e);
+            log.error("Erro no registro de usuário: {}", e.getMessage(), e);
             return ResponseEntity.status(500).body(Map.of("error", "Erro interno no registro"));
         }
     }

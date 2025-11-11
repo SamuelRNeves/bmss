@@ -8,13 +8,16 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
-import com.bmss.backend.model.InvestorProfile;
-
 @Entity
 @Table(name = "users")
-@Data @NoArgsConstructor @AllArgsConstructor @Builder
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class User {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
 
     private String name;
@@ -22,7 +25,6 @@ public class User {
     @Column(unique = true, nullable = false)
     private String email;
 
-    // 🔐 senha com hash (não guarde texto puro)
     @Column(name = "password_hash", nullable = false)
     private String passwordHash;
 
@@ -33,7 +35,13 @@ public class User {
     @Column(name = "notification_preference")
     private String notificationPreference = "diario";
 
-    // ✅ novo campo mapeado para investor_profile
+    // ENUM DENTRO DA CLASSE → Lombok vê e gera getter
+    public enum InvestorProfile {
+        CONSERVADOR,
+        MODERADO,
+        AGRESSIVO
+    }
+
     @Enumerated(EnumType.STRING)
     @Column(name = "investor_profile", nullable = false)
     private InvestorProfile investorProfile = InvestorProfile.MODERADO;

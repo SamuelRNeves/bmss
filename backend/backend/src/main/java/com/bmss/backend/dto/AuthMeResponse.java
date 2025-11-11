@@ -1,8 +1,9 @@
 package com.bmss.backend.dto;
 
-import com.bmss.backend.model.InvestorProfile;
 import com.bmss.backend.model.Role;
 import com.bmss.backend.model.User;
+import com.bmss.backend.model.User.InvestorProfile;
+
 import lombok.Builder;
 import lombok.Value;
 

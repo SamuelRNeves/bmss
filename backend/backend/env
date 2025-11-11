@@ -1,0 +1,17 @@
+spring.datasource.url=jdbc:mysql://localhost:3306/bmss_db
+spring.datasource.username=root
+spring.datasource.password=123456
+spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
+
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.show-sql=true
+spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.MySQL8Dialect
+spring.security.user.name=admin
+spring.security.user.password=123456
+
+
+# Para tratar timezones corretamente
+spring.jackson.time-zone=America/Sao_Paulo
+logging.level.org.springframework.web=DEBUG
+logging.level.org.hibernate.SQL=DEBUG
+newsapi.apiKey=2397c71979b14eaea433a03179807359

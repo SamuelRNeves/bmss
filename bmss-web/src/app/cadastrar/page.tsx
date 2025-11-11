@@ -1,67 +1,67 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { cadastrarUsuario } from "@/lib/api";
-import { Bell, Mail, User, Lock, Check, AlertCircle, Bitcoin, BarChart3, LineChart } from "lucide-react";
+import { Bell, Mail, User, Lock, Check, AlertCircle, Bitcoin, BarChart3, LineChart, Eye, EyeOff } from "lucide-react";
 
 export default function CadastrarPage() {
-  const [nome, setNome] = useState("");
-  const [email, setEmail] = useState("");
-  const [senha, setSenha] = useState("");
-  const [perfil, setPerfil] = useState("MODERADO");
-  const [preferencia, setPreferencia] = useState("diario");
+  const [form, setForm] = useState({
+    nome: "",
+    email: "",
+    senha: "",
+    perfil: "MODERADO",
+    preferencia: "diario",
+    mostrarSenha: false
+  });
+  const [forcaSenha, setForcaSenha] = useState<"weak" | "medium" | "strong">("weak");
   const [loading, setLoading] = useState(false);
   const [mensagem, setMensagem] = useState<{ tipo: "sucesso" | "erro"; texto: string } | null>(null);
+  const router = useRouter();
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setMensagem(null);
-
-    if (!nome || !email || !senha) {
-      setMensagem({ tipo: "erro", texto: "Preencha todos os campos obrigatórios." });
-      return;
+  // Avalia força da senha em tempo real
+  useEffect(() => {
+    const senha = form.senha;
+    if (senha.length < 8) {
+      setForcaSenha("weak");
+    } else if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(senha)) {
+      setForcaSenha("weak");
+    } else if (senha.length >= 12 && /[@$!%*?&]/.test(senha)) {
+      setForcaSenha("strong");
+    } else {
+      setForcaSenha("medium");
     }
+  }, [form.senha]);
 
-    if (!email.includes("@")) {
-      setMensagem({ tipo: "erro", texto: "Digite um email válido." });
-      return;
+  const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setMensagem(null);
+
+  // Validações locais...
+
+  try {
+    setLoading(true);
+    const resultado = await cadastrarUsuario({
+      name: form.nome,
+      email: form.email,
+      password: form.senha,
+      notificationPreference: form.preferencia,
+      investorProfile: form.perfil,
+    });
+
+    if (resultado.success && resultado.data?.token) {
+      localStorage.setItem("jwtToken", resultado.data.token);
+      setMensagem({ tipo: "sucesso", texto: "Cadastro realizado! Redirecionando..." });
+      setTimeout(() => router.push("/"), 1500);
+    } else {
+      setMensagem({ tipo: "erro", texto: resultado.error || "Erro no cadastro." });
     }
-
-    try {
-      setLoading(true);
-      const resultado = await cadastrarUsuario({
-        name: nome,
-        email: email,
-        password: senha,
-        notificationPreference: preferencia,
-        investorProfile: perfil,
-      });
-
-      if (resultado.success) {
-        setMensagem({
-          tipo: "sucesso",
-          texto: "Cadastro realizado com sucesso! Você pode fazer login agora.",
-        });
-        setNome("");
-        setEmail("");
-        setSenha("");
-        setPerfil("MODERADO");
-      } else {
-        setMensagem({
-          tipo: "erro",
-          texto: resultado.error || "Erro ao realizar cadastro. Tente novamente.",
-        });
-      }
-    } catch (error) {
-      console.error("Erro no cadastro:", error);
-      setMensagem({
-        tipo: "erro",
-        texto: "Erro de conexão com o servidor. Tente novamente.",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+  } catch (error: any) {
+    setMensagem({ tipo: "erro", texto: error.message || "Erro de conexão." });
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-neutral-950 to-neutral-900 py-8 px-4">
@@ -80,7 +80,7 @@ export default function CadastrarPage() {
         </div>
 
         <div className="grid md:grid-cols-2 gap-8 items-start">
-          {/* Card lateral de informações */}
+          {/* Card lateral */}
           <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-8">
             <h2 className="text-2xl font-bold text-yellow-400 mb-6 flex items-center gap-3">
               <BarChart3 size={28} />
@@ -93,41 +93,32 @@ export default function CadastrarPage() {
                   <Check className="text-green-400" size={16} />
                 </div>
                 <div>
-                  <h3 className="text-white font-semibold">📊 Análises Diárias</h3>
-                  <p className="text-gray-400 text-sm">
-                    Resumo completo do sentimento do mercado todos os dias às 18h
-                  </p>
+                  <h3 className="text-white font-semibold">Análises Diárias</h3>
+                  <p className="text-gray-400 text-sm">Resumo completo do sentimento do mercado todos os dias às 18h</p>
                 </div>
               </div>
-
               <div className="flex items-start gap-3">
                 <div className="bg-blue-500/20 p-2 rounded-full mt-1">
                   <Check className="text-blue-400" size={16} />
                 </div>
                 <div>
-                  <h3 className="text-white font-semibold">🚨 Alertas Inteligentes</h3>
-                  <p className="text-gray-400 text-sm">
-                    Notificações sobre mudanças bruscas no sentimento do mercado
-                  </p>
+                  <h3 className="text-white font-semibold">Alertas Inteligentes</h3>
+                  <p className="text-gray-400 text-sm">Notificações sobre mudanças bruscas no sentimento do mercado</p>
                 </div>
               </div>
-
               <div className="flex items-start gap-3">
                 <div className="bg-purple-500/20 p-2 rounded-full mt-1">
                   <Check className="text-purple-400" size={16} />
                 </div>
                 <div>
-                  <h3 className="text-white font-semibold">🎯 Dados em Tempo Real</h3>
-                  <p className="text-gray-400 text-sm">
-                    Análises baseadas em notícias, redes sociais e fóruns especializados
-                  </p>
+                  <h3 className="text-white font-semibold">Dados em Tempo Real</h3>
+                  <p className="text-gray-400 text-sm">Análises baseadas em notícias, redes sociais e fóruns especializados</p>
                 </div>
               </div>
             </div>
 
-            {/* Estatísticas */}
             <div className="mt-8 p-4 bg-neutral-800 rounded-xl">
-              <h4 className="text-white font-semibold mb-3">📈 Nosso Alcance</h4>
+              <h4 className="text-white font-semibold mb-3">Nosso Alcance</h4>
               <div className="grid grid-cols-2 gap-4 text-center">
                 <div>
                   <div className="text-2xl font-bold text-yellow-400">500+</div>
@@ -147,7 +138,6 @@ export default function CadastrarPage() {
             <p className="text-gray-400 mb-6">Preencha seus dados para acessar o sistema</p>
 
             <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Nome */}
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
                   <User size={16} /> Nome completo *
@@ -155,14 +145,13 @@ export default function CadastrarPage() {
                 <input
                   type="text"
                   placeholder="Seu nome completo"
-                  value={nome}
-                  onChange={(e) => setNome(e.target.value)}
-                  className="w-full bg-neutral-800 border border-neutral-700 text-white p-4 rounded-xl"
+                  value={form.nome}
+                  onChange={(e) => setForm({ ...form, nome: e.target.value })}
+                  className="w-full bg-neutral-800 border border-neutral-700 text-white p-4 rounded-xl focus:border-yellow-500 transition"
                   required
                 />
               </div>
 
-              {/* Email */}
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
                   <Mail size={16} /> E-mail *
@@ -170,36 +159,56 @@ export default function CadastrarPage() {
                 <input
                   type="email"
                   placeholder="seu@email.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-neutral-800 border border-neutral-700 text-white p-4 rounded-xl"
+                  value={form.email}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  className="w-full bg-neutral-800 border border-neutral-700 text-white p-4 rounded-xl focus:border-yellow-500 transition"
                   required
                 />
               </div>
 
-              {/* Senha */}
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
                   <Lock size={16} /> Senha *
                 </label>
-                <input
-                  type="password"
-                  placeholder="Crie uma senha"
-                  value={senha}
-                  onChange={(e) => setSenha(e.target.value)}
-                  className="w-full bg-neutral-800 border border-neutral-700 text-white p-4 rounded-xl"
-                  required
-                />
+                <div className="relative">
+                  <input
+                    type={form.mostrarSenha ? "text" : "password"}
+                    placeholder="Crie uma senha segura"
+                    value={form.senha}
+                    onChange={(e) => setForm({ ...form, senha: e.target.value })}
+                    className="w-full bg-neutral-800 border border-neutral-700 text-white p-4 rounded-xl pr-12 focus:border-yellow-500 transition"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, mostrarSenha: !form.mostrarSenha })}
+                    className="absolute right-3 top-4 text-gray-400 hover:text-white"
+                  >
+                    {form.mostrarSenha ? <EyeOff size={20} /> : <Eye size={20} />}
+                  </button>
+                </div>
+
+                {/* Barra de força */}
+                <div className="mt-3">
+                  <div className="flex gap-1 mb-1">
+                    <div className={`h-2 flex-1 rounded-full transition-all ${forcaSenha === "weak" ? "bg-red-500" : forcaSenha === "medium" ? "bg-yellow-500" : "bg-green-500"}`} />
+                    <div className={`h-2 flex-1 rounded-full transition-all ${forcaSenha === "medium" || forcaSenha === "strong" ? (forcaSenha === "strong" ? "bg-green-500" : "bg-yellow-500") : "bg-gray-700"}`} />
+                    <div className={`h-2 flex-1 rounded-full transition-all ${forcaSenha === "strong" ? "bg-green-500" : "bg-gray-700"}`} />
+                  </div>
+                  <p className={`text-xs ${forcaSenha === "weak" ? "text-red-400" : forcaSenha === "medium" ? "text-yellow-400" : "text-green-400"}`}>
+                    {forcaSenha === "weak" ? "Fraca - Mínimo: 8 caracteres + maiúscula + número" : 
+                     forcaSenha === "medium" ? "Média - Aceitável" : "Forte - Excelente!"}
+                  </p>
+                </div>
               </div>
 
-              {/* Perfil de Investidor */}
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
                   <LineChart size={16} /> Perfil de Investidor
                 </label>
                 <select
-                  value={perfil}
-                  onChange={(e) => setPerfil(e.target.value)}
+                  value={form.perfil}
+                  onChange={(e) => setForm({ ...form, perfil: e.target.value })}
                   className="w-full bg-neutral-800 border border-neutral-700 text-white p-4 rounded-xl"
                 >
                   <option value="CONSERVADOR">Conservador</option>
@@ -208,14 +217,13 @@ export default function CadastrarPage() {
                 </select>
               </div>
 
-              {/* Preferência de Notificação */}
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
                   <Bell size={16} /> Tipo de Notificação
                 </label>
                 <select
-                  value={preferencia}
-                  onChange={(e) => setPreferencia(e.target.value)}
+                  value={form.preferencia}
+                  onChange={(e) => setForm({ ...form, preferencia: e.target.value })}
                   className="w-full bg-neutral-800 border border-neutral-700 text-white p-4 rounded-xl"
                 >
                   <option value="diario">Resumo Diário</option>
@@ -224,28 +232,21 @@ export default function CadastrarPage() {
                 </select>
               </div>
 
-              {/* Botão */}
               <button
                 type="submit"
-                disabled={loading}
-                className={`w-full ${
-                  loading
-                    ? "bg-yellow-700 cursor-not-allowed"
-                    : "bg-yellow-500 hover:bg-yellow-400"
-                } text-black font-bold p-4 rounded-xl transition-all duration-200 flex items-center justify-center gap-3`}
+                disabled={loading || forcaSenha === "weak"}
+                className={`w-full font-bold p-4 rounded-xl transition-all duration-200 flex items-center justify-center gap-3 ${
+                  loading || forcaSenha === "weak"
+                    ? "bg-gray-700 cursor-not-allowed text-gray-400"
+                    : "bg-yellow-500 hover:bg-yellow-400 text-black"
+                }`}
               >
                 {loading ? "Processando..." : "Cadastrar e Acessar"}
               </button>
             </form>
 
             {mensagem && (
-              <div
-                className={`mt-6 p-4 rounded-xl border ${
-                  mensagem.tipo === "sucesso"
-                    ? "bg-green-500/20 border-green-500 text-green-400"
-                    : "bg-red-500/20 border-red-500 text-red-400"
-                }`}
-              >
+              <div className={`mt-6 p-4 rounded-xl border ${mensagem.tipo === "sucesso" ? "bg-green-500/20 border-green-500 text-green-400" : "bg-red-500/20 border-red-500 text-red-400"}`}>
                 <div className="flex items-center gap-3">
                   {mensagem.tipo === "sucesso" ? <Check size={20} /> : <AlertCircle size={20} />}
                   <span>{mensagem.texto}</span>
@@ -254,11 +255,8 @@ export default function CadastrarPage() {
             )}
 
             <div className="mt-6 text-center">
-              <a
-                href="/login"
-                className="text-yellow-400 hover:text-yellow-300 underline transition-colors inline-flex items-center gap-2"
-              >
-                Já tem uma conta? Faça login →
+              <a href="/login" className="text-yellow-400 hover:text-yellow-300 underline transition-colors inline-flex items-center gap-2">
+                Já tem uma conta? Faça login
               </a>
             </div>
           </div>

@@ -5,7 +5,7 @@ import com.bmss.backend.dto.AuthResponse;
 import com.bmss.backend.dto.RegisterRequest;
 import com.bmss.backend.model.Role;
 import com.bmss.backend.model.User;
-import com.bmss.backend.model.InvestorProfile;
+import com.bmss.backend.model.User.InvestorProfile;
 import com.bmss.backend.repository.RoleRepository;
 import com.bmss.backend.repository.UserRepository;
 import com.bmss.backend.security.JwtService;

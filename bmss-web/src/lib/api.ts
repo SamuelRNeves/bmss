@@ -728,9 +728,7 @@ function generateRealisticTrends() {
 // =====================================================
 // 👤 FUNÇÕES DE CADASTRO
 // =====================================================
-// =====================================================
-// 👤 FUNÇÃO DE CADASTRO (CORRIGIDA)
-// =====================================================
+
 
 export async function cadastrarUsuario(dados: {
   name: string;
@@ -748,15 +746,25 @@ export async function cadastrarUsuario(dados: {
       investorProfile: dados.investorProfile,
     });
 
-    return {
-      success: true,
-      ...res.data,
-    };
-  } catch (err: any) {
-    console.error("❌ Erro ao cadastrar usuário:", err);
+    // Backend retorna 200 com token → sucesso!
+    if (res.data?.token) {
+      return {
+        success: true,
+        data: res.data, // token + message
+      };
+    }
+
+    // Caso raro: 200 mas sem token
     return {
       success: false,
-      error: getBackendErrorMessage(err),
+      error: res.data?.error || "Token não gerado.",
+    };
+  } catch (err: any) {
+    console.error("Erro ao cadastrar usuário:", err);
+    const errorMsg = err.response?.data?.error || err.message || "Erro desconhecido";
+    return {
+      success: false,
+      error: errorMsg,
     };
   }
 }
