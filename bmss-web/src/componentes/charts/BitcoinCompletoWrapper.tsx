@@ -1,9 +1,9 @@
 // componentes/charts/BitcoinCompletoWrapper.tsx
 "use client";
 
-import { Suspense, lazy } from "react";
+import React, { Suspense } from "react";
 
-const BitcoinHistoricoCompleto = lazy(() => import("./BitcoinHistoricoCompleto"));
+const BitcoinHistoricoCompleto = React.lazy(() => import("./BitcoinHistoricoCompleto"));
 
 export default function BitcoinCompletoWrapper() {
   return (
