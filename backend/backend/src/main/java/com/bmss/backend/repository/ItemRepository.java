@@ -18,5 +18,6 @@ public interface ItemRepository extends JpaRepository<Item, Integer> {
     // 🔹 NOVOS MÉTODOS PARA TWEETS
     List<Item> findByIsTweetTrueOrderByPublishedAtDesc(Pageable pageable);
     List<Item> findTop20ByIsTweetTrueOrderByPublishedAtDesc();
+    List<Item> findTop20ByIsTweetFalseOrderByPublishedAtDesc();
     boolean existsByTweetId(String tweetId);
 }

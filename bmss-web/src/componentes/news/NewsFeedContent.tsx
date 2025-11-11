@@ -12,13 +12,24 @@ export default function NewsFeedContent() {
   const API_BASE_URL =
     process.env.NEXT_PUBLIC_API_BASE_URL || "https://bmss-backend.onrender.com/api/v1";
 
+  // 🧠 Mapeamento de português → inglês
+  const sentimentMap: Record<string, string> = {
+    positivo: "positive",
+    negativo: "negative",
+    neutro: "neutral",
+    todos: "todos",
+  };
+
   const fetchNews = async () => {
     setIsLoading(true);
     try {
+      // ✅ Converte o filtro antes de enviar à API
+      const mappedFilter = sentimentMap[sentimentFilter] || sentimentFilter;
+
       const endpoint =
-        sentimentFilter === "todos"
+        mappedFilter === "todos"
           ? buildApiUrl("noticias/ultimas?limit=10&q=bitcoin")
-          : buildApiUrl(`noticias/filtrar?sentiment=${sentimentFilter}&limit=10`);
+          : buildApiUrl(`noticias/filtrar?sentiment=${mappedFilter}&limit=10`);
 
       const res = await fetch(endpoint);
       const data = await res.json();
@@ -58,7 +69,7 @@ export default function NewsFeedContent() {
 
   return (
     <div>
-      {/* Filtro de Sentimento */}
+      {/* 🔹 Filtro de Sentimento */}
       <div className="flex justify-end mb-6">
         <select
           value={sentimentFilter}
@@ -78,7 +89,9 @@ export default function NewsFeedContent() {
             <NewsCard key={i} {...item} sentiment={item.sentimento as any} />
           ))
         ) : (
-          <p className="text-gray-400 text-center">Nenhuma notícia encontrada.</p>
+          <p className="text-gray-400 text-center">
+            Nenhuma notícia encontrada.
+          </p>
         )}
       </div>
     </div>

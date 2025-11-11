@@ -216,19 +216,43 @@ public class NoticiasService {
             public List<FeedDTO> buscarNoticiasPorSentimento(String sentiment, int limit) {
     log.info("📊 Buscando notícias com sentimento '{}'", sentiment);
     try {
+        // 🔹 Converte "neutro" → "neutral", "positivo" → "positive", etc.
+        String normalized = normalizeSentimentToEnglish(sentiment);
+
         var allNews = itemRepository.findTop20BySourceNameOrderByPublishedAtDesc("News");
-        return allNews.stream()
-                .filter(item -> sentiment.equalsIgnoreCase(item.getSentimentLabel()))
+
+        // 🔹 Agora a comparação é sempre com valores do banco (em inglês)
+        List<FeedDTO> filtradas = allNews.stream()
+                .filter(item -> normalized.equalsIgnoreCase(item.getSentimentLabel()))
                 .limit(limit)
                 .map(FeedDTO::fromEntity)
                 .toList();
+
+        log.info("✅ {} notícias encontradas com sentimento '{}'", filtradas.size(), normalized);
+
+        return filtradas;
+
     } catch (Exception e) {
         log.error("❌ Erro ao buscar notícias por sentimento: {}", e.getMessage());
         return List.of();
     }
 }
 
-    
+
+/**
+ * Converte "positivo" → "positive", "negativo" → "negative", "neutro" → "neutral"
+ */
+private String normalizeSentimentToEnglish(String sentiment) {
+    if (sentiment == null) return null;
+    return switch (sentiment.toLowerCase()) {
+        case "positivo", "positive" -> "positive";
+        case "negativo", "negative" -> "negative";
+        case "neutro", "neutral" -> "neutral";
+        default -> sentiment.toLowerCase();
+    };
+}
+
+
 
     // ============================================================
     // 🔹 Remove notícias duplicadas por URL (MAIS ROBUSTO)
@@ -442,75 +466,75 @@ public class NoticiasService {
             int savedCount = 0;
             int skippedCount = 0;
             
-            for (int i = 0; i < noticias.size(); i++) {
-                FeedDTO dto = noticias.get(i);
+            // Dentro do for loop em fetchAndStoreNews(...)
+for (int i = 0; i < noticias.size(); i++) {
+    FeedDTO dto = noticias.get(i);
 
-                String label = "neutral";
-                double score = 0.0;
+    String label = "neutral";
+    double score = 0.0;
 
-                if (i < analises.size() && analises.get(i) != null) {
-                    Map<String, Object> analise = analises.get(i);
-                    Object lbl = analise.get("label");
-                    Object scr = analise.get("score");
+    if (i < analises.size() && analises.get(i) != null) {
+        Map<String, Object> analise = analises.get(i);
+        Object lbl = analise.get("label");
+        Object scr = analise.get("score");
 
-                    if (lbl != null) label = lbl.toString().toLowerCase();
-                    if (scr != null) {
-                        try {
-                            score = Double.parseDouble(scr.toString());
-                        } catch (NumberFormatException ignored) {}
-                    }
-                }
+        if (lbl != null) label = lbl.toString().toLowerCase();
+        if (scr != null) {
+            try {
+                score = Double.parseDouble(scr.toString());
+            } catch (NumberFormatException ignored) {}
+        }
+    }
 
-                dto.setSentimento(label);
-                dto.setScore(score);
+    dto.setSentimento(label);
+    dto.setScore(score);
 
-                // Verificação robusta de duplicatas no banco
-                if (itemRepository.existsByUrl(dto.getUrl())) {
-                    log.debug("⏩ Pulando notícia já existente: {}", dto.getUrl());
-                    skippedCount++;
-                    continue;
-                }
+    // Verificação robusta de duplicatas no banco
+    if (itemRepository.existsByUrl(dto.getUrl())) {
+        log.debug("Pulando notícia já existente: {}", dto.getUrl());
+        skippedCount++;
+        continue;
+    }
 
-                try {
-                    Item item = new Item();
-                    item.setTitle(dto.getTitle());
-                    item.setText(dto.getDescription());
-                    item.setUrl(dto.getUrl());
-                    item.setSourceName(dto.getSource());
-                    item.setSentimentLabel(label);
-                    item.setSentimentScore(score);
-                    item.setPublishedAt(LocalDateTime.now());
-                    item.setAnalyzedAt(LocalDateTime.now());
-                    itemRepository.save(item);
+    try {
+        Item item = Item.builder()
+                .title(dto.getTitle())
+                .text(dto.getDescription())
+                .url(dto.getUrl())
+                .sourceName(dto.getSource())
+                .sentimentLabel(label)
+                .sentimentScore(score)
+                .publishedAt(LocalDateTime.now())
+                .analyzedAt(LocalDateTime.now())
+                .isTweet(false)  // AQUI: GARANTE QUE É NOTÍCIA, NÃO TWEET
+                .build();
 
-                    Sentiment sentiment = Sentiment.builder()
-                            .item(item)
-                            .label(label)
-                            .score(score)
-                            .model("cardiffnlp/twitter-roberta-base-sentiment-latest")
-                            .createdAt(LocalDateTime.now())
-                            .build();
-                    sentimentRepository.save(sentiment);
+        // Salvar Item
+        Item savedItem = itemRepository.save(item);
 
-                    log.info("💾 Salvo: {} ({}) → {}", label.toUpperCase(), score, dto.getTitle());
-                    savedCount++;
-                    
-                } catch (Exception e) {
-                    log.error("❌ Erro ao salvar notícia: {}", e.getMessage());
-                }
-            }
+        Sentiment sentiment = Sentiment.builder()
+                .item(savedItem)
+                .label(label)
+                .score(score)
+                .model("cardiffnlp/twitter-roberta-base-sentiment-latest")
+                .createdAt(LocalDateTime.now())
+                .build();
+        sentimentRepository.save(sentiment);
+
+        log.info("Salvo: {} ({}) → {}", label.toUpperCase(), score, dto.getTitle());
+        savedCount++;
+        
+    } catch (Exception e) {
+        log.error("Erro ao salvar notícia: {}", e.getMessage());
+    }
+}
 
             log.info("🏁 {}/{} notícias analisadas e persistidas com sucesso! ({} puladas)", 
                     savedCount, noticias.size(), skippedCount);
         }
     }
 
-    // ============================================================
-    // 🔹 Busca e analisa Tweets
-    // ============================================================
-   // ============================================================
-// 🔹 Busca e analisa Tweets (Com chamada ao Flask corrigida)
-// ============================================================
+    
 // ============================================================
 // 🔹 Busca e analisa Tweets (COMPLETAMENTE REVISADO)
 // ============================================================
