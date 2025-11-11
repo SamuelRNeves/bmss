@@ -211,6 +211,35 @@ public ResponseEntity<Map<String, Object>> getUltimasNoticias(
         }
     }
 
+
+    // ======================================================
+// 🔹 Filtro de notícias por sentimento
+// ======================================================
+@GetMapping("/filtrar")
+public ResponseEntity<Map<String, Object>> filtrarPorSentimento(
+        @RequestParam(defaultValue = "positivo") String sentiment,
+        @RequestParam(defaultValue = "10") int limit
+) {
+    log.info("🎯 GET /noticias/filtrar?sentiment={}", sentiment);
+    try {
+        // Busca direta no repositório
+        var itens = noticiasService.buscarNoticiasPorSentimento(sentiment, limit);
+
+        return ResponseEntity.ok(Map.of(
+                "data", itens,
+                "meta", Map.of("total", itens.size(), "sentiment", sentiment),
+                "message", "✅ Notícias filtradas com sucesso (" + sentiment + ")"
+        ));
+    } catch (Exception e) {
+        log.error("❌ Erro ao filtrar notícias por sentimento: {}", e.getMessage());
+        return ResponseEntity.internalServerError().body(Map.of(
+                "data", Collections.emptyList(),
+                "meta", Map.of("total", 0),
+                "message", "❌ Erro ao filtrar notícias: " + e.getMessage()
+        ));
+    }
+}
+
     // ==========================
     // Helpers seguros
     // ==========================

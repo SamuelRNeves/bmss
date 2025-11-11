@@ -13,6 +13,7 @@ import java.util.List;
 @AllArgsConstructor
 @Builder
 public class Item {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
@@ -40,7 +41,7 @@ public class Item {
     @OneToMany(mappedBy = "item", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Comment> comments = new ArrayList<>();
 
-    // 🔹 Campos adicionados para Análise de Sentimento
+    // 🔹 Campos para Análise de Sentimento
     @Column(name = "sentiment_label")
     private String sentimentLabel;
 
@@ -50,7 +51,7 @@ public class Item {
     @Column(name = "analyzed_at")
     private LocalDateTime analyzedAt;
 
-    // 🔹 NOVOS CAMPOS PARA TWEETS (CRÍTICO!)
+    // 🔹 Campos para TWEETS
     @Column(name = "is_tweet")
     private Boolean isTweet = false;
 

@@ -213,6 +213,23 @@ public class NoticiasService {
         return isRelevant;
     }
 
+            public List<FeedDTO> buscarNoticiasPorSentimento(String sentiment, int limit) {
+    log.info("📊 Buscando notícias com sentimento '{}'", sentiment);
+    try {
+        var allNews = itemRepository.findTop20BySourceNameOrderByPublishedAtDesc("News");
+        return allNews.stream()
+                .filter(item -> sentiment.equalsIgnoreCase(item.getSentimentLabel()))
+                .limit(limit)
+                .map(FeedDTO::fromEntity)
+                .toList();
+    } catch (Exception e) {
+        log.error("❌ Erro ao buscar notícias por sentimento: {}", e.getMessage());
+        return List.of();
+    }
+}
+
+    
+
     // ============================================================
     // 🔹 Remove notícias duplicadas por URL (MAIS ROBUSTO)
     // ============================================================
