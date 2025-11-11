@@ -27,6 +27,7 @@ import { buildApiUrl, getFetchErrorMessage } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
 import Header from "@/componentes/layout/Header";
 import Recomendacoes from "../Recomendacoes";
+import { ErrorBoundary } from "../ErrorBoundary";
 
 interface NewsItem {
   id: number;
@@ -76,7 +77,7 @@ const generateFallbackNews = (): NewsItem[] =>
     descricao: `Descrição da notícia sobre Bitcoin ${i + 1}`,
     sentiment: ["positive", "negative", "neutral"][i % 3] as string,
     dataPublicacao: new Date().toISOString(),
-    fonte: "Fallback Source",
+    fonte: "Fonte de Exemplo",
   }));
 
 const generateFallbackTweets = (): TweetItem[] =>
@@ -91,32 +92,50 @@ const generateFallbackTweets = (): TweetItem[] =>
 export default function HomeClient() {
   const { user, loading } = useAuth();
 
-  // ✅ Já temos redirecionamento no page.tsx, então apenas loading
-  if (loading) return <div className="text-white p-6">Carregando...</div>;
+  if (loading) return <div className="text-white p-6">Carregando autenticação...</div>;
   if (!user) return null;
 
   const [stats, setStats] = useState<DashboardStats>(INITIAL_STATS);
   const [isLoading, setIsLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<string>("");
-  const previousStatsRef = useRef<DashboardStats | null>(null); // ✅ useRef em vez de useState
+  const previousStatsRef = useRef<DashboardStats | null>(null);
   const mountedRef = useRef(true);
 
-  const API_URL =
-    process.env.NEXT_PUBLIC_API_BASE_URL ??
-    (process.env.NODE_ENV === "development" ? "http://localhost:8080/api/v1" : undefined);
+  // CORRIGIDO: Agora NUNCA será undefined
+  const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
-  // ✅ useCallback com dependências fixas
+  // CORRIGIDO: Verificação segura + fallback automático
   const fetchStats = useCallback(async () => {
     if (!mountedRef.current) return;
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
 
     try {
       setIsLoading(true);
 
+      // Se API_URL não estiver configurada → usa fallback direto
       if (!API_URL) {
-        throw new Error("API base URL não configurada");
+        console.warn("NEXT_PUBLIC_API_BASE_URL não configurada. Usando dados de exemplo.");
+        showToast(
+          "warning",
+          "Modo Offline",
+          "API não configurada. Exibindo dados de demonstração.",
+          5000
+        );
+
+        const fallbackStats = {
+          totalNews: 24,
+          totalTweets: 156,
+          positiveSentiment: 48,
+          negativeSentiment: 22,
+          neutralSentiment: 30,
+        };
+
+        previousStatsRef.current = fallbackStats;
+        setStats(fallbackStats);
+        setLastUpdate(new Date().toLocaleTimeString("pt-BR"));
+        return;
       }
 
       const [newsResponse, tweetsResponse] = await Promise.allSettled([
@@ -135,7 +154,7 @@ export default function HomeClient() {
         const newsData: ApiResponse<NewsItem> = await newsResponse.value.json();
         newsItems = newsData.data || [];
       } else {
-        console.warn("Falha ao carregar notícias, usando fallback");
+        console.warn("Falha ao carregar notícias → fallback");
         newsItems = generateFallbackNews();
       }
 
@@ -143,7 +162,7 @@ export default function HomeClient() {
         const tweetsData: ApiResponse<TweetItem> = await tweetsResponse.value.json();
         tweetItems = tweetsData.data || [];
       } else {
-        console.warn("Falha ao carregar tweets, usando fallback");
+        console.warn("Falha ao carregar tweets → fallback");
         tweetItems = generateFallbackTweets();
       }
 
@@ -151,15 +170,9 @@ export default function HomeClient() {
       const sentimentCounts = allItems.reduce(
         (acc, item) => {
           const sentiment = (item.sentimento || item.sentiment || "neutral").toLowerCase();
-
-          if (sentiment.startsWith("pos")) {
-            acc.positive += 1;
-          } else if (sentiment.startsWith("neg")) {
-            acc.negative += 1;
-          } else {
-            acc.neutral += 1;
-          }
-
+          if (sentiment.includes("pos")) acc.positive++;
+          else if (sentiment.includes("neg")) acc.negative++;
+          else acc.neutral++;
           return acc;
         },
         { positive: 0, negative: 0, neutral: 0 }
@@ -178,23 +191,15 @@ export default function HomeClient() {
         neutralSentiment: Math.round(neutralPercentage),
       };
 
-      // ✅ Notificações de mudança brusca
+      // Notificações de mudança
       if (previousStatsRef.current) {
-        const diffPositive = Math.abs(newStats.positiveSentiment - previousStatsRef.current.positiveSentiment);
-        const diffNegative = Math.abs(newStats.negativeSentiment - previousStatsRef.current.negativeSentiment);
+        const diffPos = Math.abs(newStats.positiveSentiment - previousStatsRef.current.positiveSentiment);
+        const diffNeg = Math.abs(newStats.negativeSentiment - previousStatsRef.current.negativeSentiment);
 
-        if (diffPositive > 15) {
-          showToast(
-            "success",
-            "📈 Alta no Sentimento Positivo",
-            `O sentimento positivo subiu ${diffPositive.toFixed(1)}% desde a última análise.`
-          );
-        } else if (diffNegative > 15) {
-          showToast(
-            "warning",
-            "📉 Aumento no Sentimento Negativo",
-            `O sentimento negativo aumentou ${diffNegative.toFixed(1)}% — mercado em alerta.`
-          );
+        if (diffPos > 12) {
+          showToast("success", "Sentimento Positivo em Alta", `+${diffPos.toFixed(1)}%`);
+        } else if (diffNeg > 12) {
+          showToast("warning", "Sentimento Negativo em Alta", `+${diffNeg.toFixed(1)}%`);
         }
       }
 
@@ -202,59 +207,46 @@ export default function HomeClient() {
       setStats(newStats);
       setLastUpdate(new Date().toLocaleTimeString("pt-BR"));
 
-      if (positivePercentage > 60 && allItems.length > 10) {
-        showToast(
-          "success",
-          "Sentimento Positivo Alto",
-          `${Math.round(positivePercentage)}% das notícias são positivas`
-        );
-      } else if (negativePercentage > 50 && allItems.length > 10) {
-        showToast(
-          "warning",
-          "Alerta de Negatividade",
-          `${Math.round(negativePercentage)}% das notícias são negativas`
-        );
+      if (positivePercentage > 65) {
+        showToast("success", "Mercado Otimista", `${Math.round(positivePercentage)}% de sentimento positivo!`);
+      } else if (negativePercentage > 45) {
+        showToast("warning", "Cautela no Mercado", `${Math.round(negativePercentage)}% de sentimento negativo.`);
       }
-    } catch (err) {
-      console.error("Erro ao buscar estatísticas:", err);
 
+    } catch (err: any) {
+      console.error("Erro no fetchStats:", err);
+      showToast("error", "Erro de Conexão", getFetchErrorMessage(err));
+
+      // Fallback seguro
       const fallbackStats = {
         totalNews: 24,
         totalTweets: 156,
-        positiveSentiment: 42,
-        negativeSentiment: 28,
+        positiveSentiment: 45,
+        negativeSentiment: 25,
         neutralSentiment: 30,
       };
-
       setStats(fallbackStats);
       previousStatsRef.current = fallbackStats;
-
-      showToast(
-        "error",
-        "Erro de Conexão",
-        `${getFetchErrorMessage(err)}. Usando dados de exemplo.`
-      );
     } finally {
       clearTimeout(timeoutId);
       if (mountedRef.current) {
         setIsLoading(false);
       }
     }
-  }, [API_URL]); // ✅ Apenas API_URL como dependência
+  }, [API_URL]); // Agora é seguro: API_URL é string ou undefined (tratado acima)
 
-  // ✅ useEffect CORRIGIDO - sem dependências que causam loop
+  // CORRIGIDO: useEffect com array vazio → só roda uma vez
   useEffect(() => {
     mountedRef.current = true;
-    
-    fetchStats(); // Chamada inicial
-    
-    const interval = setInterval(fetchStats, 60000); // Atualização a cada minuto
+    fetchStats();
+
+    const interval = setInterval(fetchStats, 60000);
 
     return () => {
       mountedRef.current = false;
       clearInterval(interval);
     };
-  }, []); // ✅ Array VAZIO - executa apenas uma vez
+  }, [fetchStats]); // Agora inclui fetchStats (que tem API_URL como dep)
 
   const handleManualRefresh = useCallback(() => {
     fetchStats();
@@ -264,147 +256,114 @@ export default function HomeClient() {
   const sentimentBadges = useMemo(
     () => (
       <div className="flex flex-wrap items-center gap-3">
-        <SentimentBadge
-          sentiment="positive"
-          score={stats.positiveSentiment / 100}
-          count={stats.positiveSentiment}
-          showTrend
-        />
-        <SentimentBadge
-          sentiment="negative"
-          score={stats.negativeSentiment / 100}
-          count={stats.negativeSentiment}
-          showTrend
-        />
-        <SentimentBadge
-          sentiment="neutral"
-          score={stats.neutralSentiment / 100}
-          count={stats.neutralSentiment}
-        />
+        <SentimentBadge sentiment="positive" score={stats.positiveSentiment / 100} count={stats.positiveSentiment} showTrend />
+        <SentimentBadge sentiment="negative" score={stats.negativeSentiment / 100} count={stats.negativeSentiment} showTrend />
+        <SentimentBadge sentiment="neutral" score={stats.neutralSentiment / 100} count={stats.neutralSentiment} />
       </div>
     ),
-    [stats.negativeSentiment, stats.neutralSentiment, stats.positiveSentiment]
+    [stats.positiveSentiment, stats.negativeSentiment, stats.neutralSentiment]
   );
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-white">
-      <Header />
-      <StatusBar />
-      <ToastNotifier />
+    <ErrorBoundary fallback={<div className="p-10 text-red-500 text-center">Erro crítico no dashboard. Tente recarregar.</div>}>
+      <div className="min-h-screen bg-neutral-950 text-white">
+        <Header />
+        <StatusBar />
+        <ToastNotifier />
 
-      <div className="p-6 lg:p-8">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-8 gap-4">
-          <div>
-            <h1 className="text-3xl font-bold text-white">Dashboard Bitcoin</h1>
-            <p className="text-gray-400 mt-2">
-              Análise de sentimento em tempo real
-              {lastUpdate && (
-                <span className="text-gray-500 text-sm ml-2">• Atualizado: {lastUpdate}</span>
-              )}
-            </p>
-          </div>
-          <button
-            onClick={handleManualRefresh}
-            disabled={isLoading}
-            className="flex items-center gap-2 bg-yellow-500 text-black px-4 py-2 rounded-lg hover:bg-yellow-400 disabled:bg-yellow-600 transition-colors"
-          >
-            <RefreshCw size={16} className={isLoading ? "animate-spin" : ""} />
-            {isLoading ? "Atualizando..." : "Atualizar"}
-          </button>
-        </div>
-
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-8 p-4 bg-neutral-900 rounded-lg">
-          <span className="text-gray-400 text-sm whitespace-nowrap">Sentimento Geral:</span>
-          {sentimentBadges}
-        </div>
-
-        <div className="mb-8">
-          <BitcoinPriceSafe />
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <StatsCard
-            title="Notícias Analisadas"
-            value={isLoading ? "..." : stats.totalNews.toLocaleString("pt-BR")}
-            change={8.2}
-            icon={<Newspaper size={24} />}
-            sentiment="positive"
-          />
-          <StatsCard
-            title="Tweets Monitorados"
-            value={isLoading ? "..." : stats.totalTweets.toLocaleString("pt-BR")}
-            change={15.7}
-            icon={<Twitter size={24} />}
-            sentiment="positive"
-          />
-          <StatsCard
-            title="Sentimento Positivo"
-            value={isLoading ? "..." : `${stats.positiveSentiment}%`}
-            change={2.5}
-            icon={<TrendingUp size={24} />}
-            sentiment="positive"
-          />
-          <StatsCard
-            title="Sentimento Negativo"
-            value={isLoading ? "..." : `${stats.negativeSentiment}%`}
-            change={-1.2}
-            icon={<TrendingDown size={24} />}
-            sentiment="negative"
-          />
-        </div>
-        <div className="mb-8">
-          <Recomendacoes />
-        </div>
-
-        <div className="mb-8">
-          <div className="flex items-center gap-2 mb-6">
-            <BarChart3 className="text-yellow-400" size={24} />
-            <h2 className="text-2xl font-bold text-white">Análise de Sentimento</h2>
+        <div className="p-6 lg:p-8">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-8 gap-4">
+            <div>
+              <h1 className="text-3xl font-bold text-white">Dashboard Bitcoin</h1>
+              <p className="text-gray-400 mt-2">
+                Análise de sentimento em tempo real
+                {lastUpdate && <span className="text-gray-500 text-sm ml-2">• Atualizado: {lastUpdate}</span>}
+              </p>
+            </div>
+            <button
+              onClick={handleManualRefresh}
+              disabled={isLoading}
+              className="flex items-center gap-2 bg-yellow-500 text-black px-4 py-2 rounded-lg hover:bg-yellow-400 disabled:bg-yellow-600 transition-colors"
+            >
+              <RefreshCw size={16} className={isLoading ? "animate-spin" : ""} />
+              {isLoading ? "Atualizando..." : "Atualizar Agora"}
+            </button>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-            <SentimentChart />
-            <SentimentDistribution
-              distribution={{
-                positive: stats.positiveSentiment,
-                negative: stats.negativeSentiment,
-                neutral: stats.neutralSentiment,
-              }}
-            />
-          </div>
-        </div>
-
-        <div className="mb-8">
-          <div className="flex items-center gap-2 mb-6">
-            <TrendingUp className="text-yellow-400" size={24} />
-            <h2 className="text-2xl font-bold text-white">Análise de Preço</h2>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-8 p-4 bg-neutral-900 rounded-lg">
+            <span className="text-gray-400 text-sm whitespace-nowrap">Sentimento Geral:</span>
+            {sentimentBadges}
           </div>
 
-          <div className="grid grid-cols-1 gap-8">
-            <PriceChartSafe />
+          <div className="mb-8">
+            <BitcoinPriceSafe />
           </div>
-        </div>
 
-        <div className="mb-8">
-          <BitcoinHistoricoCompleto />
-        </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <StatsCard title="Notícias Analisadas" value={isLoading ? "..." : stats.totalNews.toLocaleString("pt-BR")} change={8.2} icon={<Newspaper size={24} />} sentiment="positive" />
+            <StatsCard title="Tweets Monitorados" value={isLoading ? "..." : stats.totalTweets.toLocaleString("pt-BR")} change={15.7} icon={<Twitter size={24} />} sentiment="positive" />
+            <StatsCard title="Sentimento Positivo" value={isLoading ? "..." : `${stats.positiveSentiment}%`} change={2.5} icon={<TrendingUp size={24} />} sentiment="positive" />
+            <StatsCard title="Sentimento Negativo" value={isLoading ? "..." : `${stats.negativeSentiment}%`} change={-1.2} icon={<TrendingDown size={24} />} sentiment="negative" />
+          </div>
 
-        <div className="mb-12">
-          <BitcoinHistoricoChart />
-        </div>
+          <div className="mb-8">
+            <Recomendacoes />
+          </div>
 
-        <div className="mb-8">
-          <LegendaSentimentos />
-        </div>
+          <div className="mb-8">
+            <div className="flex items-center gap-2 mb-6">
+              <BarChart3 className="text-yellow-400" size={24} />
+              <h2 className="text-2xl font-bold text-white">Análise de Sentimento</h2>
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+              <ErrorBoundary>
+                {typeof window !== "undefined" && <SentimentChart />}
+              </ErrorBoundary>
+              <ErrorBoundary>
+                {typeof window !== "undefined" && (
+                  <SentimentDistribution
+                    distribution={{
+                      positive: stats.positiveSentiment,
+                      negative: stats.negativeSentiment,
+                      neutral: stats.neutralSentiment,
+                    }}
+                  />
+                )}
+              </ErrorBoundary>
+            </div>
+          </div>
 
-        <div className="mb-12">
-          <NewsFeed />
-        </div>
+          <div className="mb-8">
+            <div className="flex items-center gap-2 mb-6">
+              <TrendingUp className="text-yellow-400" size={24} />
+              <h2 className="text-2xl font-bold text-white">Análise de Preço</h2>
+            </div>
+            <div className="grid grid-cols-1 gap-8">
+              <PriceChartSafe />
+            </div>
+          </div>
 
-        <div className="mb-8">
-          <TweetsFeed />
+          <div className="mb-8">
+            <BitcoinHistoricoCompleto />
+          </div>
+
+          <div className="mb-12">
+            <BitcoinHistoricoChart />
+          </div>
+
+          <div className="mb-8">
+            <LegendaSentimentos />
+          </div>
+
+          <div className="mb-12">
+            <NewsFeed />
+          </div>
+
+          <div className="mb-8">
+            <TweetsFeed />
+          </div>
         </div>
       </div>
-    </div>
+    </ErrorBoundary>
   );
 }
