@@ -41,39 +41,24 @@ public class SecurityConfig {
     private JwtAuthenticationFilter jwtAuthenticationFilter;
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        http
-            .cors(cors -> cors.configurationSource(corsConfigurationSource())) // AQUI ESTÁ A MÁGICA
-            .csrf(csrf -> csrf.disable())
-            .authorizeHttpRequests(auth -> auth
-                .requestMatchers(PUBLIC_AUTH_ENDPOINTS).permitAll()
-                .requestMatchers(HttpMethod.GET, "/").permitAll()
-                .requestMatchers(PROTECTED_ENDPOINTS).authenticated()
-                .anyRequest().permitAll()
-            )
-            .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    http
+        .cors()                    // ← CORS vem do CorsConfig.java
+        .and()
+        .csrf().disable()
+        .authorizeHttpRequests(auth -> auth
+            .requestMatchers(PUBLIC_AUTH_ENDPOINTS).permitAll()
+            .requestMatchers(HttpMethod.GET, "/").permitAll()
+            .requestMatchers(PROTECTED_ENDPOINTS).authenticated()
+            .anyRequest().permitAll()
+        )
+        .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+        .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
-        return http.build();
-    }
+    return http.build();
+}
 
-    // ESSA É A PARTE QUE ESTAVA FALTANDO!!!
-    @Bean
-    public CorsConfigurationSource corsConfigurationSource() {
-        CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOriginPatterns(Arrays.asList(
-            "http://localhost:3000",
-            "https://*.vercel.app",
-            "https://bmss-sytem.vercel.app"
-        ));
-        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(Arrays.asList("*"));
-        configuration.setAllowCredentials(true); // ESSENCIAL PARA JWT NO HEADER
-
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", configuration);
-        return source;
-    }
+    
 
     @Bean
     public PasswordEncoder passwordEncoder() {
