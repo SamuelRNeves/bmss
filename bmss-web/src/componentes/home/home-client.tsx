@@ -16,9 +16,8 @@ import {
   BarChart3,
   RefreshCw,
 } from "lucide-react";
-import BitcoinHistoricoCompleto from "../charts/BitcoinHistoricoCompleto";
-import PriceChartSafe from "../charts/PriceChartSafe";
-import BitcoinHistoricoChart from "../charts/BitcoinHistoricoChart";
+import BitcoinCompletoWrapper from "@/componentes/charts/BitcoinCompletoWrapper";import PriceChartSafe from "../charts/PriceChartSafe";
+import BitcoinChartWrapper from "@/componentes/charts/BitcoinChartWrapper";
 import { buildApiUrl, getFetchErrorMessage } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
 import Header from "@/componentes/layout/Header";
@@ -345,11 +344,11 @@ export default function HomeClient() {
           </div>
 
           <div className="mb-8">
-            <BitcoinHistoricoCompleto />
+            <BitcoinCompletoWrapper />
           </div>
 
           <div className="mb-12">
-            <BitcoinHistoricoChart />
+            <BitcoinChartWrapper />
           </div>
 
           <div className="mb-8">
