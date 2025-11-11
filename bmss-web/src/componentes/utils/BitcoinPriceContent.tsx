@@ -1,3 +1,4 @@
+// componentes/utils/BitcoinPriceContent.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -17,7 +18,7 @@ interface BitcoinData {
   isFallback: boolean;
 }
 
-export function BitcoinPriceSafe() {
+export default function BitcoinPriceContent() {
   const [bitcoinData, setBitcoinData] = useState<BitcoinData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -39,7 +40,6 @@ export function BitcoinPriceSafe() {
       console.error('Erro ao buscar preço do Bitcoin:', error);
       setError('Erro de conexão com a API');
       
-      // Fallback local garantido
       const fallbackData: BitcoinData = {
         price: 67432.50,
         priceUSD: 67432.50,
@@ -47,14 +47,8 @@ export function BitcoinPriceSafe() {
         change24h: "2.45",
         lastUpdated: new Date().toISOString(),
         currency: "USD",
-        priceFormatted: new Intl.NumberFormat('en-US', {
-          style: 'currency',
-          currency: 'USD'
-        }).format(67432.50),
-        priceFormattedBRL: new Intl.NumberFormat('pt-BR', {
-          style: 'currency',
-          currency: 'BRL'
-        }).format(337162.50),
+        priceFormatted: new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(67432.50),
+        priceFormattedBRL: new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(337162.50),
         source: "Dados Locais",
         isFallback: true
       };
@@ -67,7 +61,7 @@ export function BitcoinPriceSafe() {
 
   useEffect(() => {
     carregarPreco();
-    const interval = setInterval(carregarPreco, 60000); // Atualizar a cada 1 minuto
+    const interval = setInterval(carregarPreco, 60000);
     return () => clearInterval(interval);
   }, []);
 
@@ -139,9 +133,7 @@ export function BitcoinPriceSafe() {
             <span className="text-2xl font-bold text-white">
               {bitcoinData.priceFormatted}
             </span>
-            <div className={`flex items-center gap-1 text-sm ${
-              isPositive ? 'text-green-400' : 'text-red-400'
-            }`}>
+            <div className={`flex items-center gap-1 text-sm ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
               {isPositive ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
               <span>{Math.abs(parseFloat(bitcoinData.change24h)).toFixed(2)}%</span>
             </div>
@@ -154,9 +146,7 @@ export function BitcoinPriceSafe() {
 
         <div className="text-right">
           <p className="text-xs text-gray-500 mb-1">Fonte: {bitcoinData.source}</p>
-          <div className={`w-3 h-3 rounded-full animate-pulse ${
-            !bitcoinData.isFallback ? 'bg-green-400' : 'bg-yellow-400'
-          }`}></div>
+          <div className={`w-3 h-3 rounded-full animate-pulse ${!bitcoinData.isFallback ? 'bg-green-400' : 'bg-yellow-400'}`}></div>
         </div>
       </div>
     </div>

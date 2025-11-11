@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
-import { BitcoinPriceSafe } from "@/componentes/BitcoinPriceSafe";
 import { StatsCard } from "@/componentes/dashboard/stats-cards";
 import { SentimentChart } from "@/componentes/charts/sentiment-chart";
 import { SentimentDistribution } from "@/componentes/charts/sentiment-distribution";
@@ -28,6 +27,7 @@ import { useAuth } from "@/lib/useAuth";
 import Header from "@/componentes/layout/Header";
 import Recomendacoes from "../Recomendacoes";
 import ErrorBoundary from "../ErrorBoundary";
+import BitcoinPriceClient from "../BitcoinPriceClient";
 
 
 interface NewsItem {
@@ -297,7 +297,7 @@ export default function HomeClient() {
           </div>
 
           <div className="mb-8">
-            <BitcoinPriceSafe />
+            <BitcoinPriceClient />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
