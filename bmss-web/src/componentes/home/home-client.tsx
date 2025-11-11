@@ -2,10 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { StatsCard } from "@/componentes/dashboard/stats-cards";
-import { SentimentChart } from "@/componentes/charts/sentiment-chart";
 import { SentimentDistribution } from "@/componentes/charts/sentiment-distribution";
-import { NewsFeed } from "@/componentes/news/news-feed";
-import { TweetsFeed } from "@/componentes/tweets/tweets-feed";
 import { StatusBar } from "@/componentes/status/status-bar";
 import { ToastNotifier, showToast } from "@/componentes/notifications/toast-notifier";
 import { SentimentBadge } from "@/componentes/status/sentiment-badge";
@@ -28,6 +25,9 @@ import Header from "@/componentes/layout/Header";
 import Recomendacoes from "../Recomendacoes";
 import ErrorBoundary from "../ErrorBoundary";
 import BitcoinPriceClient from "../BitcoinPriceClient";
+import SentimentChart from "../charts/sentiment-chart";
+import NewsFeed from "../news/news-feed";
+import TweetsFeed from "../tweets/tweets-feed";
 
 
 interface NewsItem {
