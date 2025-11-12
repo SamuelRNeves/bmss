@@ -82,6 +82,23 @@ export default function PerfilPage() {
       );
 
       if (!response.ok) throw new Error("Erro ao salvar alterações");
+
+      setUser((prev: any) =>
+        prev
+          ? {
+              ...prev,
+              investorProfile,
+              notificationPreference,
+            }
+          : prev
+      );
+
+      window.dispatchEvent(
+        new CustomEvent("bmss:profile-updated", {
+          detail: { investorProfile, notificationPreference },
+        })
+      );
+
       alert("✅ Perfil atualizado com sucesso!");
     } catch (error) {
       console.error(error);

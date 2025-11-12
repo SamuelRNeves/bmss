@@ -16,30 +16,61 @@ export function useAuth() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-  const token = localStorage.getItem("jwtToken");
-  if (!token) {
-    setLoading(false);
-    return;
-  }
+    const token = localStorage.getItem("jwtToken");
+    if (!token) {
+      setLoading(false);
+      return;
+    }
 
-  api
-    .get("/auth/me")
-    .then((res) => {
-      setUser(res.data);
-    })
-    .catch((error) => {
-      // Só remove o token se for 401 (token expirado/inválido)
-      if (error.response?.status === 401) {
-        console.warn("🔒 Token expirado ou inválido, removendo...");
-        localStorage.removeItem("jwtToken");
-        setUser(null);
-      } else {
-        console.error("⚠️ Erro inesperado em /auth/me:", error);
+    let isMounted = true;
+
+    api
+      .get("/auth/me")
+      .then((res) => {
+        if (!isMounted) return;
+        setUser(res.data);
+      })
+      .catch((error) => {
+        if (error.response?.status === 401) {
+          console.warn("🔒 Token expirado ou inválido, removendo...");
+          localStorage.removeItem("jwtToken");
+          if (!isMounted) return;
+          setUser(null);
+        } else {
+          console.error("⚠️ Erro inesperado em /auth/me:", error);
+        }
+      })
+      .finally(() => {
+        if (isMounted) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const handler: EventListener = (event) => {
+      const detail = (event as CustomEvent<Partial<UserData>>).detail;
+      if (!detail) {
+        return;
       }
-    })
-    .finally(() => setLoading(false));
-}, []);
 
+      setUser((prev) => {
+        if (!prev) {
+          return prev;
+        }
+        return { ...prev, ...detail };
+      });
+    };
+
+    window.addEventListener("bmss:profile-updated", handler);
+    return () => {
+      window.removeEventListener("bmss:profile-updated", handler);
+    };
+  }, []);
 
   const logout = () => {
     localStorage.removeItem("jwtToken");
