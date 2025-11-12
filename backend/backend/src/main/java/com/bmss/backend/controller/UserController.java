@@ -101,6 +101,7 @@ public class UserController {
         }
     }
 
+    // 🔹 Alterar senha (somente o próprio usuário)
     @PutMapping("/{id}/password")
     public ResponseEntity<?> changePassword(
             @PathVariable Integer id,

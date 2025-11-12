@@ -95,5 +95,5 @@ public class UserService {
         String token = jwtService.generateToken(saved.getEmail());
 
         return new AuthResponse(token, null, "Cadastro realizado com sucesso! Força da senha: " + strength.getLabel());
-}
+    }
 }

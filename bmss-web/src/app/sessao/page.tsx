@@ -1,7 +1,7 @@
 "use client";
 
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
-import NextImage from "next/image";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -302,7 +302,7 @@ export default function UserSessionPage() {
             <div className="flex items-center gap-6">
               <div className="relative w-20 h-20 rounded-3xl bg-gradient-to-br from-yellow-400 via-orange-400 to-rose-500 flex items-center justify-center text-2xl font-bold text-black shadow-lg overflow-hidden">
                 {profileImagePreview ? (
-                  <NextImage
+                  <Image
                     src={profileImagePreview}
                     alt={user.name ? `Foto de ${user.name}` : "Foto do usuário"}
                     fill
@@ -366,7 +366,7 @@ export default function UserSessionPage() {
                 <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-5">
                   <div className="relative h-20 w-20 overflow-hidden rounded-2xl border border-neutral-700 bg-neutral-900/70 flex items-center justify-center text-yellow-300">
                     {profileImagePreview ? (
-                      <NextImage
+                      <Image
                         src={profileImagePreview}
                         alt={user.name ? `Foto de ${user.name}` : "Foto do usuário"}
                         fill
