@@ -22,6 +22,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 @Service
 public class AuthService {
@@ -117,15 +118,20 @@ public class AuthService {
 
             // Enviar email de boas-vindas (assíncrono)
             System.out.println("👤 Usuário salvo no banco: " + savedUser.getEmail());
-            new Thread(() -> {
+            CompletableFuture.runAsync(() -> {
                 try {
-                    emailService.enviarEmailBoasVindas(savedUser.getEmail(), savedUser.getName());
+                    emailService.enviarEmailBoasVindas(
+                            savedUser.getEmail(),
+                            savedUser.getName(),
+                            savedUser.getInvestorProfile().name(),
+                            savedUser.getNotificationPreference()
+                    );
                     System.out.println("✅ Email de boas-vindas enviado para: " + savedUser.getEmail());
                 } catch (Exception e) {
                     System.err.println("❌ Erro ao enviar email: " + e.getMessage());
                     e.printStackTrace();
                 }
-            }).start();
+            });
 
             // Gerar token JWT
             var jwtToken = jwtService.generateToken(savedUser.getEmail());
