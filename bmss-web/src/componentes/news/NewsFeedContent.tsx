@@ -13,7 +13,7 @@ import {
   mapSentimentFilter,
 } from "./feed-utils";
 
-const FETCH_LIMIT = 24;
+const FETCH_LIMIT = 120;
 const INITIAL_VISIBLE_NEWS = 6;
 
 export default function NewsFeedContent() {
@@ -41,14 +41,27 @@ export default function NewsFeedContent() {
         : [];
 
       setNews(items);
-      setVisibleNewsCount(
-        items.length > 0 ? Math.min(INITIAL_VISIBLE_NEWS, items.length) : 0
-      );
+      setVisibleNewsCount((prev) => {
+        if (items.length === 0) {
+          return 0;
+        }
+
+        if (prev > INITIAL_VISIBLE_NEWS) {
+          return Math.min(items.length, prev);
+        }
+
+        return Math.min(INITIAL_VISIBLE_NEWS, items.length);
+      });
     } catch (err) {
       console.error("Erro ao buscar notícias:", getFetchErrorMessage(err));
       const fallback = buildFallbackList("news");
       setNews(fallback);
-      setVisibleNewsCount(Math.min(INITIAL_VISIBLE_NEWS, fallback.length));
+      setVisibleNewsCount((prev) => {
+        if (prev > INITIAL_VISIBLE_NEWS) {
+          return Math.min(fallback.length, prev);
+        }
+        return Math.min(INITIAL_VISIBLE_NEWS, fallback.length);
+      });
     } finally {
       setIsLoading(false);
     }

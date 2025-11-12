@@ -14,7 +14,7 @@ import {
   mapSentimentFilter,
 } from "../news/feed-utils";
 
-const FETCH_LIMIT = 24;
+const FETCH_LIMIT = 120;
 const INITIAL_VISIBLE_TWEETS = 6;
 
 export default function TweetsFeedContent() {
@@ -35,7 +35,12 @@ export default function TweetsFeedContent() {
     if (shouldUseFallback) {
       const fallback = generateFallbackTweets();
       setTweets(fallback);
-      setVisibleTweetsCount(Math.min(INITIAL_VISIBLE_TWEETS, fallback.length));
+      setVisibleTweetsCount((prev) => {
+        if (prev > INITIAL_VISIBLE_TWEETS) {
+          return Math.min(fallback.length, prev);
+        }
+        return Math.min(INITIAL_VISIBLE_TWEETS, fallback.length);
+      });
       setIsLoading(false);
       return;
     }
@@ -61,13 +66,28 @@ export default function TweetsFeedContent() {
         : [];
 
       setTweets(items.map((tweet) => ({ ...tweet, isTweet: true })));
-      setVisibleTweetsCount(items.length > 0 ? Math.min(INITIAL_VISIBLE_TWEETS, items.length) : 0);
+      setVisibleTweetsCount((prev) => {
+        if (items.length === 0) {
+          return 0;
+        }
+
+        if (prev > INITIAL_VISIBLE_TWEETS) {
+          return Math.min(items.length, prev);
+        }
+
+        return Math.min(INITIAL_VISIBLE_TWEETS, items.length);
+      });
     } catch (err) {
       console.error("Erro ao carregar tweets:", getFetchErrorMessage(err));
       setError("Erro ao carregar tweets");
       const fallback = generateFallbackTweets();
       setTweets(fallback);
-      setVisibleTweetsCount(Math.min(INITIAL_VISIBLE_TWEETS, fallback.length));
+      setVisibleTweetsCount((prev) => {
+        if (prev > INITIAL_VISIBLE_TWEETS) {
+          return Math.min(fallback.length, prev);
+        }
+        return Math.min(INITIAL_VISIBLE_TWEETS, fallback.length);
+      });
     } finally {
       setIsLoading(false);
     }
