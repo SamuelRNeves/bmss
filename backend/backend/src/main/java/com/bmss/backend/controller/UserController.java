@@ -17,7 +17,7 @@ import java.util.Optional;
 @RequestMapping("/api/v1/users")
 @CrossOrigin(origins = {
         "http://localhost:3000",
-        "https://bmss-sytem.vercel.app"
+        "https://bmss.com.br"
 }, allowCredentials = "true")
 public class UserController {
 

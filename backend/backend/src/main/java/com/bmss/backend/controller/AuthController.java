@@ -22,7 +22,7 @@ import java.util.LinkedHashMap;
 @CrossOrigin(
         origins = {
                 "http://localhost:3000",
-                "https://bmss-sytem.vercel.app",
+                "https://bmss.com.br",
                 "https://bmss-sytem-1b8p5pt9k-samuel-neves-projects.vercel.app"
         },
         allowCredentials = "true"
