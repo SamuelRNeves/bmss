@@ -17,7 +17,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -29,9 +29,6 @@ import java.util.concurrent.CompletableFuture;
 public class AuthService {
 
     private static final Logger logger = LoggerFactory.getLogger(AuthService.class);
-
-    @Autowired
-    private AuthenticationManager authenticationManager;
 
     @Autowired
     private JwtService jwtService;
@@ -48,6 +45,9 @@ public class AuthService {
     @Autowired
     private EmailService emailService;
 
+    @Autowired
+    private AuthenticationManager authenticationManager;
+
     // ========================================
     // 🔹 LOGIN
     // ========================================
@@ -55,24 +55,26 @@ public class AuthService {
         try {
             String sanitizedEmail = UserSanitizer.normalizeEmail(request.getEmail());
 
-            authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(sanitizedEmail, request.getPassword())
+            // Autenticar usando Spring Security
+            Authentication authentication = authenticationManager.authenticate(
+                new UsernamePasswordAuthenticationToken(sanitizedEmail, request.getPassword())
             );
 
+            // Buscar usuário após autenticação bem-sucedida
             var user = userRepository.findByEmailIgnoreCase(sanitizedEmail);
             if (user == null) {
                 throw new BadCredentialsException("Credenciais inválidas");
             }
 
+            // Gerar token JWT
             var jwtToken = jwtService.generateToken(user.getEmail());
 
             return new AuthResponse(jwtToken, null, "Login bem-sucedido");
         } catch (BadCredentialsException e) {
-            throw e;
-        } catch (AuthenticationException e) {
-            throw new BadCredentialsException("Credenciais inválidas", e);
-        } catch (IllegalArgumentException e) {
-            throw new BadCredentialsException("Credenciais inválidas", e);
+            throw new BadCredentialsException("Credenciais inválidas");
+        } catch (Exception e) {
+            logger.error("Erro durante o login: ", e);
+            throw new BadCredentialsException("Erro durante a autenticação");
         }
     }
 
@@ -91,7 +93,12 @@ public class AuthService {
             }
 
             // Validação de nome
-            String nome = request.getName() != null ? request.getName() : "";
+            String nome = request.getName() != null ? request.getName().trim() : "";
+            if (nome.isEmpty()) {
+                Map<String, String> response = new HashMap<>();
+                response.put("error", "Nome é obrigatório");
+                return ResponseEntity.badRequest().body(response);
+            }
 
             // Buscar role padrão (USER)
             Role userRole = roleRepository.findByName("USER");
@@ -126,6 +133,13 @@ public class AuthService {
                 return ResponseEntity.badRequest().body(response);
             }
 
+            // Validar senha
+            if (request.getPassword() == null || request.getPassword().trim().length() < 6) {
+                Map<String, String> response = new HashMap<>();
+                response.put("error", "Senha deve ter pelo menos 6 caracteres");
+                return ResponseEntity.badRequest().body(response);
+            }
+
             // Criar novo usuário
             User newUser = User.builder()
                     .name(nome)
@@ -140,7 +154,7 @@ public class AuthService {
             User savedUser = userRepository.save(newUser);
 
             // Enviar email de boas-vindas (assíncrono)
-            System.out.println("👤 Usuário salvo no banco: " + savedUser.getEmail());
+            logger.info("👤 Usuário salvo no banco: {}", savedUser.getEmail());
             CompletableFuture.runAsync(() -> {
                 try {
                     emailService.enviarEmailBoasVindas(
@@ -149,10 +163,9 @@ public class AuthService {
                             savedUser.getInvestorProfile().name(),
                             savedUser.getNotificationPreference()
                     );
-                    System.out.println("✅ Email de boas-vindas enviado para: " + savedUser.getEmail());
+                    logger.info("✅ Email de boas-vindas enviado para: {}", savedUser.getEmail());
                 } catch (Exception e) {
-                    System.err.println("❌ Erro ao enviar email: " + e.getMessage());
-                    e.printStackTrace();
+                    logger.error("❌ Erro ao enviar email: {}", e.getMessage(), e);
                 }
             });
 
