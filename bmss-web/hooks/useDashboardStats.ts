@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { buildApiUrl, getFetchErrorMessage } from "@/lib/api";
 
 interface DashboardStats {
@@ -28,7 +28,7 @@ export function useDashboardStats() {
     process.env.NEXT_PUBLIC_API_BASE_URL ??
     (process.env.NODE_ENV === 'development' ? 'http://localhost:8080/api/v1' : undefined);
 
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 8000);
 
@@ -41,10 +41,10 @@ export function useDashboardStats() {
       }
 
       const [newsResponse, tweetsResponse] = await Promise.allSettled([
-        fetch(buildApiUrl("noticias/ultimas?limit=50&q=bitcoin"), {
+        fetch(buildApiUrl("noticias/ultimas?limit=200&q=bitcoin"), {
           signal: controller.signal,
         }),
-        fetch(buildApiUrl("noticias/tweets/ultimos?limit=50&q=bitcoin"), {
+        fetch(buildApiUrl("noticias/tweets/ultimos?limit=200&q=bitcoin"), {
           signal: controller.signal,
         }),
       ]);
@@ -101,13 +101,13 @@ export function useDashboardStats() {
       clearTimeout(timeoutId);
       setIsLoading(false);
     }
-  };
+  }, [API_BASE_URL]);
 
   useEffect(() => {
     fetchStats();
     const interval = setInterval(fetchStats, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchStats]);
 
   return { stats, isLoading, error, refetch: fetchStats };
 }
