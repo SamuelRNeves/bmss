@@ -89,32 +89,87 @@ public class NoticiasService {
     // 🔹 Busca notícias (GNews → fallback RSS)
     // ============================================================
     public List<FeedDTO> buscarNoticias(int limit, String keyword) {
-        String cacheKey = keyword.toLowerCase();
+        String safeKeyword = (keyword == null || keyword.isBlank()) ? "bitcoin" : keyword;
+        int safeLimit = limit <= 0 ? 0 : limit;
 
-        // 🔹 Cache local (5 min)
-        if (cache.containsKey(cacheKey)) {
+        if (safeLimit == 0) {
+            log.warn("⚠️ Limite zero recebido para busca de notícias. Retornando lista vazia.");
+            return Collections.emptyList();
+        }
+
+        try {
+            List<Item> itens = itemRepository.findTop50ByIsTweetFalseOrIsTweetIsNullOrderByPublishedAtDesc();
+
+            List<FeedDTO> analisadas = itens.stream()
+                    .filter(item -> item.getSentimentLabel() != null && !item.getSentimentLabel().isBlank())
+                    .map(FeedDTO::fromEntity)
+                    .filter(Objects::nonNull)
+                    .limit(safeLimit)
+                    .collect(Collectors.toList());
+
+            if (!analisadas.isEmpty()) {
+                log.info("📦 Retornando {} notícias analisadas do banco.", analisadas.size());
+                return analisadas;
+            }
+
+            log.info("🔄 Nenhuma notícia analisada encontrada. Disparando coleta e análise via Flask.");
+            fetchAndStoreNews(safeKeyword);
+
+            itens = itemRepository.findTop50ByIsTweetFalseOrIsTweetIsNullOrderByPublishedAtDesc();
+            analisadas = itens.stream()
+                    .filter(item -> item.getSentimentLabel() != null && !item.getSentimentLabel().isBlank())
+                    .map(FeedDTO::fromEntity)
+                    .filter(Objects::nonNull)
+                    .limit(safeLimit)
+                    .collect(Collectors.toList());
+
+            if (analisadas.isEmpty()) {
+                log.warn("⚠️ Mesmo após a coleta, nenhuma notícia analisada foi encontrada.");
+            }
+
+            return analisadas;
+
+        } catch (Exception e) {
+            log.error("❌ Erro ao buscar notícias analisadas: {}", e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
+    private List<FeedDTO> coletarNoticiasExternas(int limit, String keyword, boolean bypassCache) {
+        String safeKeyword = (keyword == null || keyword.isBlank()) ? "bitcoin" : keyword;
+        int safeLimit = limit <= 0 ? 0 : limit;
+        String cacheKey = safeKeyword.toLowerCase(Locale.ROOT);
+
+        if (safeLimit == 0) {
+            return Collections.emptyList();
+        }
+
+        if (!bypassCache && cache.containsKey(cacheKey)) {
             CacheEntry entry = cache.get(cacheKey);
             if (System.currentTimeMillis() - entry.timestamp < CACHE_DURATION_MS) {
-                log.info("⚡ Retornando notícias do cache para: {}", keyword);
-                return entry.data.stream().limit(limit).collect(Collectors.toList());
+                log.info("⚡ Retornando notícias do cache externo para: {}", safeKeyword);
+                return entry.data.stream().limit(safeLimit).collect(Collectors.toList());
             }
         }
 
-        List<FeedDTO> noticias = fetchFromGNews(keyword);
+        List<FeedDTO> noticias = fetchFromGNews(safeKeyword);
 
         if (noticias.isEmpty()) {
             log.warn("⚠️ Nenhuma notícia encontrada na GNews. Ativando fallback via RSS...");
-            noticias = fetchFromGoogleNewsRSS(keyword);
+            noticias = fetchFromGoogleNewsRSS(safeKeyword);
         }
 
-        // Remover duplicatas antes de salvar no cache
         noticias = removeDuplicates(noticias);
 
         if (!noticias.isEmpty()) {
             cache.put(cacheKey, new CacheEntry(noticias, System.currentTimeMillis()));
         }
 
-        return noticias.stream().limit(limit).collect(Collectors.toList());
+        return noticias.stream().limit(safeLimit).collect(Collectors.toList());
+    }
+
+    private List<FeedDTO> coletarNoticiasExternas(int limit, String keyword) {
+        return coletarNoticiasExternas(limit, keyword, false);
     }
 
     // ============================================================
@@ -447,7 +502,7 @@ private String normalizeSentimentToEnglish(String sentiment) {
     public void fetchAndStoreNews(String keyword) {
         // Prevenir execuções concorrentes que podem causar duplicatas
         synchronized (fetchLock) {
-            List<FeedDTO> noticias = buscarNoticias(20, keyword);
+            List<FeedDTO> noticias = coletarNoticiasExternas(20, keyword, true);
             if (noticias == null || noticias.isEmpty()) {
                 log.warn("⚠️ Nenhuma notícia para importar.");
                 return;
@@ -471,69 +526,67 @@ private String normalizeSentimentToEnglish(String sentiment) {
 
             int savedCount = 0;
             int skippedCount = 0;
-            
-            // Dentro do for loop em fetchAndStoreNews(...)
-for (int i = 0; i < noticias.size(); i++) {
-    FeedDTO dto = noticias.get(i);
 
-    String label = "neutral";
-    double score = 0.0;
+            for (int i = 0; i < noticias.size(); i++) {
+                FeedDTO dto = noticias.get(i);
 
-    if (i < analises.size() && analises.get(i) != null) {
-        Map<String, Object> analise = analises.get(i);
-        Object lbl = analise.get("label");
-        Object scr = analise.get("score");
+                String label = "neutral";
+                double score = 0.0;
 
-        if (lbl != null) label = lbl.toString().toLowerCase();
-        if (scr != null) {
-            try {
-                score = Double.parseDouble(scr.toString());
-            } catch (NumberFormatException ignored) {}
-        }
-    }
+                if (i < analises.size() && analises.get(i) != null) {
+                    Map<String, Object> analise = analises.get(i);
+                    Object lbl = analise.get("label");
+                    Object scr = analise.get("score");
 
-    dto.setSentimento(label);
-    dto.setScore(score);
+                    if (lbl != null) label = lbl.toString().toLowerCase();
+                    if (scr != null) {
+                        try {
+                            score = Double.parseDouble(scr.toString());
+                        } catch (NumberFormatException ignored) {
+                        }
+                    }
+                }
 
-    // Verificação robusta de duplicatas no banco
-    if (itemRepository.existsByUrl(dto.getUrl())) {
-        log.debug("Pulando notícia já existente: {}", dto.getUrl());
-        skippedCount++;
-        continue;
-    }
+                dto.setSentimento(label);
+                dto.setScore(score);
 
-    try {
-        Item item = Item.builder()
-                .title(dto.getTitle())
-                .text(dto.getDescription())
-                .url(dto.getUrl())
-                .sourceName(dto.getSource())
-                .sentimentLabel(label)
-                .sentimentScore(score)
-                .publishedAt(LocalDateTime.now())
-                .analyzedAt(LocalDateTime.now())
-                .isTweet(false)  // AQUI: GARANTE QUE É NOTÍCIA, NÃO TWEET
-                .build();
+                if (itemRepository.existsByUrl(dto.getUrl())) {
+                    log.debug("Pulando notícia já existente: {}", dto.getUrl());
+                    skippedCount++;
+                    continue;
+                }
 
-        // Salvar Item
-        Item savedItem = itemRepository.save(item);
+                try {
+                    Item item = Item.builder()
+                            .title(dto.getTitle())
+                            .text(dto.getDescription())
+                            .url(dto.getUrl())
+                            .sourceName(dto.getSource())
+                            .sentimentLabel(label)
+                            .sentimentScore(score)
+                            .publishedAt(LocalDateTime.now())
+                            .analyzedAt(LocalDateTime.now())
+                            .isTweet(false)
+                            .build();
 
-        Sentiment sentiment = Sentiment.builder()
-                .item(savedItem)
-                .label(label)
-                .score(score)
-                .model("cardiffnlp/twitter-roberta-base-sentiment-latest")
-                .createdAt(LocalDateTime.now())
-                .build();
-        sentimentRepository.save(sentiment);
+                    Item savedItem = itemRepository.save(item);
 
-        log.info("Salvo: {} ({}) → {}", label.toUpperCase(), score, dto.getTitle());
-        savedCount++;
-        
-    } catch (Exception e) {
-        log.error("Erro ao salvar notícia: {}", e.getMessage());
-    }
-}
+                    Sentiment sentiment = Sentiment.builder()
+                            .item(savedItem)
+                            .label(label)
+                            .score(score)
+                            .model("cardiffnlp/twitter-roberta-base-sentiment-latest")
+                            .createdAt(LocalDateTime.now())
+                            .build();
+                    sentimentRepository.save(sentiment);
+
+                    log.info("Salvo: {} ({}) → {}", label.toUpperCase(), score, dto.getTitle());
+                    savedCount++;
+
+                } catch (Exception e) {
+                    log.error("Erro ao salvar notícia: {}", e.getMessage());
+                }
+            }
 
             log.info("🏁 {}/{} notícias analisadas e persistidas com sucesso! ({} puladas)", 
                     savedCount, noticias.size(), skippedCount);

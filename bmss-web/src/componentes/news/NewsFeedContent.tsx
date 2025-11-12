@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Loader2, RotateCcw } from "lucide-react";
 import { NewsCard } from "./news-card";
 import { buildApiUrl, getFetchErrorMessage } from "@/lib/api";
 import {
@@ -18,6 +19,7 @@ const INITIAL_VISIBLE_NEWS = 6;
 export default function NewsFeedContent() {
   const [news, setNews] = useState<FeedItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [sentimentFilter, setSentimentFilter] = useState("todos");
   const [visibleNewsCount, setVisibleNewsCount] = useState(INITIAL_VISIBLE_NEWS);
 
@@ -52,6 +54,32 @@ export default function NewsFeedContent() {
     }
   }, [sentimentFilter]);
 
+  const refreshNews = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      const endpoint = buildApiUrl(`noticias/analisar?limit=${FETCH_LIMIT}&q=bitcoin`);
+      const response = await fetch(endpoint, { method: "POST" });
+
+      if (!response.ok) {
+        let message = response.statusText;
+        try {
+          const body = await response.json();
+          if (typeof body?.message === "string" && body.message.trim().length > 0) {
+            message = body.message;
+          }
+        } catch (error) {
+          console.warn("Não foi possível interpretar resposta ao atualizar notícias:", error);
+        }
+        throw new Error(message || "Falha ao atualizar notícias");
+      }
+    } catch (err) {
+      console.error("Erro ao atualizar notícias:", getFetchErrorMessage(err));
+    } finally {
+      setIsRefreshing(false);
+      await fetchNews();
+    }
+  }, [fetchNews]);
+
   useEffect(() => {
     fetchNews();
   }, [fetchNews]);
@@ -64,21 +92,42 @@ export default function NewsFeedContent() {
 
   return (
     <div>
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6">
+      <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <p className="text-sm text-gray-400">
           Filtre insights de sentimento para focar nas notícias que importam.
         </p>
-        <select
-          value={sentimentFilter}
-          onChange={(e) => setSentimentFilter(e.target.value)}
-          className="bg-neutral-800 border border-neutral-700 text-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-yellow-400/60"
-        >
-          {sentimentOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <button
+            type="button"
+            onClick={refreshNews}
+            disabled={isLoading || isRefreshing}
+            className="flex items-center justify-center gap-2 rounded-full bg-yellow-400 px-4 py-2 font-semibold text-neutral-900 shadow transition-colors hover:bg-yellow-300 disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {isRefreshing ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Atualizando...
+              </>
+            ) : (
+              <>
+                <RotateCcw className="h-4 w-4" />
+                Atualizar notícias
+              </>
+            )}
+          </button>
+
+          <select
+            value={sentimentFilter}
+            onChange={(e) => setSentimentFilter(e.target.value)}
+            className="rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-2 text-gray-300 focus:outline-none focus:ring-2 focus:ring-yellow-400/60"
+          >
+            {sentimentOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {isLoading ? (
