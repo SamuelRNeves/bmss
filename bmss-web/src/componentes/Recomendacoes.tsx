@@ -58,6 +58,19 @@ const createDefaultSnapshot = (): SentimentSnapshot => ({
   proporcaoDominante: 0,
 });
 
+const formatScore = (score: number): string =>
+  new Intl.NumberFormat("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(score);
+
+const formatPercent = (value: number): string =>
+  new Intl.NumberFormat("pt-BR", {
+    style: "percent",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(value);
+
 const clampRatio = (value: number): number => {
   if (!Number.isFinite(value)) return 0;
   return Math.min(1, Math.max(0, value));
@@ -87,7 +100,7 @@ const buildRecommendation = (
   perfil: InvestorProfile,
   snapshot: SentimentSnapshot
 ): Recomendacao => {
-  const { intensidade, distribuicao, dominante, proporcaoDominante } = snapshot;
+  const { nivel, intensidade, media, distribuicao, dominante, proporcaoDominante } = snapshot;
   const total = distribuicao.positivo + distribuicao.negativo + distribuicao.neutro;
 
   if (total === 0) {
@@ -100,9 +113,23 @@ const buildRecommendation = (
     };
   }
 
+  const percentualPositivo = clampRatio(distribuicao.positivo / total);
+  const percentualNegativo = clampRatio(distribuicao.negativo / total);
+  const percentualNeutro = clampRatio(distribuicao.neutro / total);
   const percentualDominante = clampRatio(proporcaoDominante);
+
+  const positivoTexto = formatPercent(percentualPositivo);
+  const negativoTexto = formatPercent(percentualNegativo);
+  const neutroTexto = formatPercent(percentualNeutro);
+  const dominanteTexto = formatPercent(percentualDominante);
+
   const intensidadeLegivel =
     intensidade === "forte" ? "forte" : intensidade === "moderada" ? "moderada" : "leve";
+  const scoreFormatado = formatScore(media);
+
+  const baseStats = `Distribuição atual: ${positivoTexto} positivas, ${neutroTexto} neutras e ${negativoTexto} negativas (${total} notícias).`;
+
+  const percentualDominante = clampRatio(proporcaoDominante);
   const dominanceTone = (() => {
     if (percentualDominante >= 0.65) {
       return "predominância forte";
@@ -117,8 +144,7 @@ const buildRecommendation = (
     if (perfil === "AGRESSIVO") {
       return {
         titulo: "Mercado dividido, jogadas cirúrgicas",
-        mensagem:
-          "O noticiário está dividido, sem um lado dominante. Trabalhe com setups rápidos, confirme fluxo antes de alavancar e preserve parte do capital para quando surgir um sinal claro.",
+        mensagem: `${baseStats} Score médio em ${scoreFormatado} (${nivel}). Trabalhe com setups rápidos, confirme fluxo antes de alavancar e preserve parte do capital para o momento em que o noticiário escolher um lado.`,
         icone: <Brain className="text-blue-400" size={24} />,
         cor: "border-blue-500",
       };
@@ -127,8 +153,7 @@ const buildRecommendation = (
     if (perfil === "MODERADO") {
       return {
         titulo: "Equilíbrio pede disciplina",
-        mensagem:
-          "Sem direção definida nas notícias, mantenha entradas graduais, rebalanceie posições vencedoras e espere confirmações mais claras antes de ampliar risco.",
+        mensagem: `${baseStats} Score médio em ${scoreFormatado} (${nivel}). Mantenha entradas graduais, rebalanceie posições vencedoras e espere confirmações mais claras antes de aumentar risco.`,
         icone: <ShieldCheck className="text-sky-400" size={24} />,
         cor: "border-sky-500",
       };
@@ -136,8 +161,7 @@ const buildRecommendation = (
 
     return {
       titulo: "Noticiário misto, foco em proteção",
-      mensagem:
-        "Sem direção dominante, mantenha-se em ativos de menor volatilidade, aumente proteções e só assuma risco adicional quando a leitura apontar tendência consistente.",
+      mensagem: `${baseStats} Sem direção dominante, mantenha-se em ativos de menor volatilidade, aumente proteções e só assuma risco adicional quando a leitura apontar tendência consistente.`,
       icone: <ShieldAlert className="text-gray-300" size={24} />,
       cor: "border-gray-500",
     };
@@ -147,8 +171,7 @@ const buildRecommendation = (
     if (perfil === "AGRESSIVO") {
       return {
         titulo: percentualDominante >= 0.65 ? "Compradores dominam o noticiário" : "Fluxo otimista em aceleração",
-        mensagem:
-          `As manchetes positivas estão em ${dominanceTone}, com sentimento ${intensidadeLegivel}. Explore rompimentos, mantenha stops ajustados e realize parciais para proteger ganhos rápidos.`,
+        mensagem: `Predominância de ${dominanteTexto} de notícias positivas contra ${negativoTexto} negativas. Score médio em ${scoreFormatado} (${nivel}) com intensidade ${intensidadeLegivel}. Explore rompimentos, mantenha stops ajustados e realize parciais para proteger ganhos rápidos.`,
         icone: <Flame className="text-emerald-400" size={24} />,
         cor: "border-emerald-500",
       };
@@ -157,8 +180,7 @@ const buildRecommendation = (
     if (perfil === "MODERADO") {
       return {
         titulo: percentualDominante >= 0.65 ? "Alta forte exige gestão" : "Tendência positiva consolidando",
-        mensagem:
-          "As notícias positivas são maioria e o clima é favorável. Faça aportes graduais, rebalanceie lucros e mantenha parte da carteira líquida para aproveitar correções sem exagerar na exposição.",
+        mensagem: `${baseStats} Score médio em ${scoreFormatado} (${nivel}). Faça aportes graduais, rebalanceie lucros e mantenha parte da carteira líquida para aproveitar correções sem exagerar na exposição.`,
         icone: <TrendingUp className="text-lime-400" size={24} />,
         cor: "border-lime-500",
       };
@@ -166,8 +188,7 @@ const buildRecommendation = (
 
     return {
       titulo: "Otimismo pede prudência",
-      mensagem:
-        "Há vantagem das notícias positivas, mas mantenha prudência. Aproveite o bom humor via produtos mais estáveis, use travas de proteção e evite concentrar posições em poucos ativos.",
+      mensagem: `${baseStats} Score médio em ${scoreFormatado} (${nivel}) com intensidade ${intensidadeLegivel}. Aproveite o bom humor via produtos mais estáveis, use travas de proteção and evite concentrar posições em poucos ativos.`,
       icone: <ShieldCheck className="text-yellow-300" size={24} />,
       cor: "border-yellow-400",
     };
@@ -177,8 +198,7 @@ const buildRecommendation = (
     if (perfil === "AGRESSIVO") {
       return {
         titulo: percentualDominante >= 0.65 ? "Forte pressão vendedora" : "Clima pesado gera alvos táticos",
-        mensagem:
-          `As notícias negativas lideram com ${dominanceTone} e intensidade ${intensidadeLegivel}. Busque entradas escalonadas em zonas de suporte e opere reversões rápidas com stops curtos.`,
+        mensagem: `Predominância de ${dominanteTexto} de notícias negativas e apenas ${positivoTexto} positivas. Score médio em ${scoreFormatado} (${nivel}) com intensidade ${intensidadeLegivel}. Busque entradas escalonadas em zonas de suporte e opere reversões rápidas com stops curtos.`,
         icone: <AlertTriangle className="text-red-400" size={24} />,
         cor: "border-red-500",
       };
@@ -187,8 +207,7 @@ const buildRecommendation = (
     if (perfil === "MODERADO") {
       return {
         titulo: percentualDominante >= 0.65 ? "Risco elevado: reduza exposição" : "Pressão baixista recomenda cautela",
-        mensagem:
-          "O noticiário negativo está no comando. Proteja capital com hedge em stablecoins, reduza posições sensíveis e espere sinal de reversão antes de retomar compras.",
+        mensagem: `${baseStats} Score médio em ${scoreFormatado} (${nivel}). Proteja capital com hedge em stablecoins, reduza posições sensíveis e espere sinal de reversão antes de retomar compras.`,
         icone: <ShieldAlert className="text-orange-400" size={24} />,
         cor: "border-orange-500",
       };
@@ -196,18 +215,17 @@ const buildRecommendation = (
 
     return {
       titulo: "Defesa total ativada",
-      mensagem:
-        "Predominância de notícias negativas. Priorize liquidez, aumente posições em renda fixa e acompanhe o mercado apenas com lotes pequenos e muito bem protegidos.",
+      mensagem: `${baseStats} Score médio em ${scoreFormatado} (${nivel}) com intensidade ${intensidadeLegivel}. Priorize liquidez, aumente posições em renda fixa e acompanhe o mercado apenas com lotes pequenos e muito bem protegidos.`,
       icone: <Frown className="text-red-400" size={24} />,
       cor: "border-red-600",
     };
   }
 
+  // cenário neutro dominante
   if (perfil === "AGRESSIVO") {
     return {
       titulo: "Mercado lateral, prepare gatilhos",
-      mensagem:
-        "Clima neutro predominante. Use o período para mapear rompimentos potenciais e só entre com força quando o fluxo mostrar direção clara.",
+      mensagem: `${baseStats} Score médio em ${scoreFormatado} (${nivel}) com intensidade ${intensidadeLegivel}. Use o período para mapear rompimentos potenciais e só entre com força quando o fluxo mostrar direção clara.`,
       icone: <Brain className="text-blue-400" size={24} />,
       cor: "border-blue-500",
     };
@@ -216,8 +234,7 @@ const buildRecommendation = (
   if (perfil === "MODERADO") {
     return {
       titulo: "Paciência estratégica em curso",
-      mensagem:
-        "Noticiário neutro favorece uma pausa estratégica. Rebalanceie posições, reforce stops e aguarde confirmações antes de elevar exposição.",
+      mensagem: `${baseStats} Score médio em ${scoreFormatado} (${nivel}). Aproveite para rebalancear posições, reforçar stops e aguardar confirmações antes de elevar exposição.`,
       icone: <Brain className="text-sky-400" size={24} />,
       cor: "border-sky-500",
     };
@@ -225,8 +242,7 @@ const buildRecommendation = (
 
   return {
     titulo: "Clima neutro, mantenha proteções",
-    mensagem:
-      "O sentimento segue neutro. Continue priorizando ativos defensivos e aumente gradualmente a exposição apenas se o noticiário ganhar viés consistente.",
+    mensagem: `${baseStats} Score médio em ${scoreFormatado} (${nivel}). Continue priorizando ativos defensivos e aumente gradualmente a exposição apenas se o noticiário ganhar viés consistente.`,
     icone: <Smile className="text-gray-300" size={24} />,
     cor: "border-gray-500",
   };
@@ -366,6 +382,9 @@ export default function Recomendacoes() {
           <div>
             <h3 className="text-xl font-bold text-white mb-1">{recomendacao.titulo}</h3>
             <p className="text-gray-400 text-sm leading-relaxed">{recomendacao.mensagem}</p>
+            <p className="mt-2 text-xs text-gray-500">
+              Score médio das notícias: {formatScore(snapshot.media)}
+            </p>
             <p className="mt-1 text-xs text-gray-500">
               <strong>Perfil:</strong> {perfilAtual} | <strong>Sentimento:</strong> {snapshot.nivel} ({
                 snapshot.intensidade
