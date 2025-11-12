@@ -95,7 +95,7 @@ public class AuthController {
 
             log.info("🔍 Buscando usuário: {}", email);
 
-            User user = userRepository.findByEmail(email);
+            User user = userRepository.findByEmailIgnoreCase(email);
             if (user == null) {
                 log.error("❌ Usuário não encontrado para email: {}", email);
                 return ResponseEntity.status(404).body(Map.of("error", "Usuário não encontrado"));

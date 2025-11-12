@@ -53,11 +53,13 @@ public class AuthService {
     // ========================================
     public AuthResponse login(AuthRequest request) {
         try {
+            String sanitizedEmail = UserSanitizer.normalizeEmail(request.getEmail());
+
             authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
+                    new UsernamePasswordAuthenticationToken(sanitizedEmail, request.getPassword())
             );
 
-            var user = userRepository.findByEmail(request.getEmail());
+            var user = userRepository.findByEmailIgnoreCase(sanitizedEmail);
             if (user == null) {
                 throw new BadCredentialsException("Credenciais inválidas");
             }
@@ -69,6 +71,8 @@ public class AuthService {
             throw e;
         } catch (AuthenticationException e) {
             throw new BadCredentialsException("Credenciais inválidas", e);
+        } catch (IllegalArgumentException e) {
+            throw new BadCredentialsException("Credenciais inválidas", e);
         }
     }
 
@@ -78,7 +82,9 @@ public class AuthService {
     public ResponseEntity<?> register(RegisterRequest request) {
         try {
             // Verificar se o email já existe
-            if (userRepository.findByEmail(request.getEmail()) != null) {
+            String sanitizedEmail = UserSanitizer.normalizeEmail(request.getEmail());
+
+            if (userRepository.findByEmailIgnoreCase(sanitizedEmail) != null) {
                 Map<String, String> response = new HashMap<>();
                 response.put("error", "Email já está cadastrado para receber notificações");
                 return ResponseEntity.badRequest().body(response);
@@ -97,9 +103,12 @@ public class AuthService {
             }
 
             // Converter string para enum InvestorProfile
+            String investorProfileRaw = request.getInvestorProfile();
             InvestorProfile profile;
             try {
-                profile = InvestorProfile.valueOf(request.getInvestorProfile().toUpperCase());
+                profile = investorProfileRaw != null
+                        ? InvestorProfile.valueOf(investorProfileRaw.trim().toUpperCase())
+                        : InvestorProfile.MODERADO;
             } catch (Exception e) {
                 profile = InvestorProfile.MODERADO; // valor padrão
             }
@@ -120,7 +129,7 @@ public class AuthService {
             // Criar novo usuário
             User newUser = User.builder()
                     .name(nome)
-                    .email(request.getEmail())
+                    .email(sanitizedEmail)
                     .passwordHash(passwordEncoder.encode(request.getPassword()))
                     .role(userRole)
                     .notificationPreference(notificationPreference)
@@ -167,6 +176,10 @@ public class AuthService {
 
             return ResponseEntity.ok(response);
 
+        } catch (IllegalArgumentException e) {
+            Map<String, String> response = new HashMap<>();
+            response.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(response);
         } catch (Exception e) {
             logger.error("Erro no cadastro: ", e);
             Map<String, String> response = new HashMap<>();

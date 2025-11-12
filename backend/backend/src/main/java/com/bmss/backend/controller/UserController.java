@@ -58,7 +58,7 @@ public class UserController {
     ) {
         try {
             String email = jwtService.extractUsernameFromAuthHeader(authHeader);
-            User user = userRepository.findByEmail(email);
+            User user = userRepository.findByEmailIgnoreCase(email);
 
             if (user == null || !user.getId().equals(id)) {
                 return ResponseEntity.status(403).body("Acesso negado");
@@ -114,7 +114,7 @@ public class UserController {
             }
 
             String email = jwtService.extractUsernameFromAuthHeader(authHeader);
-            User user = userRepository.findByEmail(email);
+            User user = userRepository.findByEmailIgnoreCase(email);
 
             if (user == null || !user.getId().equals(id)) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Acesso negado");
