@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
+import Link from "next/link";
 import { useAuth } from "@/lib/useAuth";
 import {
   ChevronDown,
@@ -57,6 +58,20 @@ export default function Header() {
 
   const activeOption = PROFILE_OPTIONS.find((option) => option.value === currentProfile) ?? PROFILE_OPTIONS[1];
 
+  const userInitials = useMemo(() => {
+    const name = user?.name?.trim();
+    if (!name) {
+      return "";
+    }
+    const parts = name.split(/\s+/);
+    if (parts.length === 1) {
+      return parts[0][0]?.toUpperCase() ?? "";
+    }
+    const first = parts[0][0]?.toUpperCase() ?? "";
+    const last = parts[parts.length - 1][0]?.toUpperCase() ?? "";
+    return `${first}${last}`;
+  }, [user?.name]);
+
   useEffect(() => {
     if (!menuOpen) {
       return;
@@ -105,9 +120,22 @@ export default function Header() {
       {user ? (
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-3">
-            <div className="bg-yellow-500/20 p-2 rounded-full">
-              <User size={18} className="text-yellow-400" />
-            </div>
+            <Link
+              href="/sessao"
+              className="group relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-2xl border border-yellow-400/40 bg-yellow-500/10 transition hover:border-yellow-300/80 hover:bg-yellow-500/20"
+              title="Abrir sessão do usuário"
+            >
+              {userInitials ? (
+                <span className="text-xs font-bold tracking-wider text-yellow-200 group-hover:text-yellow-100">
+                  {userInitials}
+                </span>
+              ) : (
+                <User size={18} className="text-yellow-300" />
+              )}
+              <span className="pointer-events-none absolute inset-x-2 -bottom-2 rounded-full bg-neutral-900/90 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-widest text-yellow-400 opacity-0 shadow-lg transition group-hover:bottom-1 group-hover:opacity-100">
+                sessão
+              </span>
+            </Link>
             <div className="text-right" ref={menuRef}>
               <p className="text-sm font-semibold text-white">{user.name}</p>
               <div className="relative mt-1">
