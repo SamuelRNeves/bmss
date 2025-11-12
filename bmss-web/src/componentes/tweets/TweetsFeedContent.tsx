@@ -1,84 +1,96 @@
 // componentes/tweets/TweetsFeedContent.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { NewsCard } from "../news/news-card";
 import { buildApiUrl, getFetchErrorMessage } from "@/lib/api";
+import {
+  FeedItem,
+  SENTIMENT_FILTER_OPTIONS,
+  buildFallbackList,
+  createFallbackTweet,
+  mapApiItemToFeedItem,
+  mapSentimentFilter,
+} from "../news/feed-utils";
 
-interface TweetItem {
-  title: string;
-  description: string;
-  url: string;
-  source: string;
-  publishedAt: string;
-  sentimento: string;
-  score: number;
-  tweet: boolean;
-  tweetUrl?: string;
-}
+const FETCH_LIMIT = 24;
+const INITIAL_VISIBLE_TWEETS = 6;
 
 export default function TweetsFeedContent() {
-  const [tweets, setTweets] = useState<TweetItem[]>([]);
+  const [tweets, setTweets] = useState<FeedItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [sentimentFilter, setSentimentFilter] = useState("todos");
+  const [visibleTweetsCount, setVisibleTweetsCount] = useState(INITIAL_VISIBLE_TWEETS);
 
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "https://fallback.example.com";
+  const sentimentOptions = useMemo(() => SENTIMENT_FILTER_OPTIONS, []);
 
-  const fetchTweets = async () => {
-    if (!API_BASE_URL || API_BASE_URL.includes("fallback")) {
-      setTweets(generateFallbackTweets());
+  const generateFallbackTweets = useCallback(() => buildFallbackList("tweets"), []);
+
+  const fetchTweets = useCallback(async () => {
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+    const shouldUseFallback = !apiBaseUrl || apiBaseUrl.includes("fallback");
+
+    if (shouldUseFallback) {
+      const fallback = generateFallbackTweets();
+      setTweets(fallback);
+      setVisibleTweetsCount(Math.min(INITIAL_VISIBLE_TWEETS, fallback.length));
       setIsLoading(false);
       return;
     }
 
+    setIsLoading(true);
+    setError(null);
+
     try {
-      setIsLoading(true);
-      const res = await fetch(buildApiUrl("noticias/tweets/ultimos?limit=10&q=bitcoin"));
-      if (!res.ok) throw new Error("Falha na API");
+      const mappedFilter = mapSentimentFilter(sentimentFilter);
+      const endpoint =
+        mappedFilter === "todos"
+          ? buildApiUrl(`noticias/tweets/ultimos?limit=${FETCH_LIMIT}&q=bitcoin`)
+          : buildApiUrl(`noticias/tweets/filtrar?sentiment=${mappedFilter}&limit=${FETCH_LIMIT}`);
+
+      const res = await fetch(endpoint);
+      if (!res.ok) {
+        throw new Error(`Falha na API (${res.status})`);
+      }
+
       const json = await res.json();
-      setTweets(json.data || []);
+      const items: FeedItem[] = Array.isArray(json?.data)
+        ? json.data.map((item: unknown) => mapApiItemToFeedItem(item, createFallbackTweet()))
+        : [];
+
+      setTweets(items.map((tweet) => ({ ...tweet, isTweet: true })));
+      setVisibleTweetsCount(items.length > 0 ? Math.min(INITIAL_VISIBLE_TWEETS, items.length) : 0);
     } catch (err) {
+      console.error("Erro ao carregar tweets:", getFetchErrorMessage(err));
       setError("Erro ao carregar tweets");
-      setTweets(generateFallbackTweets());
+      const fallback = generateFallbackTweets();
+      setTweets(fallback);
+      setVisibleTweetsCount(Math.min(INITIAL_VISIBLE_TWEETS, fallback.length));
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const generateFallbackTweets = (): TweetItem[] => [
-    {
-      title: "Bitcoin rompe $70k com força!",
-      description: "ETF da BlackRock registra maior volume da história. Touros dominam.",
-      url: "#",
-      source: "@crypto_king",
-      publishedAt: new Date().toISOString(),
-      sentimento: "positive",
-      score: 0.94,
-      tweet: true,
-      tweetUrl: "https://twitter.com/crypto_king/status/123"
-    },
-    {
-      title: "FUD: Regulador pode banir staking",
-      description: "Notícia falsa espalhada por conta hackeada. Comunidade em alerta.",
-      url: "#",
-      source: "@bear_whisperer",
-      publishedAt: new Date(Date.now() - 3600000).toISOString(),
-      sentimento: "negative",
-      score: 0.78,
-      tweet: true
-    }
-  ];
+  }, [generateFallbackTweets, sentimentFilter]);
 
   useEffect(() => {
     fetchTweets();
-  }, []);
+  }, [fetchTweets]);
+
+  useEffect(() => {
+    setVisibleTweetsCount(INITIAL_VISIBLE_TWEETS);
+  }, [sentimentFilter]);
+
+  const visibleTweets = tweets.slice(0, visibleTweetsCount);
 
   if (error && tweets.length === 0) {
     return (
       <div className="text-center py-12 text-red-400">
         {error}
-        <button onClick={fetchTweets} className="ml-4 bg-yellow-500 text-black px-4 py-2 rounded">
+        <button
+          onClick={fetchTweets}
+          className="ml-4 bg-yellow-500 text-black px-4 py-2 rounded"
+        >
           Tentar novamente
         </button>
       </div>
@@ -86,19 +98,75 @@ export default function TweetsFeedContent() {
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-      {tweets.map((tweet, i) => {
-        const { publishedAt, sentimento, ...rest } = tweet;
-        return (
-          <NewsCard
-            key={i}
-            {...rest}
-            date={publishedAt}  // ← ESSA LINHA RESOLVE TUDO
-            sentiment={sentimento as "positive" | "negative" | "neutral"}
-            isTweet
-          />
-        );
-      })}
+    <div>
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6">
+        <p className="text-sm text-gray-400">
+          Refine o humor do mercado no X selecionando o sentimento desejado.
+        </p>
+        <div className="flex items-center gap-3">
+          <select
+            value={sentimentFilter}
+            onChange={(e) => setSentimentFilter(e.target.value)}
+            className="bg-neutral-800 border border-neutral-700 text-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-sky-400/60"
+          >
+            {sentimentOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={fetchTweets}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-neutral-700 text-gray-200 hover:bg-neutral-800 transition-colors"
+            disabled={isLoading}
+          >
+            <RefreshCw size={16} className={isLoading ? "animate-spin" : undefined} />
+            Atualizar
+          </button>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="text-gray-400 text-center py-6">Carregando tweets...</div>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            {visibleTweets.length > 0 ? (
+              visibleTweets.map((tweet, index) => (
+                <NewsCard
+                  key={`${tweet.url}-${index}`}
+                  title={tweet.title}
+                  description={tweet.description}
+                  source={tweet.source}
+                  date={tweet.date}
+                  sentiment={tweet.sentiment}
+                  score={tweet.score}
+                  url={tweet.url}
+                  isTweet
+                  tweetUrl={tweet.tweetUrl}
+                />
+              ))
+            ) : (
+              <p className="text-gray-400 text-center col-span-full">
+                Nenhum tweet encontrado.
+              </p>
+            )}
+          </div>
+
+          {visibleTweetsCount < tweets.length && (
+            <div className="flex justify-center mt-8">
+              <button
+                type="button"
+                onClick={() => setVisibleTweetsCount(tweets.length)}
+                className="px-5 py-2 rounded-full bg-sky-500 text-neutral-900 font-semibold shadow hover:bg-sky-400 transition-colors"
+              >
+                Mostrar mais tweets
+              </button>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
