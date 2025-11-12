@@ -13,11 +13,13 @@ public interface ItemRepository extends JpaRepository<Item, Integer> {
     List<Item> findBySourceNameNotContainingIgnoreCase(String source, Pageable pageable);
     List<Item> findBySourceNameContainingIgnoreCase(String sourceName, Pageable pageable);
     List<Item> findTop20BySourceNameOrderByPublishedAtDesc(String sourceName);
+    List<Item> findTop50ByIsTweetFalseOrIsTweetIsNullOrderByPublishedAtDesc();
     boolean existsByUrl(String url);
 
     // 🔹 NOVOS MÉTODOS PARA TWEETS
     List<Item> findByIsTweetTrueOrderByPublishedAtDesc(Pageable pageable);
     List<Item> findTop20ByIsTweetTrueOrderByPublishedAtDesc();
+    List<Item> findTop50ByIsTweetTrueOrderByPublishedAtDesc();
     List<Item> findTop20ByIsTweetFalseOrderByPublishedAtDesc();
     boolean existsByTweetId(String tweetId);
 }
