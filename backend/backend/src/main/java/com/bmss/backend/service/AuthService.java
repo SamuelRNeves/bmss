@@ -9,6 +9,7 @@ import com.bmss.backend.model.User.InvestorProfile;
 import com.bmss.backend.repository.RoleRepository;
 import com.bmss.backend.repository.UserRepository;
 import com.bmss.backend.security.JwtService;
+import com.bmss.backend.util.UserSanitizer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,6 +23,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 @Service
 public class AuthService {
@@ -103,29 +105,48 @@ public class AuthService {
                 profile = InvestorProfile.MODERADO; // valor padrão
             }
 
+            String notificationPreference = UserSanitizer.normalizeNotificationPreference(
+                    request.getNotificationPreference()
+            );
+
+            String profileImage = null;
+            try {
+                profileImage = UserSanitizer.sanitizeProfileImage(request.getProfileImageUrl());
+            } catch (IllegalArgumentException imageError) {
+                Map<String, String> response = new HashMap<>();
+                response.put("error", imageError.getMessage());
+                return ResponseEntity.badRequest().body(response);
+            }
+
             // Criar novo usuário
             User newUser = User.builder()
                     .name(nome)
                     .email(request.getEmail())
                     .passwordHash(passwordEncoder.encode(request.getPassword()))
                     .role(userRole)
-                    .notificationPreference(request.getNotificationPreference())
+                    .notificationPreference(notificationPreference)
                     .investorProfile(profile)
+                    .profileImageUrl(profileImage)
                     .build();
 
             User savedUser = userRepository.save(newUser);
 
             // Enviar email de boas-vindas (assíncrono)
             System.out.println("👤 Usuário salvo no banco: " + savedUser.getEmail());
-            new Thread(() -> {
+            CompletableFuture.runAsync(() -> {
                 try {
-                    emailService.enviarEmailBoasVindas(savedUser.getEmail(), savedUser.getName());
+                    emailService.enviarEmailBoasVindas(
+                            savedUser.getEmail(),
+                            savedUser.getName(),
+                            savedUser.getInvestorProfile().name(),
+                            savedUser.getNotificationPreference()
+                    );
                     System.out.println("✅ Email de boas-vindas enviado para: " + savedUser.getEmail());
                 } catch (Exception e) {
                     System.err.println("❌ Erro ao enviar email: " + e.getMessage());
                     e.printStackTrace();
                 }
-            }).start();
+            });
 
             // Gerar token JWT
             var jwtToken = jwtService.generateToken(savedUser.getEmail());
@@ -137,6 +158,7 @@ public class AuthService {
             userData.put("email", savedUser.getEmail());
             userData.put("notificationPreference", savedUser.getNotificationPreference());
             userData.put("investorProfile", savedUser.getInvestorProfile().name());
+            userData.put("profileImageUrl", savedUser.getProfileImageUrl());
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -153,4 +175,5 @@ public class AuthService {
             return ResponseEntity.badRequest().body(response);
         }
     }
+
 }

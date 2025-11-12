@@ -5,6 +5,7 @@ import com.bmss.backend.dto.AuthResponse;
 import com.bmss.backend.model.User;
 import com.bmss.backend.repository.UserRepository;
 import com.bmss.backend.security.JwtService;
+import com.bmss.backend.util.UserSanitizer;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -84,8 +85,9 @@ public class UserService {
         user.setName(request.getName());
         user.setEmail(request.getEmail());
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
-        user.setNotificationPreference(request.getNotificationPreference());
+        user.setNotificationPreference(UserSanitizer.normalizeNotificationPreference(request.getNotificationPreference()));
         user.setInvestorProfile(User.InvestorProfile.valueOf(request.getInvestorProfile()));
+        user.setProfileImageUrl(UserSanitizer.sanitizeProfileImage(request.getProfileImageUrl()));
 
         User saved = userRepository.save(user);
 
@@ -93,5 +95,5 @@ public class UserService {
         String token = jwtService.generateToken(saved.getEmail());
 
         return new AuthResponse(token, null, "Cadastro realizado com sucesso! Força da senha: " + strength.getLabel());
-    }
+}
 }

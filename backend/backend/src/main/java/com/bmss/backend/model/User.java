@@ -35,6 +35,10 @@ public class User {
     @Column(name = "notification_preference")
     private String notificationPreference = "diario";
 
+    @Lob
+    @Column(name = "profile_image_url", columnDefinition = "TEXT")
+    private String profileImageUrl;
+
     // ENUM DENTRO DA CLASSE → Lombok vê e gera getter
     public enum InvestorProfile {
         CONSERVADOR,
