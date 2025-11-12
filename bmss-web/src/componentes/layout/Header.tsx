@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useAuth } from "@/lib/useAuth";
 import {
@@ -72,6 +73,8 @@ export default function Header() {
     return `${first}${last}`;
   }, [user?.name]);
 
+  const hasProfileImage = Boolean(user?.profileImageUrl);
+
   useEffect(() => {
     if (!menuOpen) {
       return;
@@ -125,7 +128,16 @@ export default function Header() {
               className="group relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-2xl border border-yellow-400/40 bg-yellow-500/10 transition hover:border-yellow-300/80 hover:bg-yellow-500/20"
               title="Abrir sessão do usuário"
             >
-              {userInitials ? (
+              {hasProfileImage ? (
+                <Image
+                  src={user?.profileImageUrl ?? ""}
+                  alt={user?.name ? `Foto de ${user.name}` : "Foto do usuário"}
+                  fill
+                  sizes="40px"
+                  className="object-cover"
+                  unoptimized
+                />
+              ) : userInitials ? (
                 <span className="text-xs font-bold tracking-wider text-yellow-200 group-hover:text-yellow-100">
                   {userInitials}
                 </span>

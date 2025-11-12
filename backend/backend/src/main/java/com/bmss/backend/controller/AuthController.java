@@ -120,7 +120,8 @@ public class AuthController {
                     "email", user.getEmail(),
                     "notificationPreference", notificationPref,
                     "investorProfile", investorProfile,
-                    "role", roleName
+                    "role", roleName,
+                    "profileImageUrl", user.getProfileImageUrl()
             ));
 
         } catch (Exception e) {

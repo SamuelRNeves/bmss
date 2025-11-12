@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
+import java.text.Normalizer;
 import java.util.Optional;
 
 @RestController
@@ -67,8 +68,15 @@ public class UserController {
             if (updatedUser.getInvestorProfile() != null)
                 user.setInvestorProfile(updatedUser.getInvestorProfile());
 
-            if (updatedUser.getNotificationPreference() != null)
-                user.setNotificationPreference(updatedUser.getNotificationPreference());
+            if (updatedUser.getNotificationPreference() != null) {
+                String preference = normalizePreference(updatedUser.getNotificationPreference());
+                user.setNotificationPreference(preference);
+            }
+
+            if (updatedUser.getProfileImageUrl() != null) {
+                String profileImage = updatedUser.getProfileImageUrl().trim();
+                user.setProfileImageUrl(profileImage.isEmpty() ? null : profileImage);
+            }
 
             userRepository.save(user);
 
@@ -77,12 +85,125 @@ public class UserController {
                             "success", true,
                             "message", "Perfil atualizado com sucesso",
                             "investorProfile", user.getInvestorProfile(),
-                            "notificationPreference", user.getNotificationPreference()
+                            "notificationPreference", user.getNotificationPreference(),
+                            "profileImageUrl", user.getProfileImageUrl()
                     )
             );
 
         } catch (Exception e) {
             return ResponseEntity.badRequest().body("Erro ao atualizar perfil: " + e.getMessage());
+}
+
+    private String normalizePreference(String preference) {
+        if (preference == null) {
+            return null;
+        }
+
+        String sanitized = Normalizer.normalize(preference, Normalizer.Form.NFD)
+                .replaceAll("[^\p{ASCII}]", "")
+                .toLowerCase()
+                .trim()
+                .replaceAll("[^a-z\\s_-]", "")
+                .replaceAll("[\\s-]+", "_")
+                .replaceAll("_+", "_")
+                .replaceAll("^_+|_+$", "");
+
+        if (sanitized.isEmpty()) {
+            return null;
+        }
+
+        switch (sanitized) {
+            case "alertas_imediatos":
+            case "alertas":
+            case "imediato":
+            case "imediatos":
+                return "alertas_imediatos";
+            case "sem_notificacoes":
+            case "sem_notificacao":
+            case "sem_notificacaoes":
+            case "none":
+            case "desativado":
+                return "sem_notificacoes";
+            case "resumo_diario":
+            case "resumo":
+            case "daily":
+            default:
+                return "resumo_diario";
+        }
+    }
+}
+
+    @PutMapping("/{id}/password")
+    public ResponseEntity<?> changePassword(
+            @PathVariable Integer id,
+            @RequestHeader("Authorization") String authHeader,
+            @RequestBody PasswordChangeRequest request
+    ) {
+        try {
+            if (request == null) {
+                return ResponseEntity.badRequest().body("Requisição inválida");
+            }
+
+            String email = jwtService.extractUsernameFromAuthHeader(authHeader);
+            User user = userRepository.findByEmail(email);
+
+            if (user == null || !user.getId().equals(id)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Acesso negado");
+            }
+
+            if (request.getCurrentPassword() == null || request.getCurrentPassword().isBlank()) {
+                return ResponseEntity.badRequest().body("Informe a senha atual");
+            }
+
+            if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPasswordHash())) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body("Senha atual incorreta");
+            }
+
+            String newPassword = request.getNewPassword();
+            if (newPassword == null || newPassword.isBlank()) {
+                return ResponseEntity.badRequest().body("Informe a nova senha");
+            }
+
+            if (newPassword.length() < 8) {
+                return ResponseEntity.badRequest()
+                        .body("A nova senha deve ter pelo menos 8 caracteres");
+            }
+
+            if (!newPassword.matches(".*[A-Z].*")) {
+                return ResponseEntity.badRequest()
+                        .body("A nova senha deve conter pelo menos uma letra maiúscula");
+            }
+
+            if (!newPassword.matches(".*[a-z].*")) {
+                return ResponseEntity.badRequest()
+                        .body("A nova senha deve conter pelo menos uma letra minúscula");
+            }
+
+            if (!newPassword.matches(".*\\d.*")) {
+                return ResponseEntity.badRequest()
+                        .body("A nova senha deve conter pelo menos um número");
+            }
+
+            if (request.getConfirmPassword() != null && !newPassword.equals(request.getConfirmPassword())) {
+                return ResponseEntity.badRequest().body("As senhas não coincidem");
+            }
+
+            if (passwordEncoder.matches(newPassword, user.getPasswordHash())) {
+                return ResponseEntity.badRequest()
+                        .body("A nova senha deve ser diferente da senha atual");
+            }
+
+            user.setPasswordHash(passwordEncoder.encode(newPassword));
+            userRepository.save(user);
+
+            return ResponseEntity.ok(java.util.Map.of(
+                    "success", true,
+                    "message", "Senha atualizada com sucesso"
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body("Erro ao alterar senha: " + e.getMessage());
         }
     }
 

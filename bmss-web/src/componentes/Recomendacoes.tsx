@@ -129,6 +129,17 @@ const buildRecommendation = (
 
   const baseStats = `Distribuição atual: ${positivoTexto} positivas, ${neutroTexto} neutras e ${negativoTexto} negativas (${total} notícias).`;
 
+  const percentualDominante = clampRatio(proporcaoDominante);
+  const dominanceTone = (() => {
+    if (percentualDominante >= 0.65) {
+      return "predominância forte";
+    }
+    if (percentualDominante >= 0.5) {
+      return "vantagem consistente";
+    }
+    return "leve vantagem";
+  })();
+
   if (percentualDominante < 0.45) {
     if (perfil === "AGRESSIVO") {
       return {

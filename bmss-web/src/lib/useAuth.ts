@@ -9,9 +9,14 @@ interface UserData {
   email: string;
   investorProfile: string;
   notificationPreference?: string;
+  profileImageUrl?: string | null;
 }
 
 type InvestorProfile = "CONSERVADOR" | "MODERADO" | "AGRESSIVO";
+
+type UserPatch = Partial<
+  Pick<UserData, "investorProfile" | "notificationPreference" | "profileImageUrl">
+>;
 
 const resolveApiBase = (): string => {
   const configured = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
@@ -84,10 +89,66 @@ export function useAuth() {
     };
   }, []);
 
-  const updateInvestorProfile = useCallback(
-    async (nextProfile: InvestorProfile): Promise<void> => {
-      if (!nextProfile) {
-        return;
+  const persistUserUpdate = useCallback(
+    async (patch: UserPatch): Promise<UserPatch> => {
+      if (!patch || Object.keys(patch).length === 0) {
+        return {};
+      }
+
+      if (!user) {
+        throw new Error("Informações do usuário ainda não foram carregadas");
+      }
+
+      const applyLocalUpdate = (delta: UserPatch) => {
+        const sanitized: UserPatch = {};
+
+        if (delta.investorProfile !== undefined) {
+          sanitized.investorProfile = delta.investorProfile;
+        }
+
+        if (delta.notificationPreference !== undefined) {
+          sanitized.notificationPreference = delta.notificationPreference;
+        }
+
+        if (delta.profileImageUrl !== undefined) {
+          sanitized.profileImageUrl = delta.profileImageUrl === "" ? null : delta.profileImageUrl;
+        }
+
+        setUser((prev) => {
+          if (!prev) {
+            return prev;
+          }
+
+          const next = { ...prev };
+
+          if (sanitized.investorProfile !== undefined) {
+            next.investorProfile = sanitized.investorProfile;
+          }
+
+          if (sanitized.notificationPreference !== undefined) {
+            next.notificationPreference = sanitized.notificationPreference;
+          }
+
+          if (sanitized.profileImageUrl !== undefined) {
+            next.profileImageUrl = sanitized.profileImageUrl ?? null;
+          }
+
+          return next;
+        });
+
+        if (Object.keys(sanitized).length > 0) {
+          window.dispatchEvent(
+            new CustomEvent("bmss:profile-updated", {
+              detail: sanitized,
+            })
+          );
+        }
+
+        return sanitized;
+      };
+
+      if (!user.id) {
+        return applyLocalUpdate(patch);
       }
 
       const token = localStorage.getItem("jwtToken");
@@ -95,78 +156,68 @@ export function useAuth() {
         throw new Error("Usuário não autenticado");
       }
 
-      if (!user) {
-        throw new Error("Informações do usuário ainda não foram carregadas");
+      const response = await fetch(`${apiBase}/users/${user.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(patch),
+      });
+
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Não foi possível atualizar os dados do usuário.");
+      }
+
+      let payload: Record<string, unknown> | null = null;
+      try {
+        payload = await response.json();
+      } catch {
+        payload = null;
+      }
+
+      const normalized: UserPatch = {
+        investorProfile: (payload?.investorProfile as string | undefined) ?? patch.investorProfile,
+        notificationPreference:
+          (payload?.notificationPreference as string | undefined) ?? patch.notificationPreference,
+        profileImageUrl:
+          payload?.profileImageUrl === null
+            ? null
+            : (payload?.profileImageUrl as string | undefined) ?? patch.profileImageUrl,
+      };
+
+      return applyLocalUpdate(normalized);
+    },
+    [apiBase, user]
+  );
+
+  const updateInvestorProfile = useCallback(
+    async (nextProfile: InvestorProfile): Promise<void> => {
+      if (!nextProfile) {
+        return;
       }
 
       try {
-        if (!user.id) {
-          setUser((prev) => (prev ? { ...prev, investorProfile: nextProfile } : prev));
-          window.dispatchEvent(
-            new CustomEvent("bmss:profile-updated", {
-              detail: { investorProfile: nextProfile },
-            })
-          );
-          return;
-        }
-
-        const response = await fetch(`${apiBase}/users/${user.id}`, {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            investorProfile: nextProfile,
-            notificationPreference: user.notificationPreference,
-          }),
-        });
-
-        if (!response.ok) {
-          const message = await response.text();
-          throw new Error(
-            message || "Erro ao atualizar perfil de investidor. Tente novamente."
-          );
-        }
-
-        let investorProfile: string | undefined;
-        let notificationPreference: string | undefined;
-        try {
-          const payload = await response.json();
-          investorProfile = payload?.investorProfile ?? undefined;
-          notificationPreference = payload?.notificationPreference ?? undefined;
-        } catch (error) {
-          investorProfile = undefined;
-          notificationPreference = undefined;
-        }
-
-        const resolvedProfile = (investorProfile || nextProfile) as InvestorProfile;
-
-        setUser((prev) =>
-          prev
-            ? {
-                ...prev,
-                investorProfile: resolvedProfile,
-                notificationPreference:
-                  notificationPreference ?? prev.notificationPreference,
-              }
-            : prev
-        );
-
-        window.dispatchEvent(
-          new CustomEvent("bmss:profile-updated", {
-            detail: {
-              investorProfile: resolvedProfile,
-              notificationPreference: notificationPreference ?? user.notificationPreference,
-            },
-          })
-        );
+        await persistUserUpdate({ investorProfile: nextProfile });
       } catch (error) {
         console.error("Erro ao atualizar perfil do investidor:", error);
         throw error;
       }
     },
-    [apiBase, user]
+    [persistUserUpdate]
+  );
+
+  const updateUserSettings = useCallback(
+    async (patch: UserPatch): Promise<UserPatch> => {
+      try {
+        return await persistUserUpdate(patch);
+      } catch (error) {
+        console.error("Erro ao atualizar dados do usuário:", error);
+        throw error;
+      }
+    },
+    [persistUserUpdate]
   );
 
   const logout = () => {
@@ -175,5 +226,5 @@ export function useAuth() {
     window.location.href = "/login";
   };
 
-  return { user, loading, logout, updateInvestorProfile };
+  return { user, loading, logout, updateInvestorProfile, updateUserSettings };
 }
