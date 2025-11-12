@@ -18,8 +18,7 @@ public class EmailService {
     private final boolean emailEnabled;
 
     public EmailService(@Value("${resend.api.key:}") String apiKey,
-                        @Value("${resend.from.email:'BMSS System <noreply@bmss.tech>'}")
- String fromAddress) {
+                        @Value("${resend.from.email:BMSS System <noreply@bmss.tech>}") String fromAddress) {
         if (apiKey == null || apiKey.isBlank()) {
             log.warn("⚠️ resend.api.key não configurado. Os envios de email serão ignorados até que a chave seja informada.");
             this.resend = null;
