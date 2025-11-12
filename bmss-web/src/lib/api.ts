@@ -50,6 +50,10 @@ export function getFetchErrorMessage(error: unknown): string {
   return String(error);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 const api = axios.create({
   ...(API_BASE_URL ? { baseURL: API_BASE_URL } : {}),
 });
@@ -215,6 +219,32 @@ interface ApiResponse<T> {
   error: string | null;
   isFallback: boolean;
   timestamp?: string;
+}
+
+export type NotificationSentiment = "positive" | "neutral" | "negative";
+export type NotificationCategory = "summary" | "news" | "tweet";
+
+export interface NotificationPayload {
+  id: string;
+  title: string;
+  description: string;
+  sentiment: NotificationSentiment;
+  category: NotificationCategory;
+  source?: string;
+  url?: string;
+  publishedAt?: string;
+  score?: number;
+}
+
+export interface NotificationListResponse {
+  data: NotificationPayload[];
+  meta: {
+    total: number;
+    unread: number;
+    generatedAt?: string;
+  };
+  message?: string;
+  error?: string | null;
 }
 
 interface PriceData {
@@ -769,6 +799,155 @@ export async function cadastrarUsuario(dados: {
   }
 }
 
+
+
+// =====================================================
+// 🔔 NOTIFICAÇÕES BASEADAS EM ANÁLISES
+// =====================================================
+const NOTIFICATION_SENTIMENTS: NotificationSentiment[] = [
+  "positive",
+  "neutral",
+  "negative",
+];
+
+const NOTIFICATION_CATEGORIES: NotificationCategory[] = [
+  "summary",
+  "news",
+  "tweet",
+];
+
+function normalizeNotificationSentiment(value: unknown): NotificationSentiment {
+  if (typeof value !== "string") {
+    return "neutral";
+  }
+
+  const normalized = value.trim().toLowerCase();
+  return (
+    NOTIFICATION_SENTIMENTS.find((sentiment) => sentiment === normalized) ?? "neutral"
+  ) as NotificationSentiment;
+}
+
+function normalizeNotificationCategory(value: unknown): NotificationCategory {
+  if (typeof value !== "string") {
+    return "news";
+  }
+
+  const normalized = value.trim().toLowerCase();
+  return (
+    NOTIFICATION_CATEGORIES.find((category) => category === normalized) ?? "news"
+  ) as NotificationCategory;
+}
+
+function mapNotificationPayload(raw: unknown, index: number): NotificationPayload | null {
+  if (!isRecord(raw)) {
+    return null;
+  }
+
+  const id =
+    typeof raw.id === "string" && raw.id.trim().length > 0
+      ? raw.id.trim()
+      : `notification-${index}`;
+
+  const sentiment = normalizeNotificationSentiment(raw.sentiment ?? raw.sentimento);
+  const category = normalizeNotificationCategory(raw.category ?? raw.categoria);
+
+  const title =
+    typeof raw.title === "string" && raw.title.trim().length > 0
+      ? raw.title.trim()
+      : category === "summary"
+      ? "Atualização de sentimento"
+      : "Atualização analisada";
+
+  const description =
+    typeof raw.description === "string" && raw.description.trim().length > 0
+      ? raw.description.trim()
+      : title;
+
+  const source =
+    typeof raw.source === "string" && raw.source.trim().length > 0
+      ? raw.source.trim()
+      : undefined;
+
+  const url =
+    typeof raw.url === "string" && raw.url.trim().length > 0
+      ? raw.url.trim()
+      : undefined;
+
+  const publishedAt =
+    typeof raw.publishedAt === "string" && raw.publishedAt.trim().length > 0
+      ? raw.publishedAt.trim()
+      : undefined;
+
+  let score: number | undefined;
+  if (typeof raw.score === "number" && Number.isFinite(raw.score)) {
+    score = raw.score;
+  } else if (typeof raw.score === "string") {
+    const parsed = Number(raw.score);
+    if (Number.isFinite(parsed)) {
+      score = parsed;
+    }
+  }
+
+  return {
+    id,
+    title,
+    description,
+    sentiment,
+    category,
+    source,
+    url,
+    publishedAt,
+    score,
+  };
+}
+
+export async function getNotifications(
+  limit = 8
+): Promise<NotificationListResponse> {
+  try {
+    const sanitizedLimit = Number.isFinite(limit)
+      ? Math.max(3, Math.min(Number(limit), 24))
+      : 8;
+    const response = await api.get("/notificacoes", {
+      params: { limit: sanitizedLimit },
+    });
+
+    const payload = response.data ?? {};
+    const rawData = Array.isArray(payload.data) ? payload.data : [];
+
+    const data = rawData
+      .map((item: unknown, index: number) => mapNotificationPayload(item, index))
+      .filter((item): item is NotificationPayload => Boolean(item));
+
+    const metaRecord = isRecord(payload.meta) ? payload.meta : {};
+    const total = typeof metaRecord.total === "number" ? metaRecord.total : data.length;
+    const unread = typeof metaRecord.unread === "number" ? metaRecord.unread : data.length;
+    const generatedAt =
+      typeof metaRecord.generatedAt === "string" ? metaRecord.generatedAt : undefined;
+
+    return {
+      data,
+      meta: {
+        total,
+        unread,
+        generatedAt,
+      },
+      message: typeof payload.message === "string" ? payload.message : undefined,
+      error: null,
+    };
+  } catch (error) {
+    const message = getFetchErrorMessage(error);
+    return {
+      data: [],
+      meta: {
+        total: 0,
+        unread: 0,
+      },
+      message,
+      error: message,
+    };
+  }
+}
 
 
 // =====================================================

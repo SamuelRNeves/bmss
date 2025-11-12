@@ -20,8 +20,10 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.text.Normalizer;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 @Service
 public class AuthService {
@@ -103,29 +105,37 @@ public class AuthService {
                 profile = InvestorProfile.MODERADO; // valor padrão
             }
 
+            String notificationPreference = normalizePreference(request.getNotificationPreference());
+
             // Criar novo usuário
             User newUser = User.builder()
                     .name(nome)
                     .email(request.getEmail())
                     .passwordHash(passwordEncoder.encode(request.getPassword()))
                     .role(userRole)
-                    .notificationPreference(request.getNotificationPreference())
+                    .notificationPreference(notificationPreference)
                     .investorProfile(profile)
+                    .profileImageUrl(request.getProfileImageUrl())
                     .build();
 
             User savedUser = userRepository.save(newUser);
 
             // Enviar email de boas-vindas (assíncrono)
             System.out.println("👤 Usuário salvo no banco: " + savedUser.getEmail());
-            new Thread(() -> {
+            CompletableFuture.runAsync(() -> {
                 try {
-                    emailService.enviarEmailBoasVindas(savedUser.getEmail(), savedUser.getName());
+                    emailService.enviarEmailBoasVindas(
+                            savedUser.getEmail(),
+                            savedUser.getName(),
+                            savedUser.getInvestorProfile().name(),
+                            savedUser.getNotificationPreference()
+                    );
                     System.out.println("✅ Email de boas-vindas enviado para: " + savedUser.getEmail());
                 } catch (Exception e) {
                     System.err.println("❌ Erro ao enviar email: " + e.getMessage());
                     e.printStackTrace();
                 }
-            }).start();
+            });
 
             // Gerar token JWT
             var jwtToken = jwtService.generateToken(savedUser.getEmail());
@@ -137,6 +147,7 @@ public class AuthService {
             userData.put("email", savedUser.getEmail());
             userData.put("notificationPreference", savedUser.getNotificationPreference());
             userData.put("investorProfile", savedUser.getInvestorProfile().name());
+            userData.put("profileImageUrl", savedUser.getProfileImageUrl());
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -151,6 +162,44 @@ public class AuthService {
             Map<String, String> response = new HashMap<>();
             response.put("error", "Erro ao realizar cadastro. Tente novamente.");
             return ResponseEntity.badRequest().body(response);
+        }
+    }
+
+    private String normalizePreference(String preference) {
+        if (preference == null) {
+            return "resumo_diario";
+        }
+
+        String sanitized = Normalizer.normalize(preference, Normalizer.Form.NFD)
+                .replaceAll("[^\p{ASCII}]", "")
+                .toLowerCase()
+                .trim()
+                .replaceAll("[^a-z\\s_-]", "")
+                .replaceAll("[\\s-]+", "_")
+                .replaceAll("_+", "_")
+                .replaceAll("^_+|_+$", "");
+
+        if (sanitized.isEmpty()) {
+            return "resumo_diario";
+        }
+
+        switch (sanitized) {
+            case "alertas_imediatos":
+            case "alertas":
+            case "imediato":
+            case "imediatos":
+                return "alertas_imediatos";
+            case "sem_notificacoes":
+            case "sem_notificacao":
+            case "sem_notificacaoes":
+            case "none":
+            case "desativado":
+                return "sem_notificacoes";
+            case "resumo_diario":
+            case "resumo":
+            case "daily":
+            default:
+                return "resumo_diario";
         }
     }
 }
