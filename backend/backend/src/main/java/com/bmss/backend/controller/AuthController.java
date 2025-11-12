@@ -15,6 +15,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
+import java.util.LinkedHashMap;
 
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -100,29 +101,35 @@ public class AuthController {
                 return ResponseEntity.status(404).body(Map.of("error", "Usuário não encontrado"));
             }
 
-            String investorProfile = (user.getInvestorProfile() != null)
-                    ? user.getInvestorProfile().name()
-                    : "MODERADO";
+            User.InvestorProfile profile = user.getInvestorProfile() != null
+                    ? user.getInvestorProfile()
+                    : User.InvestorProfile.MODERADO;
 
-            String roleName = (user.getRole() != null)
+            String investorProfile = profile.name();
+
+            String roleName = (user.getRole() != null && user.getRole().getName() != null)
                     ? user.getRole().getName()
                     : "USER";
 
-            String notificationPref = (user.getNotificationPreference() != null)
-                    ? user.getNotificationPreference()
-                    : "diario";
+            String notificationPref = resolveNotificationPreference(user.getNotificationPreference());
+
+            String profileImageUrl = null;
+            if (user.getProfileImageUrl() != null && !user.getProfileImageUrl().trim().isEmpty()) {
+                profileImageUrl = user.getProfileImageUrl().trim();
+            }
 
             log.info("✅ [AuthController] Usuário autenticado: {}", user.getEmail());
 
-            return ResponseEntity.ok(Map.of(
-                    "id", user.getId(),
-                    "name", user.getName(),
-                    "email", user.getEmail(),
-                    "notificationPreference", notificationPref,
-                    "investorProfile", investorProfile,
-                    "role", roleName,
-                    "profileImageUrl", user.getProfileImageUrl()
-            ));
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("id", user.getId());
+            payload.put("name", user.getName());
+            payload.put("email", user.getEmail());
+            payload.put("notificationPreference", notificationPref);
+            payload.put("investorProfile", investorProfile);
+            payload.put("role", roleName);
+            payload.put("profileImageUrl", profileImageUrl);
+
+            return ResponseEntity.ok(payload);
 
         } catch (Exception e) {
             log.error("❌ Erro interno em /auth/me", e);
@@ -130,6 +137,41 @@ public class AuthController {
                     "error", "Erro interno do servidor",
                     "details", e.getMessage()
             ));
+        }
+    }
+
+    private String resolveNotificationPreference(String preference) {
+        if (preference == null) {
+            return "resumo_diario";
+        }
+
+        String sanitized = preference.trim().toLowerCase();
+
+        if (sanitized.isEmpty()) {
+            return "resumo_diario";
+        }
+
+        switch (sanitized) {
+            case "alertas":
+            case "alerta":
+            case "imediato":
+            case "imediatos":
+            case "alertas_imediatos":
+                return "alertas_imediatos";
+            case "sem_notificacao":
+            case "sem_notificacoes":
+            case "sem_notificacaoes":
+            case "nenhum":
+            case "none":
+            case "desativado":
+            case "desativada":
+                return "sem_notificacoes";
+            case "resumo":
+            case "diario":
+            case "daily":
+            case "resumo_diario":
+            default:
+                return "resumo_diario";
         }
     }
 }

@@ -79,6 +79,10 @@ export default function UserSessionPage() {
     return `${parts[0][0]?.toUpperCase() ?? ""}${parts[parts.length - 1][0]?.toUpperCase() ?? ""}`;
   }, [user?.name]);
 
+  const handleChange = (field: keyof PasswordFormState) => (event: ChangeEvent<HTMLInputElement>) => {
+    setForm((prev) => ({ ...prev, [field]: event.target.value }));
+  };
+
   useEffect(() => {
     if (!user) {
       return;
@@ -88,10 +92,6 @@ export default function UserSessionPage() {
     setProfileImagePreview(user.profileImageUrl ?? "");
     setAvatarError(null);
   }, [user]);
-
-  const handleChange = (field: keyof PasswordFormState) => (event: ChangeEvent<HTMLInputElement>) => {
-    setForm((prev) => ({ ...prev, [field]: event.target.value }));
-  };
 
   const handleNotificationSelect = (value: string) => {
     setNotificationChoice(value);

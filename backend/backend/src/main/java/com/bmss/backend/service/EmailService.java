@@ -43,7 +43,7 @@ public class EmailService {
             Preferencia preferenciaNormalizada = normalizarPreferencia(notificacao);
             String perfilFormatado = formatarPerfilInvestidor(perfilInvestidor);
 
-            // Corrigido: primeiro formate o HTML, depois passe para o builder
+            // CORREÇÃO: primeiro formate o HTML, depois passe para o builder
             String htmlContent = """
                     <h2>Olá, %s! 👋</h2>
                     <p>Você agora está inscrito para receber análises inteligentes do sentimento do mercado Bitcoin.</p>

@@ -129,7 +129,6 @@ const buildRecommendation = (
 
   const baseStats = `Distribuição atual: ${positivoTexto} positivas, ${neutroTexto} neutras e ${negativoTexto} negativas (${total} notícias).`;
 
-  const percentualDominante = clampRatio(proporcaoDominante);
   const dominanceTone = (() => {
     if (percentualDominante >= 0.65) {
       return "predominância forte";
@@ -188,7 +187,7 @@ const buildRecommendation = (
 
     return {
       titulo: "Otimismo pede prudência",
-      mensagem: `${baseStats} Score médio em ${scoreFormatado} (${nivel}) com intensidade ${intensidadeLegivel}. Aproveite o bom humor via produtos mais estáveis, use travas de proteção and evite concentrar posições em poucos ativos.`,
+      mensagem: `${baseStats} Score médio em ${scoreFormatado} (${nivel}) com intensidade ${intensidadeLegivel}. Aproveite o bom humor via produtos mais estáveis, use travas de proteção e evite concentrar posições em poucos ativos.`,
       icone: <ShieldCheck className="text-yellow-300" size={24} />,
       cor: "border-yellow-400",
     };
