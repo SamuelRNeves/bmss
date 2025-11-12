@@ -18,7 +18,8 @@ public class EmailService {
     private final boolean emailEnabled;
 
     public EmailService(@Value("${resend.api.key:}") String apiKey,
-                        @Value("${resend.from.email:BMSS System <noreply@bmss.tech>}") String fromAddress) {
+                        @Value("${resend.from.email:'BMSS System <noreply@bmss.tech>'}")
+ String fromAddress) {
         if (apiKey == null || apiKey.isBlank()) {
             log.warn("⚠️ resend.api.key não configurado. Os envios de email serão ignorados até que a chave seja informada.");
             this.resend = null;
@@ -43,11 +44,8 @@ public class EmailService {
             Preferencia preferenciaNormalizada = normalizarPreferencia(notificacao);
             String perfilFormatado = formatarPerfilInvestidor(perfilInvestidor);
 
-            SendEmailRequest request = SendEmailRequest.builder()
-                .from(fromAddress)
-                .to(email)
-                .subject("Bem-vindo ao BMSS 🚀")
-                .html("""
+            // Corrigido: primeiro formate o HTML, depois passe para o builder
+            String htmlContent = """
                     <h2>Olá, %s! 👋</h2>
                     <p>Você agora está inscrito para receber análises inteligentes do sentimento do mercado Bitcoin.</p>
                     <br/>
@@ -61,7 +59,13 @@ public class EmailService {
                     <br/>
                     <p>Atenciosamente,</p>
                     <p><strong>Equipe BMSS</strong></p>
-                """.formatted(nome, perfilFormatado, preferenciaNormalizada.descricao())
+                """.formatted(nome, perfilFormatado, preferenciaNormalizada.descricao());
+
+            SendEmailRequest request = SendEmailRequest.builder()
+                .from(fromAddress)
+                .to(email)
+                .subject("Bem-vindo ao BMSS 🚀")
+                .html(htmlContent) // Agora passando a String já formatada
                 .build();
 
             SendEmailResponse response = resend.emails().send(request);
