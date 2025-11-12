@@ -2,7 +2,16 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, LineChart, User, Save, ArrowLeft } from "lucide-react";
+import {
+  Bell,
+  LineChart,
+  User,
+  Save,
+  ArrowLeft,
+  Shield,
+  GaugeCircle,
+  Flame,
+} from "lucide-react";
 
 export default function PerfilPage() {
   const router = useRouter();
@@ -112,6 +121,27 @@ export default function PerfilPage() {
     return <div className="text-gray-400 p-8 text-center">Carregando perfil...</div>;
   }
 
+  const profileOptions = [
+    {
+      value: "CONSERVADOR",
+      label: "Conservador",
+      description: "Foco em preservação de capital e movimentos calculados.",
+      icon: <Shield size={18} className="text-emerald-300" />,
+    },
+    {
+      value: "MODERADO",
+      label: "Moderado",
+      description: "Equilibra risco e retorno com rebalanceamentos frequentes.",
+      icon: <GaugeCircle size={18} className="text-sky-300" />,
+    },
+    {
+      value: "AGRESSIVO",
+      label: "Agressivo",
+      description: "Busca oportunidades rápidas, tolerando volatilidade maior.",
+      icon: <Flame size={18} className="text-red-300" />,
+    },
+  ] as const;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-neutral-950 to-neutral-900 text-white py-8 px-4">
       <div className="max-w-2xl mx-auto">
@@ -151,18 +181,34 @@ export default function PerfilPage() {
             </div>
 
             <div>
-              <label className="block text-gray-400 text-sm mb-2 flex items-center gap-2">
+              <label className="block text-gray-400 text-sm mb-3 flex items-center gap-2">
                 <LineChart size={18} /> Perfil de Investidor
               </label>
-              <select
-                value={investorProfile}
-                onChange={(e) => setInvestorProfile(e.target.value)}
-                className="w-full bg-neutral-800 border border-neutral-700 text-white p-4 rounded-xl"
-              >
-                <option value="CONSERVADOR">Conservador</option>
-                <option value="MODERADO">Moderado</option>
-                <option value="AGRESSIVO">Agressivo</option>
-              </select>
+              <div className="grid sm:grid-cols-3 gap-3">
+                {profileOptions.map((option) => {
+                  const isActive = investorProfile === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setInvestorProfile(option.value)}
+                      className={`text-left rounded-xl border p-4 transition focus:outline-none focus:ring-2 focus:ring-yellow-400 ${
+                        isActive
+                          ? "border-yellow-400 bg-neutral-800"
+                          : "border-neutral-700 bg-neutral-900 hover:border-neutral-600"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                        {option.icon}
+                        {option.label}
+                      </div>
+                      <p className="mt-2 text-xs text-gray-400 leading-relaxed">
+                        {option.description}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             <div>
