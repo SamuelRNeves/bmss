@@ -95,15 +95,25 @@ public class UserService {
         String token = jwtService.generateToken(saved.getEmail());
 
         return new AuthResponse(token, null, "Cadastro realizado com sucesso! Força da senha: " + strength.getLabel());
-}
+    }
 
     private String normalizePreference(String preference) {
         if (preference == null) {
             return "resumo_diario";
         }
 
-        String sanitized = Normalizer.normalize(preference, Normalizer.Form.NFD)
-                .replaceAll("[^\p{ASCII}]", "")
+        // CORREÇÃO: Use uma abordagem alternativa sem regex problemática
+        String normalized = Normalizer.normalize(preference, Normalizer.Form.NFD);
+        
+        // Remover caracteres não-ASCII manualmente
+        StringBuilder asciiOnly = new StringBuilder();
+        for (char c : normalized.toCharArray()) {
+            if (c <= 127) { // Caracteres ASCII (0-127)
+                asciiOnly.append(c);
+            }
+        }
+        
+        String sanitized = asciiOnly.toString()
                 .toLowerCase()
                 .trim()
                 .replaceAll("[^a-z\\s_-]", "")

@@ -52,26 +52,25 @@ public class AuthService {
     // 🔹 LOGIN
     // ========================================
     public AuthResponse login(AuthRequest request) {
-    try {
-        authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
-        );
+        try {
+            authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
+            );
 
-        var user = userRepository.findByEmail(request.getEmail());
-        if (user == null) {
-            throw new BadCredentialsException("Credenciais inválidas");
+            var user = userRepository.findByEmail(request.getEmail());
+            if (user == null) {
+                throw new BadCredentialsException("Credenciais inválidas");
+            }
+
+            var jwtToken = jwtService.generateToken(user.getEmail());
+
+            return new AuthResponse(jwtToken, null, "Login bem-sucedido");
+        } catch (BadCredentialsException e) {
+            throw e;
+        } catch (AuthenticationException e) {
+            throw new BadCredentialsException("Credenciais inválidas", e);
         }
-
-        var jwtToken = jwtService.generateToken(user.getEmail());
-
-        return new AuthResponse(jwtToken, null, "Login bem-sucedido");
-    } catch (BadCredentialsException e) {
-        throw e;
-    } catch (AuthenticationException e) {
-        throw new BadCredentialsException("Credenciais inválidas", e);
     }
-}
-
 
     // ========================================
     // 🔹 CADASTRO
@@ -170,8 +169,18 @@ public class AuthService {
             return "resumo_diario";
         }
 
-        String sanitized = Normalizer.normalize(preference, Normalizer.Form.NFD)
-                .replaceAll("[^\p{ASCII}]", "")
+        // CORREÇÃO: Use uma abordagem alternativa sem regex problemática
+        String normalized = Normalizer.normalize(preference, Normalizer.Form.NFD);
+        
+        // Remover caracteres não-ASCII manualmente
+        StringBuilder asciiOnly = new StringBuilder();
+        for (char c : normalized.toCharArray()) {
+            if (c <= 127) { // Caracteres ASCII
+                asciiOnly.append(c);
+            }
+        }
+        
+        String sanitized = asciiOnly.toString()
                 .toLowerCase()
                 .trim()
                 .replaceAll("[^a-z\\s_-]", "")
