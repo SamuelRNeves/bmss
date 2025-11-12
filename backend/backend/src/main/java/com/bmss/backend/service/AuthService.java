@@ -9,6 +9,7 @@ import com.bmss.backend.model.User.InvestorProfile;
 import com.bmss.backend.repository.RoleRepository;
 import com.bmss.backend.repository.UserRepository;
 import com.bmss.backend.security.JwtService;
+import com.bmss.backend.util.UserSanitizer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,7 +21,6 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import java.text.Normalizer;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -104,7 +104,18 @@ public class AuthService {
                 profile = InvestorProfile.MODERADO; // valor padrão
             }
 
-            String notificationPreference = normalizePreference(request.getNotificationPreference());
+            String notificationPreference = UserSanitizer.normalizeNotificationPreference(
+                    request.getNotificationPreference()
+            );
+
+            String profileImage = null;
+            try {
+                profileImage = UserSanitizer.sanitizeProfileImage(request.getProfileImageUrl());
+            } catch (IllegalArgumentException imageError) {
+                Map<String, String> response = new HashMap<>();
+                response.put("error", imageError.getMessage());
+                return ResponseEntity.badRequest().body(response);
+            }
 
             // Criar novo usuário
             User newUser = User.builder()
@@ -114,7 +125,7 @@ public class AuthService {
                     .role(userRole)
                     .notificationPreference(notificationPreference)
                     .investorProfile(profile)
-                    .profileImageUrl(request.getProfileImageUrl())
+                    .profileImageUrl(profileImage)
                     .build();
 
             User savedUser = userRepository.save(newUser);
@@ -161,54 +172,6 @@ public class AuthService {
             Map<String, String> response = new HashMap<>();
             response.put("error", "Erro ao realizar cadastro. Tente novamente.");
             return ResponseEntity.badRequest().body(response);
-        }
-    }
-
-    private String normalizePreference(String preference) {
-        if (preference == null) {
-            return "resumo_diario";
-        }
-
-        // CORREÇÃO: Use uma abordagem alternativa sem regex problemática
-        String normalized = Normalizer.normalize(preference, Normalizer.Form.NFD);
-        
-        // Remover caracteres não-ASCII manualmente
-        StringBuilder asciiOnly = new StringBuilder();
-        for (char c : normalized.toCharArray()) {
-            if (c <= 127) { // Caracteres ASCII
-                asciiOnly.append(c);
-            }
-        }
-        
-        String sanitized = asciiOnly.toString()
-                .toLowerCase()
-                .trim()
-                .replaceAll("[^a-z\\s_-]", "")
-                .replaceAll("[\\s-]+", "_")
-                .replaceAll("_+", "_")
-                .replaceAll("^_+|_+$", "");
-
-        if (sanitized.isEmpty()) {
-            return "resumo_diario";
-        }
-
-        switch (sanitized) {
-            case "alertas_imediatos":
-            case "alertas":
-            case "imediato":
-            case "imediatos":
-                return "alertas_imediatos";
-            case "sem_notificacoes":
-            case "sem_notificacao":
-            case "sem_notificacaoes":
-            case "none":
-            case "desativado":
-                return "sem_notificacoes";
-            case "resumo_diario":
-            case "resumo":
-            case "daily":
-            default:
-                return "resumo_diario";
         }
     }
 }

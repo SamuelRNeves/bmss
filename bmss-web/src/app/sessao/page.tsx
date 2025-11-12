@@ -41,6 +41,63 @@ const NOTIFICATION_OPTIONS: { value: string; label: string; description: string 
   },
 ];
 
+const MAX_PROFILE_IMAGE_CHARS = 3_600_000;
+const MAX_IMAGE_DIMENSION = 512;
+
+const readFileAsDataUrl = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+      } else {
+        reject(new Error("Não foi possível interpretar o arquivo como imagem."));
+      }
+    };
+    reader.onerror = () => reject(new Error("Não foi possível ler o arquivo selecionado."));
+    reader.readAsDataURL(file);
+  });
+
+const optimizeImageDataUrl = (dataUrl: string, mimeType: string): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const image = document.createElement("img");
+    image.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        const context = canvas.getContext("2d");
+        if (!context) {
+          reject(new Error("Não foi possível preparar o processamento da imagem."));
+          return;
+        }
+
+        const largestSide = Math.max(image.width, image.height);
+        const ratio = largestSide > MAX_IMAGE_DIMENSION ? MAX_IMAGE_DIMENSION / largestSide : 1;
+        const width = Math.max(1, Math.round(image.width * ratio));
+        const height = Math.max(1, Math.round(image.height * ratio));
+
+        canvas.width = width;
+        canvas.height = height;
+        context.drawImage(image, 0, 0, width, height);
+
+        const preferPng = mimeType === "image/png";
+        const targetType = preferPng ? "image/png" : "image/jpeg";
+        const quality = preferPng ? undefined : 0.82;
+        const optimized = canvas.toDataURL(targetType, quality);
+
+        if (!optimized || optimized.length === 0) {
+          resolve(dataUrl);
+          return;
+        }
+
+        resolve(optimized.length < dataUrl.length ? optimized : dataUrl);
+      } catch (error) {
+        reject(error instanceof Error ? error : new Error("Erro ao processar a imagem."));
+      }
+    };
+    image.onerror = () => reject(new Error("Não foi possível carregar a imagem selecionada."));
+    image.src = dataUrl;
+  });
+
 export default function UserSessionPage() {
   const { user, loading, updateUserSettings } = useAuth();
   const router = useRouter();
@@ -97,7 +154,7 @@ export default function UserSessionPage() {
     setNotificationChoice(value);
   };
 
-  const handleAvatarChange = (event: ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) {
       return;
@@ -114,15 +171,25 @@ export default function UserSessionPage() {
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      setProfileImagePreview(typeof reader.result === "string" ? reader.result : "");
+    try {
+      const rawDataUrl = await readFileAsDataUrl(file);
+      const optimized = await optimizeImageDataUrl(rawDataUrl, file.type);
+      const sanitized = optimized.replace(/\s+/g, "");
+
+      if (sanitized.length > MAX_PROFILE_IMAGE_CHARS) {
+        setAvatarError("A imagem ficou muito grande após o processamento. Tente uma foto menor.");
+        return;
+      }
+
+      setProfileImagePreview(sanitized);
       setAvatarError(null);
-    };
-    reader.onerror = () => {
-      setAvatarError("Não foi possível ler o arquivo selecionado.");
-    };
-    reader.readAsDataURL(file);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Não foi possível processar a imagem selecionada.";
+      setAvatarError(message);
+    } finally {
+      event.target.value = "";
+    }
   };
 
   const handleRemoveAvatar = () => {

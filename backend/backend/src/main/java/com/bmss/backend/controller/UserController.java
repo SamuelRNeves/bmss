@@ -4,13 +4,13 @@ import com.bmss.backend.dto.PasswordChangeRequest;
 import com.bmss.backend.model.User;
 import com.bmss.backend.repository.UserRepository;
 import com.bmss.backend.security.JwtService;
+import com.bmss.backend.util.UserSanitizer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
-import java.text.Normalizer;
 import java.util.Optional;
 
 @RestController
@@ -69,13 +69,17 @@ public class UserController {
                 user.setInvestorProfile(updatedUser.getInvestorProfile());
 
             if (updatedUser.getNotificationPreference() != null) {
-                String preference = normalizePreference(updatedUser.getNotificationPreference());
-                user.setNotificationPreference(preference);
+                user.setNotificationPreference(UserSanitizer.normalizeNotificationPreference(
+                        updatedUser.getNotificationPreference()
+                ));
             }
 
             if (updatedUser.getProfileImageUrl() != null) {
-                String profileImage = updatedUser.getProfileImageUrl().trim();
-                user.setProfileImageUrl(profileImage.isEmpty() ? null : profileImage);
+                try {
+                    user.setProfileImageUrl(UserSanitizer.sanitizeProfileImage(updatedUser.getProfileImageUrl()));
+                } catch (IllegalArgumentException imageError) {
+                    return ResponseEntity.badRequest().body(imageError.getMessage());
+                }
             }
 
             userRepository.save(user);
@@ -90,47 +94,10 @@ public class UserController {
                     )
             );
 
+        } catch (IllegalArgumentException validationError) {
+            return ResponseEntity.badRequest().body(validationError.getMessage());
         } catch (Exception e) {
             return ResponseEntity.badRequest().body("Erro ao atualizar perfil: " + e.getMessage());
-        }
-    }
-
-    private String normalizePreference(String preference) {
-        if (preference == null) {
-            return null;
-        }
-
-        // CORREÇÃO: Escape correto da barra invertida
-        String sanitized = Normalizer.normalize(preference, Normalizer.Form.NFD)
-                .replaceAll("[^\\p{ASCII}]", "") // ✅ Barra escapada corretamente
-                .toLowerCase()
-                .trim()
-                .replaceAll("[^a-z\\s_-]", "")
-                .replaceAll("[\\s-]+", "_")
-                .replaceAll("_+", "_")
-                .replaceAll("^_+|_+$", "");
-
-        if (sanitized.isEmpty()) {
-            return null;
-        }
-
-        switch (sanitized) {
-            case "alertas_imediatos":
-            case "alertas":
-            case "imediato":
-            case "imediatos":
-                return "alertas_imediatos";
-            case "sem_notificacoes":
-            case "sem_notificacao":
-            case "sem_notificacaoes":
-            case "none":
-            case "desativado":
-                return "sem_notificacoes";
-            case "resumo_diario":
-            case "resumo":
-            case "daily":
-            default:
-                return "resumo_diario";
         }
     }
 

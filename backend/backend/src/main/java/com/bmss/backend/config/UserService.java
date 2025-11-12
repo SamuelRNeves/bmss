@@ -5,10 +5,10 @@ import com.bmss.backend.dto.AuthResponse;
 import com.bmss.backend.model.User;
 import com.bmss.backend.repository.UserRepository;
 import com.bmss.backend.security.JwtService;
+import com.bmss.backend.util.UserSanitizer;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import java.text.Normalizer;
 import java.util.List;
 import java.util.Optional;
 
@@ -85,9 +85,9 @@ public class UserService {
         user.setName(request.getName());
         user.setEmail(request.getEmail());
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
-        user.setNotificationPreference(normalizePreference(request.getNotificationPreference()));
+        user.setNotificationPreference(UserSanitizer.normalizeNotificationPreference(request.getNotificationPreference()));
         user.setInvestorProfile(User.InvestorProfile.valueOf(request.getInvestorProfile()));
-        user.setProfileImageUrl(request.getProfileImageUrl());
+        user.setProfileImageUrl(UserSanitizer.sanitizeProfileImage(request.getProfileImageUrl()));
 
         User saved = userRepository.save(user);
 
@@ -95,53 +95,5 @@ public class UserService {
         String token = jwtService.generateToken(saved.getEmail());
 
         return new AuthResponse(token, null, "Cadastro realizado com sucesso! Força da senha: " + strength.getLabel());
-    }
-
-    private String normalizePreference(String preference) {
-        if (preference == null) {
-            return "resumo_diario";
-        }
-
-        // CORREÇÃO: Use uma abordagem alternativa sem regex problemática
-        String normalized = Normalizer.normalize(preference, Normalizer.Form.NFD);
-        
-        // Remover caracteres não-ASCII manualmente
-        StringBuilder asciiOnly = new StringBuilder();
-        for (char c : normalized.toCharArray()) {
-            if (c <= 127) { // Caracteres ASCII (0-127)
-                asciiOnly.append(c);
-            }
-        }
-        
-        String sanitized = asciiOnly.toString()
-                .toLowerCase()
-                .trim()
-                .replaceAll("[^a-z\\s_-]", "")
-                .replaceAll("[\\s-]+", "_")
-                .replaceAll("_+", "_")
-                .replaceAll("^_+|_+$", "");
-
-        if (sanitized.isEmpty()) {
-            return "resumo_diario";
-        }
-
-        switch (sanitized) {
-            case "alertas_imediatos":
-            case "alertas":
-            case "imediato":
-            case "imediatos":
-                return "alertas_imediatos";
-            case "sem_notificacoes":
-            case "sem_notificacao":
-            case "sem_notificacaoes":
-            case "none":
-            case "desativado":
-                return "sem_notificacoes";
-            case "resumo_diario":
-            case "resumo":
-            case "daily":
-            default:
-                return "resumo_diario";
-        }
     }
 }

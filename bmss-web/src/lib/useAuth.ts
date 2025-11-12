@@ -18,6 +18,38 @@ type UserPatch = Partial<
   Pick<UserData, "investorProfile" | "notificationPreference" | "profileImageUrl">
 >;
 
+const PROFILE_IMAGE_MAX_CHARS = 3_600_000;
+
+const normalizeProfileImageValue = (
+  value: string | null | undefined
+): string | null | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null) {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  return trimmed.replace(/\s+/g, "");
+};
+
+const enforceProfileImageLimit = (
+  value: string | null | undefined
+): string | null | undefined => {
+  const normalized = normalizeProfileImageValue(value);
+  if (typeof normalized === "string" && normalized.length > PROFILE_IMAGE_MAX_CHARS) {
+    throw new Error(
+      "A imagem do perfil ficou muito grande após a otimização. Escolha um arquivo menor (até 3 MB em base64)."
+    );
+  }
+  return normalized;
+};
+
 const resolveApiBase = (): string => {
   const configured = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
   if (configured && configured.length > 0) {
@@ -111,7 +143,8 @@ export function useAuth() {
         }
 
         if (delta.profileImageUrl !== undefined) {
-          sanitized.profileImageUrl = delta.profileImageUrl === "" ? null : delta.profileImageUrl;
+          const normalized = normalizeProfileImageValue(delta.profileImageUrl);
+          sanitized.profileImageUrl = normalized ?? null;
         }
 
         setUser((prev) => {
@@ -156,13 +189,28 @@ export function useAuth() {
         throw new Error("Usuário não autenticado");
       }
 
+      const requestPayload: Record<string, unknown> = {};
+
+      if (patch.investorProfile !== undefined) {
+        requestPayload.investorProfile = patch.investorProfile;
+      }
+
+      if (patch.notificationPreference !== undefined) {
+        requestPayload.notificationPreference = patch.notificationPreference;
+      }
+
+      if (patch.profileImageUrl !== undefined) {
+        const normalized = enforceProfileImageLimit(patch.profileImageUrl);
+        requestPayload.profileImageUrl = normalized ?? "";
+      }
+
       const response = await fetch(`${apiBase}/users/${user.id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(patch),
+        body: JSON.stringify(requestPayload),
       });
 
       if (!response.ok) {
@@ -177,15 +225,38 @@ export function useAuth() {
         payload = null;
       }
 
-      const normalized: UserPatch = {
-        investorProfile: (payload?.investorProfile as string | undefined) ?? patch.investorProfile,
-        notificationPreference:
-          (payload?.notificationPreference as string | undefined) ?? patch.notificationPreference,
-        profileImageUrl:
-          payload?.profileImageUrl === null
-            ? null
-            : (payload?.profileImageUrl as string | undefined) ?? patch.profileImageUrl,
-      };
+      const normalized: UserPatch = {};
+
+      if (
+        patch.investorProfile !== undefined ||
+        (payload && Object.prototype.hasOwnProperty.call(payload, "investorProfile"))
+      ) {
+        normalized.investorProfile =
+          (payload?.investorProfile as string | undefined) ?? patch.investorProfile;
+      }
+
+      if (
+        patch.notificationPreference !== undefined ||
+        (payload && Object.prototype.hasOwnProperty.call(payload, "notificationPreference"))
+      ) {
+        normalized.notificationPreference =
+          (payload?.notificationPreference as string | undefined) ?? patch.notificationPreference;
+      }
+
+      const responseIncludesProfileImage = Boolean(
+        payload && Object.prototype.hasOwnProperty.call(payload, "profileImageUrl")
+      );
+
+      if (patch.profileImageUrl !== undefined || responseIncludesProfileImage) {
+        const rawProfileImage = responseIncludesProfileImage
+          ? (payload?.profileImageUrl as string | null | undefined)
+          : patch.profileImageUrl;
+
+        const normalizedProfile = normalizeProfileImageValue(rawProfileImage);
+        if (normalizedProfile !== undefined) {
+          normalized.profileImageUrl = normalizedProfile ?? null;
+        }
+      }
 
       return applyLocalUpdate(normalized);
     },

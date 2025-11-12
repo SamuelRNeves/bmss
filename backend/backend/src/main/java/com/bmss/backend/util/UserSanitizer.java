@@ -1,0 +1,69 @@
+package com.bmss.backend.util;
+
+import java.text.Normalizer;
+
+public final class UserSanitizer {
+
+    private static final int MAX_PROFILE_IMAGE_LENGTH = 4_000_000; // ~3 MB em Base64
+
+    private UserSanitizer() {
+    }
+
+    public static String normalizeNotificationPreference(String preference) {
+        if (preference == null) {
+            return "resumo_diario";
+        }
+
+        String sanitized = Normalizer.normalize(preference, Normalizer.Form.NFD)
+                .replaceAll("[^\\p{ASCII}]", "")
+                .toLowerCase()
+                .trim()
+                .replaceAll("[^a-z\\s_-]", "")
+                .replaceAll("[\\s-]+", "_")
+                .replaceAll("_+", "_")
+                .replaceAll("^_+|_+$", "");
+
+        if (sanitized.isEmpty()) {
+            return "resumo_diario";
+        }
+
+        switch (sanitized) {
+            case "alertas_imediatos":
+            case "alertas":
+            case "imediato":
+            case "imediatos":
+                return "alertas_imediatos";
+            case "sem_notificacoes":
+            case "sem_notificacao":
+            case "sem_notificacaoes":
+            case "none":
+            case "desativado":
+                return "sem_notificacoes";
+            case "resumo_diario":
+            case "resumo":
+            case "daily":
+            default:
+                return "resumo_diario";
+        }
+    }
+
+    public static String sanitizeProfileImage(String raw) {
+        if (raw == null) {
+            return null;
+        }
+
+        String trimmed = raw.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+
+        String collapsedWhitespace = trimmed.replaceAll("\\s+", "");
+        if (collapsedWhitespace.length() > MAX_PROFILE_IMAGE_LENGTH) {
+            throw new IllegalArgumentException(
+                    "A imagem do perfil excede o limite permitido (aprox. 3 MB em base64). Escolha um arquivo menor."
+            );
+        }
+
+        return collapsedWhitespace;
+    }
+}
