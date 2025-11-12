@@ -77,16 +77,29 @@ public class UserService {
             throw new IllegalArgumentException("Senha muito fraca. Mínimo: 8 caracteres com maiúscula, minúscula e número.");
         }
 
-        if (userRepository.findByEmail(request.getEmail()) != null) {
+        String sanitizedEmail = UserSanitizer.normalizeEmail(request.getEmail());
+
+        if (userRepository.findByEmailIgnoreCase(sanitizedEmail) != null) {
             throw new IllegalArgumentException("Email já cadastrado.");
         }
 
         User user = new User();
         user.setName(request.getName());
-        user.setEmail(request.getEmail());
+        user.setEmail(sanitizedEmail);
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         user.setNotificationPreference(UserSanitizer.normalizeNotificationPreference(request.getNotificationPreference()));
-        user.setInvestorProfile(User.InvestorProfile.valueOf(request.getInvestorProfile()));
+
+        String investorProfile = request.getInvestorProfile();
+        User.InvestorProfile resolvedProfile;
+        try {
+            resolvedProfile = investorProfile != null
+                    ? User.InvestorProfile.valueOf(investorProfile.trim().toUpperCase())
+                    : User.InvestorProfile.MODERADO;
+        } catch (IllegalArgumentException ex) {
+            resolvedProfile = User.InvestorProfile.MODERADO;
+        }
+        user.setInvestorProfile(resolvedProfile);
+
         user.setProfileImageUrl(UserSanitizer.sanitizeProfileImage(request.getProfileImageUrl()));
 
         User saved = userRepository.save(user);

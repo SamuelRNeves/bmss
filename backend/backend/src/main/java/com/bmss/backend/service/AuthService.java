@@ -14,10 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -29,9 +26,6 @@ import java.util.concurrent.CompletableFuture;
 public class AuthService {
 
     private static final Logger logger = LoggerFactory.getLogger(AuthService.class);
-
-    @Autowired
-    private AuthenticationManager authenticationManager;
 
     @Autowired
     private JwtService jwtService;
@@ -53,12 +47,14 @@ public class AuthService {
     // ========================================
     public AuthResponse login(AuthRequest request) {
         try {
-            authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
-            );
+            String sanitizedEmail = UserSanitizer.normalizeEmail(request.getEmail());
 
-            var user = userRepository.findByEmail(request.getEmail());
+            var user = userRepository.findByEmailIgnoreCase(sanitizedEmail);
             if (user == null) {
+                throw new BadCredentialsException("Credenciais inválidas");
+            }
+
+            if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
                 throw new BadCredentialsException("Credenciais inválidas");
             }
 
@@ -67,7 +63,7 @@ public class AuthService {
             return new AuthResponse(jwtToken, null, "Login bem-sucedido");
         } catch (BadCredentialsException e) {
             throw e;
-        } catch (AuthenticationException e) {
+        } catch (IllegalArgumentException e) {
             throw new BadCredentialsException("Credenciais inválidas", e);
         }
     }
@@ -78,7 +74,9 @@ public class AuthService {
     public ResponseEntity<?> register(RegisterRequest request) {
         try {
             // Verificar se o email já existe
-            if (userRepository.findByEmail(request.getEmail()) != null) {
+            String sanitizedEmail = UserSanitizer.normalizeEmail(request.getEmail());
+
+            if (userRepository.findByEmailIgnoreCase(sanitizedEmail) != null) {
                 Map<String, String> response = new HashMap<>();
                 response.put("error", "Email já está cadastrado para receber notificações");
                 return ResponseEntity.badRequest().body(response);
@@ -97,9 +95,12 @@ public class AuthService {
             }
 
             // Converter string para enum InvestorProfile
+            String investorProfileRaw = request.getInvestorProfile();
             InvestorProfile profile;
             try {
-                profile = InvestorProfile.valueOf(request.getInvestorProfile().toUpperCase());
+                profile = investorProfileRaw != null
+                        ? InvestorProfile.valueOf(investorProfileRaw.trim().toUpperCase())
+                        : InvestorProfile.MODERADO;
             } catch (Exception e) {
                 profile = InvestorProfile.MODERADO; // valor padrão
             }
@@ -120,7 +121,7 @@ public class AuthService {
             // Criar novo usuário
             User newUser = User.builder()
                     .name(nome)
-                    .email(request.getEmail())
+                    .email(sanitizedEmail)
                     .passwordHash(passwordEncoder.encode(request.getPassword()))
                     .role(userRole)
                     .notificationPreference(notificationPreference)
@@ -167,6 +168,10 @@ public class AuthService {
 
             return ResponseEntity.ok(response);
 
+        } catch (IllegalArgumentException e) {
+            Map<String, String> response = new HashMap<>();
+            response.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(response);
         } catch (Exception e) {
             logger.error("Erro no cadastro: ", e);
             Map<String, String> response = new HashMap<>();
