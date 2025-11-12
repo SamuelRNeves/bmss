@@ -15,6 +15,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
+import java.util.LinkedHashMap;
 
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -119,7 +120,7 @@ public class AuthController {
 
             log.info("✅ [AuthController] Usuário autenticado: {}", user.getEmail());
 
-            Map<String, Object> payload = new java.util.LinkedHashMap<>();
+            Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("id", user.getId());
             payload.put("name", user.getName());
             payload.put("email", user.getEmail());

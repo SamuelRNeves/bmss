@@ -92,15 +92,17 @@ public class UserController {
 
         } catch (Exception e) {
             return ResponseEntity.badRequest().body("Erro ao atualizar perfil: " + e.getMessage());
-}
+        }
+    }
 
     private String normalizePreference(String preference) {
         if (preference == null) {
             return null;
         }
 
+        // CORREÇÃO: Escape correto da barra invertida
         String sanitized = Normalizer.normalize(preference, Normalizer.Form.NFD)
-                .replaceAll("[^\p{ASCII}]", "")
+                .replaceAll("[^\\p{ASCII}]", "") // ✅ Barra escapada corretamente
                 .toLowerCase()
                 .trim()
                 .replaceAll("[^a-z\\s_-]", "")
@@ -131,8 +133,8 @@ public class UserController {
                 return "resumo_diario";
         }
     }
-}
 
+    // 🔹 Alterar senha (somente o próprio usuário)
     @PutMapping("/{id}/password")
     public ResponseEntity<?> changePassword(
             @PathVariable Integer id,
