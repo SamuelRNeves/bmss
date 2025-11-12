@@ -1,7 +1,7 @@
 // useAuth.ts
 "use client";
-import { useEffect, useState } from "react";
-import api from "@/lib/api"; // use o axios configurado
+import { useCallback, useEffect, useMemo, useState } from "react";
+import api from "@/lib/api";
 
 interface UserData {
   id?: number;
@@ -9,37 +9,216 @@ interface UserData {
   email: string;
   investorProfile: string;
   notificationPreference?: string;
+  profileImageUrl?: string | null;
 }
+
+type InvestorProfile = "CONSERVADOR" | "MODERADO" | "AGRESSIVO";
+
+type UserPatch = Partial<
+  Pick<UserData, "investorProfile" | "notificationPreference" | "profileImageUrl">
+>;
+
+const resolveApiBase = (): string => {
+  const configured = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
+  if (configured && configured.length > 0) {
+    return configured.replace(/\/+$/, "");
+  }
+  return "https://bmss-backend.onrender.com";
+};
 
 export function useAuth() {
   const [user, setUser] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const apiBase = useMemo(() => resolveApiBase(), []);
+
   useEffect(() => {
-  const token = localStorage.getItem("jwtToken");
-  if (!token) {
-    setLoading(false);
-    return;
-  }
+    const token = localStorage.getItem("jwtToken");
+    if (!token) {
+      setLoading(false);
+      return;
+    }
 
-  api
-    .get("/auth/me")
-    .then((res) => {
-      setUser(res.data);
-    })
-    .catch((error) => {
-      // Só remove o token se for 401 (token expirado/inválido)
-      if (error.response?.status === 401) {
-        console.warn("🔒 Token expirado ou inválido, removendo...");
-        localStorage.removeItem("jwtToken");
-        setUser(null);
-      } else {
-        console.error("⚠️ Erro inesperado em /auth/me:", error);
+    let isMounted = true;
+
+    api
+      .get("/auth/me")
+      .then((res) => {
+        if (!isMounted) return;
+        setUser(res.data);
+      })
+      .catch((error) => {
+        if (error.response?.status === 401) {
+          console.warn("🔒 Token expirado ou inválido, removendo...");
+          localStorage.removeItem("jwtToken");
+          if (!isMounted) return;
+          setUser(null);
+        } else {
+          console.error("⚠️ Erro inesperado em /auth/me:", error);
+        }
+      })
+      .finally(() => {
+        if (isMounted) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const handler: EventListener = (event) => {
+      const detail = (event as CustomEvent<Partial<UserData>>).detail;
+      if (!detail) {
+        return;
       }
-    })
-    .finally(() => setLoading(false));
-}, []);
 
+      setUser((prev) => {
+        if (!prev) {
+          return prev;
+        }
+        return { ...prev, ...detail };
+      });
+    };
+
+    window.addEventListener("bmss:profile-updated", handler);
+    return () => {
+      window.removeEventListener("bmss:profile-updated", handler);
+    };
+  }, []);
+
+  const persistUserUpdate = useCallback(
+    async (patch: UserPatch): Promise<UserPatch> => {
+      if (!patch || Object.keys(patch).length === 0) {
+        return {};
+      }
+
+      if (!user) {
+        throw new Error("Informações do usuário ainda não foram carregadas");
+      }
+
+      const applyLocalUpdate = (delta: UserPatch) => {
+        const sanitized: UserPatch = {};
+
+        if (delta.investorProfile !== undefined) {
+          sanitized.investorProfile = delta.investorProfile;
+        }
+
+        if (delta.notificationPreference !== undefined) {
+          sanitized.notificationPreference = delta.notificationPreference;
+        }
+
+        if (delta.profileImageUrl !== undefined) {
+          sanitized.profileImageUrl = delta.profileImageUrl === "" ? null : delta.profileImageUrl;
+        }
+
+        setUser((prev) => {
+          if (!prev) {
+            return prev;
+          }
+
+          const next = { ...prev };
+
+          if (sanitized.investorProfile !== undefined) {
+            next.investorProfile = sanitized.investorProfile;
+          }
+
+          if (sanitized.notificationPreference !== undefined) {
+            next.notificationPreference = sanitized.notificationPreference;
+          }
+
+          if (sanitized.profileImageUrl !== undefined) {
+            next.profileImageUrl = sanitized.profileImageUrl ?? null;
+          }
+
+          return next;
+        });
+
+        if (Object.keys(sanitized).length > 0) {
+          window.dispatchEvent(
+            new CustomEvent("bmss:profile-updated", {
+              detail: sanitized,
+            })
+          );
+        }
+
+        return sanitized;
+      };
+
+      if (!user.id) {
+        return applyLocalUpdate(patch);
+      }
+
+      const token = localStorage.getItem("jwtToken");
+      if (!token) {
+        throw new Error("Usuário não autenticado");
+      }
+
+      const response = await fetch(`${apiBase}/users/${user.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(patch),
+      });
+
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Não foi possível atualizar os dados do usuário.");
+      }
+
+      let payload: Record<string, unknown> | null = null;
+      try {
+        payload = await response.json();
+      } catch {
+        payload = null;
+      }
+
+      const normalized: UserPatch = {
+        investorProfile: (payload?.investorProfile as string | undefined) ?? patch.investorProfile,
+        notificationPreference:
+          (payload?.notificationPreference as string | undefined) ?? patch.notificationPreference,
+        profileImageUrl:
+          payload?.profileImageUrl === null
+            ? null
+            : (payload?.profileImageUrl as string | undefined) ?? patch.profileImageUrl,
+      };
+
+      return applyLocalUpdate(normalized);
+    },
+    [apiBase, user]
+  );
+
+  const updateInvestorProfile = useCallback(
+    async (nextProfile: InvestorProfile): Promise<void> => {
+      if (!nextProfile) {
+        return;
+      }
+
+      try {
+        await persistUserUpdate({ investorProfile: nextProfile });
+      } catch (error) {
+        console.error("Erro ao atualizar perfil do investidor:", error);
+        throw error;
+      }
+    },
+    [persistUserUpdate]
+  );
+
+  const updateUserSettings = useCallback(
+    async (patch: UserPatch): Promise<UserPatch> => {
+      try {
+        return await persistUserUpdate(patch);
+      } catch (error) {
+        console.error("Erro ao atualizar dados do usuário:", error);
+        throw error;
+      }
+    },
+    [persistUserUpdate]
+  );
 
   const logout = () => {
     localStorage.removeItem("jwtToken");
@@ -47,5 +226,5 @@ export function useAuth() {
     window.location.href = "/login";
   };
 
-  return { user, loading, logout };
+  return { user, loading, logout, updateInvestorProfile, updateUserSettings };
 }

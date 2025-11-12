@@ -9,5 +9,6 @@ public class RegisterRequest {
     private String password;
     private String notificationPreference;
     private String investorProfile; // ✅ agora String
+    private String profileImageUrl;
 }
 

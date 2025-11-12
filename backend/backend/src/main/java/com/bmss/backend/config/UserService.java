@@ -8,6 +8,7 @@ import com.bmss.backend.security.JwtService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.text.Normalizer;
 import java.util.List;
 import java.util.Optional;
 
@@ -84,8 +85,9 @@ public class UserService {
         user.setName(request.getName());
         user.setEmail(request.getEmail());
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
-        user.setNotificationPreference(request.getNotificationPreference());
+        user.setNotificationPreference(normalizePreference(request.getNotificationPreference()));
         user.setInvestorProfile(User.InvestorProfile.valueOf(request.getInvestorProfile()));
+        user.setProfileImageUrl(request.getProfileImageUrl());
 
         User saved = userRepository.save(user);
 
@@ -93,5 +95,43 @@ public class UserService {
         String token = jwtService.generateToken(saved.getEmail());
 
         return new AuthResponse(token, null, "Cadastro realizado com sucesso! Força da senha: " + strength.getLabel());
+}
+
+    private String normalizePreference(String preference) {
+        if (preference == null) {
+            return "resumo_diario";
+        }
+
+        String sanitized = Normalizer.normalize(preference, Normalizer.Form.NFD)
+                .replaceAll("[^\p{ASCII}]", "")
+                .toLowerCase()
+                .trim()
+                .replaceAll("[^a-z\\s_-]", "")
+                .replaceAll("[\\s-]+", "_")
+                .replaceAll("_+", "_")
+                .replaceAll("^_+|_+$", "");
+
+        if (sanitized.isEmpty()) {
+            return "resumo_diario";
+        }
+
+        switch (sanitized) {
+            case "alertas_imediatos":
+            case "alertas":
+            case "imediato":
+            case "imediatos":
+                return "alertas_imediatos";
+            case "sem_notificacoes":
+            case "sem_notificacao":
+            case "sem_notificacaoes":
+            case "none":
+            case "desativado":
+                return "sem_notificacoes";
+            case "resumo_diario":
+            case "resumo":
+            case "daily":
+            default:
+                return "resumo_diario";
+        }
     }
 }
