@@ -75,4 +75,18 @@ public final class UserSanitizer {
 
         return normalized;
     }
+
+    public static String normalizeEmail(String email) {
+        if (email == null) {
+            throw new IllegalArgumentException("Email inválido");
+        }
+
+        String normalized = email.trim().toLowerCase();
+
+        if (normalized.isEmpty() || !normalized.contains("@")) {
+            throw new IllegalArgumentException("Email inválido");
+        }
+
+        return normalized;
+    }
 }
