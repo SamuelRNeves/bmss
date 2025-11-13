@@ -35,6 +35,14 @@ public final class PasswordHashUtils {
             return normalized;
         }
 
+        if ("null".equalsIgnoreCase(normalized)
+                || "undefined".equalsIgnoreCase(normalized)
+                || "notset".equalsIgnoreCase(normalized)
+                || "not-set".equalsIgnoreCase(normalized)
+                || "none".equalsIgnoreCase(normalized)) {
+            return "";
+        }
+
         if ((normalized.startsWith("\"") && normalized.endsWith("\""))
                 || (normalized.startsWith("'") && normalized.endsWith("'"))) {
             normalized = normalized.substring(1, normalized.length() - 1).trim();
@@ -78,6 +86,23 @@ public final class PasswordHashUtils {
         }
 
         return normalized;
+    }
+
+    public static boolean isLikelyUsablePassword(String candidate) {
+        if (candidate == null) {
+            return false;
+        }
+
+        String trimmed = candidate.trim();
+        if (trimmed.isEmpty()) {
+            return false;
+        }
+
+        return !"null".equalsIgnoreCase(trimmed)
+                && !"undefined".equalsIgnoreCase(trimmed)
+                && !"notset".equalsIgnoreCase(trimmed)
+                && !"not-set".equalsIgnoreCase(trimmed)
+                && !"none".equalsIgnoreCase(trimmed);
     }
 
     public static PasswordHashType detectHashType(String rawEncodedPassword) {

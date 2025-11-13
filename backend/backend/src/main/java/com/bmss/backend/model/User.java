@@ -1,5 +1,6 @@
 package com.bmss.backend.model;
 
+import com.bmss.backend.security.PasswordHashUtils;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -61,23 +62,25 @@ public class User {
 
     @JsonIgnore
     public String getResolvedPasswordHash() {
-        if (passwordHash != null && !passwordHash.isBlank()) {
-            return passwordHash;
+        if (PasswordHashUtils.isLikelyUsablePassword(passwordHash)) {
+            return passwordHash.trim();
         }
-        return legacyPassword;
+        if (PasswordHashUtils.isLikelyUsablePassword(legacyPassword)) {
+            return legacyPassword.trim();
+        }
+        return null;
     }
 
     @JsonIgnore
     public boolean isLegacyPasswordOnly() {
-        return (passwordHash == null || passwordHash.isBlank())
-                && legacyPassword != null
-                && !legacyPassword.isBlank();
+        return !PasswordHashUtils.isLikelyUsablePassword(passwordHash)
+                && PasswordHashUtils.isLikelyUsablePassword(legacyPassword);
     }
 
     public void setPasswordHash(String passwordHash) {
         this.passwordHash = passwordHash;
-        if (passwordHash != null && !passwordHash.isBlank()) {
-            this.legacyPassword = passwordHash;
+        if (PasswordHashUtils.isLikelyUsablePassword(passwordHash)) {
+            this.legacyPassword = null;
         }
     }
 }

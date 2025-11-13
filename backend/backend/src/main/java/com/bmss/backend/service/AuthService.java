@@ -25,8 +25,11 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 
 @Service
@@ -77,76 +80,111 @@ public class AuthService {
                 throw new BadCredentialsException("Credenciais inválidas");
             }
 
-            String storedEmail = user.getEmail() != null ? user.getEmail() : "";
-            boolean emailNeedsUpdate = !storedEmail.equals(sanitizedEmail);
-
             String rawPassword = request.getPassword();
             if (rawPassword == null || rawPassword.isBlank()) {
                 throw new BadCredentialsException("Credenciais inválidas");
             }
 
-            String storedPassword = user.getPasswordHash();
-            if (storedPassword == null || storedPassword.isBlank()) {
-                throw new BadCredentialsException("Credenciais inválidas");
+            List<String> passwordCandidates = new ArrayList<>();
+
+            if (PasswordHashUtils.isLikelyUsablePassword(user.getPasswordHash())) {
+                passwordCandidates.add(user.getPasswordHash());
             }
 
-            String normalizedHash = PasswordHashUtils.normalizeLegacyHash(storedPassword);
-            if (normalizedHash == null || normalizedHash.isEmpty()) {
-                throw new BadCredentialsException("Credenciais inválidas");
+            if (PasswordHashUtils.isLikelyUsablePassword(user.getLegacyPassword())) {
+                passwordCandidates.add(user.getLegacyPassword());
             }
 
-            String trimmedOriginal = storedPassword.trim();
-            PasswordHashType hashType = PasswordHashUtils.detectHashType(normalizedHash);
-
-            // Verificar se a senha corresponde usando o PasswordEncoder
-            boolean passwordMatches;
-            try {
-                passwordMatches = passwordEncoder.matches(rawPassword, normalizedHash);
-                if (!passwordMatches && !trimmedOriginal.equals(normalizedHash)) {
-                    passwordMatches = passwordEncoder.matches(rawPassword, trimmedOriginal);
+            if (jdbcTemplate != null) {
+                String recoveredLegacy = fetchLegacyPassword(user.getId());
+                if (PasswordHashUtils.isLikelyUsablePassword(recoveredLegacy)) {
+                    user.setLegacyPassword(recoveredLegacy);
+                    passwordCandidates.add(recoveredLegacy);
+                    logger.info("Senha legada recuperada para usuário {}", sanitizedEmail);
                 }
-            } catch (IllegalArgumentException encoderError) {
-                passwordMatches = false;
             }
 
-            if (!passwordMatches) {
+            if (passwordCandidates.isEmpty()) {
                 throw new BadCredentialsException("Credenciais inválidas");
             }
 
-            // Atualizar hash se necessário
-            boolean upgradedHash = passwordEncoder.upgradeEncoding(normalizedHash);
-            if (upgradedHash) {
-                user.setPasswordHash(passwordEncoder.encode(rawPassword));
-                logger.info("Atualizando hash de senha legado ({} -> delegating) para usuário {}",
-                        hashType,
-                        sanitizedEmail);
+            boolean passwordMatches = false;
+            String matchedOriginal = null;
+            String matchedNormalized = null;
+            PasswordHashType matchedType = PasswordHashType.EMPTY;
+
+            for (String candidate : passwordCandidates) {
+                if (!PasswordHashUtils.isLikelyUsablePassword(candidate)) {
+                    continue;
+                }
+
+                String normalized = PasswordHashUtils.normalizeLegacyHash(candidate);
+                if (normalized == null || normalized.isBlank()) {
+                    continue;
+                }
+
+                String trimmedOriginal = candidate.trim();
+                if (matchesAgainstKnownHashes(rawPassword, normalized, trimmedOriginal)) {
+                    passwordMatches = true;
+                    matchedOriginal = trimmedOriginal;
+                    matchedNormalized = normalized;
+                    matchedType = PasswordHashUtils.detectHashType(normalized);
+                    break;
+                }
             }
 
-            // Corrigir email se necessário
+            if (!passwordMatches || matchedNormalized == null) {
+                throw new BadCredentialsException("Credenciais inválidas");
+            }
+
+            boolean hasDelegatingPrefix = PasswordHashUtils.hasDelegatingPrefix(matchedNormalized);
+            boolean upgradedHash = passwordEncoder.upgradeEncoding(matchedNormalized)
+                    || (!hasDelegatingPrefix && matchedType != PasswordHashType.DELEGATING)
+                    || matchedType == PasswordHashType.PLAINTEXT_OR_UNKNOWN;
+
+            boolean storedHashInvalid = !PasswordHashUtils.isLikelyUsablePassword(user.getPasswordHash());
+            boolean credentialsUpdated = false;
+
+            if (upgradedHash) {
+                String reencoded = passwordEncoder.encode(rawPassword);
+                user.setPasswordHash(reencoded);
+                credentialsUpdated = true;
+                logger.info("Atualizando hash de senha legado ({} -> delegating) para usuário {}",
+                        matchedType,
+                        sanitizedEmail);
+            } else if (storedHashInvalid) {
+                user.setPasswordHash(matchedNormalized);
+                credentialsUpdated = true;
+                logger.info("Normalizando hash de senha armazenado para usuário {}", sanitizedEmail);
+            }
+
+            String storedEmail = user.getEmail() != null ? user.getEmail() : "";
+            boolean emailNeedsUpdate = !Objects.equals(storedEmail, sanitizedEmail);
             if (emailNeedsUpdate) {
                 user.setEmail(sanitizedEmail);
+                credentialsUpdated = true;
                 logger.info("Corrigindo email com espaços extras para usuário {}", sanitizedEmail);
             }
 
-            // Salvar atualizações se necessário
-            if (upgradedHash || emailNeedsUpdate) {
+            if (credentialsUpdated) {
                 userRepository.save(user);
             }
 
-            // Gerar token JWT
             var jwtToken = jwtService.generateToken(user.getEmail());
 
             String message;
             if (upgradedHash) {
-                if (hashType == PasswordHashType.PLAINTEXT_OR_UNKNOWN) {
+                if (matchedType == PasswordHashType.PLAINTEXT_OR_UNKNOWN) {
                     message = "Login bem-sucedido. Senha criptografada com segurança.";
-                } else if (hashType == PasswordHashType.SHA256) {
+                } else if (matchedType == PasswordHashType.SHA256) {
                     message = "Login bem-sucedido. Hash de senha modernizado.";
-                } else if (hashType == PasswordHashType.BCRYPT && !PasswordHashUtils.hasDelegatingPrefix(trimmedOriginal)) {
+                } else if (matchedType == PasswordHashType.BCRYPT && !PasswordHashUtils.hasDelegatingPrefix(matchedOriginal)) {
                     message = "Login bem-sucedido. Hash BCrypt atualizado.";
                 } else {
                     message = "Login bem-sucedido";
                 }
+            } else if (storedHashInvalid) {
+                message = "Login bem-sucedido. Hash de senha normalizado.";
             } else {
                 message = "Login bem-sucedido";
             }
@@ -162,26 +200,16 @@ public class AuthService {
         }
     }
 
-    private String fetchLegacyPassword(Integer userId) {
-        if (userId == null || jdbcTemplate == null) {
-            return null;
-        }
-
+    private boolean matchesAgainstKnownHashes(String rawPassword, String normalizedHash, String originalHash) {
         try {
-            String legacy = jdbcTemplate.queryForObject(
-                    "SELECT password FROM users WHERE id = ?",
-                    String.class,
-                    userId
-            );
-            return legacy != null ? legacy.trim() : null;
-        } catch (BadSqlGrammarException missingColumn) {
-            logger.debug("Coluna de senha legada ausente: {}", missingColumn.getMessage());
-            return null;
-        } catch (DataAccessException dataAccessException) {
-            logger.warn("Não foi possível recuperar senha legada para usuário {}: {}",
-                    userId,
-                    dataAccessException.getMessage());
-            return null;
+            boolean matches = passwordEncoder.matches(rawPassword, normalizedHash);
+            if (!matches && originalHash != null && !originalHash.equals(normalizedHash)) {
+                matches = passwordEncoder.matches(rawPassword, originalHash);
+            }
+            return matches;
+        } catch (IllegalArgumentException encoderError) {
+            logger.warn("Falha ao validar hash legado: {}", encoderError.getMessage());
+            return false;
         }
     }
 
