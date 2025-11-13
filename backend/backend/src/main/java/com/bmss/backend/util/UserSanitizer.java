@@ -4,8 +4,6 @@ import java.text.Normalizer;
 
 public final class UserSanitizer {
 
-    private static final int MAX_PROFILE_IMAGE_LENGTH = 4_000_000; // ~3 MB em Base64
-
     private UserSanitizer() {
     }
 
@@ -47,7 +45,7 @@ public final class UserSanitizer {
         }
     }
 
-    public static String sanitizeProfileImage(String raw) {
+    public static String sanitizeProfileImageUrl(String raw) {
         if (raw == null) {
             return null;
         }
@@ -57,13 +55,24 @@ public final class UserSanitizer {
             return null;
         }
 
-        String collapsedWhitespace = trimmed.replaceAll("\\s+", "");
-        if (collapsedWhitespace.length() > MAX_PROFILE_IMAGE_LENGTH) {
-            throw new IllegalArgumentException(
-                    "A imagem do perfil excede o limite permitido (aprox. 3 MB em base64). Escolha um arquivo menor."
-            );
+        if (trimmed.startsWith("http://") || trimmed.startsWith("https://") || trimmed.startsWith("/")) {
+            return trimmed;
         }
 
-        return collapsedWhitespace;
+        throw new IllegalArgumentException("URL de imagem inválida. Utilize um endereço completo (https://) ou o caminho retornado pela API.");
+    }
+
+    public static String normalizeEmail(String email) {
+        if (email == null) {
+            throw new IllegalArgumentException("Email inválido");
+        }
+
+        String normalized = email.trim().toLowerCase();
+
+        if (normalized.isEmpty() || !normalized.contains("@")) {
+            throw new IllegalArgumentException("Email inválido");
+        }
+
+        return normalized;
     }
 }

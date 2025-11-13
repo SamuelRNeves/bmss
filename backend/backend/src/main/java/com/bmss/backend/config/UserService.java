@@ -1,10 +1,13 @@
 package com.bmss.backend.config;
 
-import com.bmss.backend.dto.RegisterRequest;
 import com.bmss.backend.dto.AuthResponse;
+import com.bmss.backend.dto.RegisterRequest;
+import com.bmss.backend.model.Role;
 import com.bmss.backend.model.User;
+import com.bmss.backend.repository.RoleRepository;
 import com.bmss.backend.repository.UserRepository;
 import com.bmss.backend.security.JwtService;
+import com.bmss.backend.service.ProfileImageStorageService;
 import com.bmss.backend.util.UserSanitizer;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -18,11 +21,19 @@ public class UserService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService; // Usa JwtService, não JwtUtil
+    private final RoleRepository roleRepository;
+    private final ProfileImageStorageService profileImageStorageService;
 
-    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder, JwtService jwtService) {
+    public UserService(UserRepository userRepository,
+                       PasswordEncoder passwordEncoder,
+                       JwtService jwtService,
+                       RoleRepository roleRepository,
+                       ProfileImageStorageService profileImageStorageService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
+        this.roleRepository = roleRepository;
+        this.profileImageStorageService = profileImageStorageService;
     }
 
     public List<User> findAll() {
@@ -77,19 +88,57 @@ public class UserService {
             throw new IllegalArgumentException("Senha muito fraca. Mínimo: 8 caracteres com maiúscula, minúscula e número.");
         }
 
-        if (userRepository.findByEmail(request.getEmail()) != null) {
+        String sanitizedEmail = UserSanitizer.normalizeEmail(request.getEmail());
+
+        if (userRepository.findByEmailIgnoreCase(sanitizedEmail) != null) {
             throw new IllegalArgumentException("Email já cadastrado.");
+        }
+
+        Role userRole = roleRepository.findByName("USER");
+        if (userRole == null) {
+            userRole = Role.builder().name("USER").build();
+            roleRepository.save(userRole);
         }
 
         User user = new User();
         user.setName(request.getName());
-        user.setEmail(request.getEmail());
+        user.setEmail(sanitizedEmail);
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         user.setNotificationPreference(UserSanitizer.normalizeNotificationPreference(request.getNotificationPreference()));
-        user.setInvestorProfile(User.InvestorProfile.valueOf(request.getInvestorProfile()));
-        user.setProfileImageUrl(UserSanitizer.sanitizeProfileImage(request.getProfileImageUrl()));
+
+        String investorProfile = request.getInvestorProfile();
+        User.InvestorProfile resolvedProfile;
+        try {
+            resolvedProfile = investorProfile != null
+                    ? User.InvestorProfile.valueOf(investorProfile.trim().toUpperCase())
+                    : User.InvestorProfile.MODERADO;
+        } catch (IllegalArgumentException ex) {
+            resolvedProfile = User.InvestorProfile.MODERADO;
+        }
+        user.setInvestorProfile(resolvedProfile);
+
+        user.setProfileImageUrl(null);
+        user.setRole(userRole);
 
         User saved = userRepository.save(user);
+
+        String rawProfileImage = request.getProfileImageUrl();
+        if (rawProfileImage != null && !rawProfileImage.trim().isEmpty()) {
+            try {
+                String storedValue;
+                if (profileImageStorageService.isDataUrl(rawProfileImage)) {
+                    storedValue = profileImageStorageService.storeBase64Image(rawProfileImage, saved.getId());
+                } else {
+                    storedValue = UserSanitizer.sanitizeProfileImageUrl(rawProfileImage);
+                }
+                saved.setProfileImageUrl(storedValue);
+                saved = userRepository.save(saved);
+            } catch (IllegalArgumentException imageError) {
+                throw new IllegalArgumentException(imageError.getMessage(), imageError);
+            } catch (IllegalStateException storageError) {
+                throw new IllegalArgumentException("Não foi possível salvar a imagem de perfil. Escolha um arquivo menor.", storageError);
+            }
+        }
 
         // Usa JwtService para gerar token
         String token = jwtService.generateToken(saved.getEmail());
