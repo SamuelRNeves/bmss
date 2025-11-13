@@ -213,6 +213,29 @@ public class AuthService {
         }
     }
 
+    private String fetchLegacyPassword(Integer userId) {
+        if (userId == null || jdbcTemplate == null) {
+            return null;
+        }
+
+        try {
+            String legacy = jdbcTemplate.queryForObject(
+                    "SELECT password FROM users WHERE id = ?",
+                    String.class,
+                    userId
+            );
+            return legacy != null ? legacy.trim() : null;
+        } catch (BadSqlGrammarException missingColumn) {
+            logger.debug("Coluna de senha legada ausente: {}", missingColumn.getMessage());
+            return null;
+        } catch (DataAccessException dataAccessException) {
+            logger.warn("Não foi possível recuperar senha legada para usuário {}: {}",
+                    userId,
+                    dataAccessException.getMessage());
+            return null;
+        }
+    }
+
     // ========================================
     // 🔹 CADASTRO
     // ========================================
