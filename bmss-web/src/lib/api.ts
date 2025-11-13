@@ -1,8 +1,6 @@
 // lib/api.ts
 import axios, { AxiosError } from "axios";
 
-
-
 // =====================================================
 // 🔧 Configuração global do Axios
 // =====================================================
@@ -76,8 +74,6 @@ api.interceptors.request.use((config) => {
 
   return config;
 });
-
-
 
 const COINGECKO_BASE_URL =
   process.env.NEXT_PUBLIC_COINGECKO_BASE_URL ||
@@ -759,7 +755,6 @@ function generateRealisticTrends() {
 // 👤 FUNÇÕES DE CADASTRO
 // =====================================================
 
-
 export async function cadastrarUsuario(dados: {
   name: string;
   email: string;
@@ -798,8 +793,6 @@ export async function cadastrarUsuario(dados: {
     };
   }
 }
-
-
 
 // =====================================================
 // 🔔 NOTIFICAÇÕES BASEADAS EM ANÁLISES
@@ -917,7 +910,7 @@ export async function getNotifications(
 
     const data = rawData
       .map((item: unknown, index: number) => mapNotificationPayload(item, index))
-      .filter((item): item is NotificationPayload => Boolean(item));
+      .filter((item: NotificationPayload | null): item is NotificationPayload => Boolean(item));
 
     const metaRecord = isRecord(payload.meta) ? payload.meta : {};
     const total = typeof metaRecord.total === "number" ? metaRecord.total : data.length;
@@ -948,7 +941,6 @@ export async function getNotifications(
     };
   }
 }
-
 
 // =====================================================
 // 📰 NOTÍCIAS e TWEETS
