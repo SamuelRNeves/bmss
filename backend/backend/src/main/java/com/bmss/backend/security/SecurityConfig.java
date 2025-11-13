@@ -1,5 +1,6 @@
 package com.bmss.backend.security;
 
+import com.bmss.backend.security.PasswordHashUtils.PasswordHashType;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -79,11 +80,37 @@ public class SecurityConfig {
                     return false;
                 }
 
-                if (encodedPassword.startsWith("{")) {
-                    return delegating.matches(rawPassword, encodedPassword);
+                String normalized = encodedPassword.trim();
+                if (normalized.isEmpty()) {
+                    return false;
                 }
 
-                return bcrypt.matches(rawPassword, encodedPassword);
+                PasswordHashType type = PasswordHashUtils.detectHashType(normalized);
+                return switch (type) {
+                    case DELEGATING -> delegating.matches(rawPassword, normalized);
+                    case BCRYPT -> bcrypt.matches(rawPassword, normalized);
+                    case SHA256 -> PasswordHashUtils.matchesSha256(rawPassword, normalized);
+                    case PLAINTEXT_OR_UNKNOWN -> PasswordHashUtils.slowEquals(
+                            normalized,
+                            rawPassword == null ? null : rawPassword.toString()
+                    );
+                    case EMPTY -> false;
+                };
+            }
+
+            @Override
+            public boolean upgradeEncoding(String encodedPassword) {
+                if (encodedPassword == null) {
+                    return true;
+                }
+
+                String normalized = encodedPassword.trim();
+                if (normalized.isEmpty()) {
+                    return true;
+                }
+
+                PasswordHashType type = PasswordHashUtils.detectHashType(normalized);
+                return type == PasswordHashType.SHA256 || type == PasswordHashType.PLAINTEXT_OR_UNKNOWN;
             }
         };
     }

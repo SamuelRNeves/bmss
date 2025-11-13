@@ -9,12 +9,13 @@ import com.bmss.backend.model.User.InvestorProfile;
 import com.bmss.backend.repository.RoleRepository;
 import com.bmss.backend.repository.UserRepository;
 import com.bmss.backend.security.JwtService;
+import com.bmss.backend.security.PasswordHashUtils;
+import com.bmss.backend.security.PasswordHashUtils.PasswordHashType;
 import com.bmss.backend.util.UserSanitizer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -46,7 +47,7 @@ public class AuthService {
     private EmailService emailService;
 
     @Autowired
-    private AuthenticationManager authenticationManager;
+    private org.springframework.security.authentication.AuthenticationManager authenticationManager;
 
     // ========================================
     // 🔹 LOGIN
@@ -66,12 +67,62 @@ public class AuthService {
                 throw new BadCredentialsException("Credenciais inválidas");
             }
 
+            String rawPassword = request.getPassword();
+            if (rawPassword == null || rawPassword.isBlank()) {
+                throw new BadCredentialsException("Credenciais inválidas");
+            }
+
+            String storedPassword = user.getPasswordHash();
+            if (storedPassword == null || storedPassword.isBlank()) {
+                throw new BadCredentialsException("Credenciais inválidas");
+            }
+
+            String normalizedHash = storedPassword.strip();
+            PasswordHashType hashType = PasswordHashUtils.detectHashType(normalizedHash);
+
+            // Verificar se a senha corresponde usando o PasswordEncoder
+            boolean passwordMatches;
+            try {
+                passwordMatches = passwordEncoder.matches(rawPassword, normalizedHash);
+            } catch (IllegalArgumentException encoderError) {
+                passwordMatches = false;
+            }
+
+            if (!passwordMatches) {
+                throw new BadCredentialsException("Credenciais inválidas");
+            }
+
             // Gerar token JWT
             var jwtToken = jwtService.generateToken(user.getEmail());
 
-            return new AuthResponse(jwtToken, null, "Login bem-sucedido");
+            // Atualizar hash se necessário
+            boolean upgradedHash = passwordEncoder.upgradeEncoding(normalizedHash);
+            if (upgradedHash) {
+                user.setPasswordHash(passwordEncoder.encode(rawPassword));
+                userRepository.save(user);
+                logger.info("Atualizando hash de senha legado ({} -> delegating) para usuário {}",
+                        hashType,
+                        sanitizedEmail);
+            }
+
+            String message;
+            if (upgradedHash) {
+                if (hashType == PasswordHashType.PLAINTEXT_OR_UNKNOWN) {
+                    message = "Login bem-sucedido. Senha criptografada com segurança.";
+                } else if (hashType == PasswordHashType.SHA256) {
+                    message = "Login bem-sucedido. Hash de senha modernizado.";
+                } else {
+                    message = "Login bem-sucedido";
+                }
+            } else {
+                message = "Login bem-sucedido";
+            }
+
+            return new AuthResponse(jwtToken, null, message);
         } catch (BadCredentialsException e) {
-            throw new BadCredentialsException("Credenciais inválidas");
+            throw e;
+        } catch (IllegalArgumentException e) {
+            throw new BadCredentialsException("Credenciais inválidas", e);
         } catch (Exception e) {
             logger.error("Erro durante o login: ", e);
             throw new BadCredentialsException("Erro durante a autenticação");

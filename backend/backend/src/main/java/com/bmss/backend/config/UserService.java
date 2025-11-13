@@ -1,8 +1,10 @@
 package com.bmss.backend.config;
 
-import com.bmss.backend.dto.RegisterRequest;
 import com.bmss.backend.dto.AuthResponse;
+import com.bmss.backend.dto.RegisterRequest;
+import com.bmss.backend.model.Role;
 import com.bmss.backend.model.User;
+import com.bmss.backend.repository.RoleRepository;
 import com.bmss.backend.repository.UserRepository;
 import com.bmss.backend.security.JwtService;
 import com.bmss.backend.util.UserSanitizer;
@@ -18,11 +20,16 @@ public class UserService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService; // Usa JwtService, não JwtUtil
+    private final RoleRepository roleRepository;
 
-    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder, JwtService jwtService) {
+    public UserService(UserRepository userRepository,
+                       PasswordEncoder passwordEncoder,
+                       JwtService jwtService,
+                       RoleRepository roleRepository) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
+        this.roleRepository = roleRepository;
     }
 
     public List<User> findAll() {
@@ -83,6 +90,12 @@ public class UserService {
             throw new IllegalArgumentException("Email já cadastrado.");
         }
 
+        Role userRole = roleRepository.findByName("USER");
+        if (userRole == null) {
+            userRole = Role.builder().name("USER").build();
+            roleRepository.save(userRole);
+        }
+
         User user = new User();
         user.setName(request.getName());
         user.setEmail(sanitizedEmail);
@@ -101,6 +114,7 @@ public class UserService {
         user.setInvestorProfile(resolvedProfile);
 
         user.setProfileImageUrl(UserSanitizer.sanitizeProfileImage(request.getProfileImageUrl()));
+        user.setRole(userRole);
 
         User saved = userRepository.save(user);
 
