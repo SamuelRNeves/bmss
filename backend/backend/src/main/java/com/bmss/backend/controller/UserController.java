@@ -1,9 +1,11 @@
 package com.bmss.backend.controller;
 
 import com.bmss.backend.dto.PasswordChangeRequest;
+import com.bmss.backend.dto.UserProfileUpdateRequest;
 import com.bmss.backend.model.User;
 import com.bmss.backend.repository.UserRepository;
 import com.bmss.backend.security.JwtService;
+import com.bmss.backend.service.ProfileImageStorageService;
 import com.bmss.backend.util.UserSanitizer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -30,6 +32,9 @@ public class UserController {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    @Autowired
+    private ProfileImageStorageService profileImageStorageService;
+
     // 🔹 Listar todos os usuários (admin)
     @GetMapping
     public ResponseEntity<?> getAllUsers() {
@@ -54,9 +59,13 @@ public class UserController {
     public ResponseEntity<?> updateUser(
             @PathVariable Integer id,
             @RequestHeader("Authorization") String authHeader,
-            @RequestBody User updatedUser
+            @RequestBody UserProfileUpdateRequest payload
     ) {
         try {
+            if (payload == null) {
+                return ResponseEntity.badRequest().body("Requisição inválida");
+            }
+
             String email = jwtService.extractUsernameFromAuthHeader(authHeader);
             User user = userRepository.findByEmailIgnoreCase(email);
 
@@ -64,25 +73,59 @@ public class UserController {
                 return ResponseEntity.status(403).body("Acesso negado");
             }
 
-            // Atualiza somente campos editáveis
-            if (updatedUser.getInvestorProfile() != null)
-                user.setInvestorProfile(updatedUser.getInvestorProfile());
+            boolean dirty = false;
 
-            if (updatedUser.getNotificationPreference() != null) {
-                user.setNotificationPreference(UserSanitizer.normalizeNotificationPreference(
-                        updatedUser.getNotificationPreference()
-                ));
-            }
-
-            if (updatedUser.getProfileImageUrl() != null) {
+            if (payload.getInvestorProfile() != null) {
                 try {
-                    user.setProfileImageUrl(UserSanitizer.sanitizeProfileImage(updatedUser.getProfileImageUrl()));
-                } catch (IllegalArgumentException imageError) {
-                    return ResponseEntity.badRequest().body(imageError.getMessage());
+                    User.InvestorProfile profile = User.InvestorProfile.valueOf(payload.getInvestorProfile().trim().toUpperCase());
+                    user.setInvestorProfile(profile);
+                    dirty = true;
+                } catch (IllegalArgumentException ex) {
+                    return ResponseEntity.badRequest().body("Perfil de investidor inválido");
                 }
             }
 
-            userRepository.save(user);
+            if (payload.getNotificationPreference() != null) {
+                user.setNotificationPreference(UserSanitizer.normalizeNotificationPreference(
+                        payload.getNotificationPreference()
+                ));
+                dirty = true;
+            }
+
+            if (payload.getProfileImage() != null) {
+                try {
+                    String original = user.getProfileImageUrl();
+                    String updated;
+                    if (payload.getProfileImage().isBlank()) {
+                        updated = null;
+                    } else if (profileImageStorageService.isDataUrl(payload.getProfileImage())) {
+                        updated = profileImageStorageService.storeBase64Image(payload.getProfileImage(), user.getId());
+                    } else {
+                        updated = UserSanitizer.sanitizeProfileImageUrl(payload.getProfileImage());
+                    }
+
+                    if ((original != null && !original.equals(updated)) || (original == null && updated != null)) {
+                        user.setProfileImageUrl(updated);
+                        dirty = true;
+                        if (updated == null) {
+                            profileImageStorageService.deleteStoredImage(original);
+                        } else if (original != null && !original.equals(updated)) {
+                            profileImageStorageService.deleteStoredImage(original);
+                        }
+                    }
+                } catch (IllegalArgumentException imageError) {
+                    return ResponseEntity.badRequest().body(imageError.getMessage());
+                } catch (IllegalStateException storageFailure) {
+                    return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                            .body("Não foi possível salvar a imagem de perfil. Tente novamente mais tarde.");
+                }
+            }
+
+            if (dirty) {
+                userRepository.saveAndFlush(user);
+            }
+
+            String token = jwtService.generateToken(user.getEmail());
 
             return ResponseEntity.ok(
                     java.util.Map.of(
@@ -90,7 +133,8 @@ public class UserController {
                             "message", "Perfil atualizado com sucesso",
                             "investorProfile", user.getInvestorProfile(),
                             "notificationPreference", user.getNotificationPreference(),
-                            "profileImageUrl", user.getProfileImageUrl()
+                            "profileImageUrl", user.getProfileImageUrl(),
+                            "token", token
                     )
             );
 

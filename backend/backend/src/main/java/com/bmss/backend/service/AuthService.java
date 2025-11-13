@@ -10,6 +10,7 @@ import com.bmss.backend.repository.RoleRepository;
 import com.bmss.backend.repository.UserRepository;
 import com.bmss.backend.security.JwtService;
 import com.bmss.backend.security.PasswordHashUtils;
+import com.bmss.backend.service.ProfileImageStorageService;
 import com.bmss.backend.security.PasswordHashUtils.PasswordHashType;
 import com.bmss.backend.util.UserSanitizer;
 import org.slf4j.Logger;
@@ -51,6 +52,9 @@ public class AuthService {
 
     @Autowired
     private EmailService emailService;
+
+    @Autowired
+    private ProfileImageStorageService profileImageStorageService;
 
     @Autowired(required = false)
     private JdbcTemplate jdbcTemplate;
@@ -282,14 +286,7 @@ public class AuthService {
                     request.getNotificationPreference()
             );
 
-            String profileImage = null;
-            try {
-                profileImage = UserSanitizer.sanitizeProfileImage(request.getProfileImageUrl());
-            } catch (IllegalArgumentException imageError) {
-                Map<String, String> response = new HashMap<>();
-                response.put("error", imageError.getMessage());
-                return ResponseEntity.badRequest().body(response);
-            }
+            String rawProfileImage = request.getProfileImageUrl();
 
             // Validar senha
             if (request.getPassword() == null || request.getPassword().trim().length() < 6) {
@@ -308,10 +305,31 @@ public class AuthService {
                     .role(userRole)
                     .notificationPreference(notificationPreference)
                     .investorProfile(profile)
-                    .profileImageUrl(profileImage)
+                    .profileImageUrl(null)
                     .build();
 
             User savedUser = userRepository.save(newUser);
+
+            if (rawProfileImage != null && !rawProfileImage.trim().isEmpty()) {
+                try {
+                    String storedValue;
+                    if (profileImageStorageService.isDataUrl(rawProfileImage)) {
+                        storedValue = profileImageStorageService.storeBase64Image(rawProfileImage, savedUser.getId());
+                    } else {
+                        storedValue = UserSanitizer.sanitizeProfileImageUrl(rawProfileImage);
+                    }
+                    savedUser.setProfileImageUrl(storedValue);
+                    savedUser = userRepository.save(savedUser);
+                } catch (IllegalArgumentException imageError) {
+                    Map<String, String> response = new HashMap<>();
+                    response.put("error", imageError.getMessage());
+                    return ResponseEntity.badRequest().body(response);
+                } catch (IllegalStateException storageError) {
+                    Map<String, String> response = new HashMap<>();
+                    response.put("error", "Não foi possível salvar a imagem de perfil. Tente novamente com um arquivo menor.");
+                    return ResponseEntity.status(500).body(response);
+                }
+            }
 
             // Enviar email de boas-vindas (assíncrono)
             logger.info("👤 Usuário salvo no banco: {}", savedUser.getEmail());

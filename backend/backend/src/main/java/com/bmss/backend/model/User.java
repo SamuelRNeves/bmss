@@ -42,8 +42,7 @@ public class User {
     @Column(name = "notification_preference")
     private String notificationPreference = "diario";
 
-    @Lob
-    @Column(name = "profile_image_url", columnDefinition = "TEXT")
+    @Column(name = "profile_image_url", length = 1024)
     private String profileImageUrl;
 
     // ENUM DENTRO DA CLASSE → Lombok vê e gera getter
