@@ -187,6 +187,9 @@ public class AuthService {
             throw e;
         } catch (IllegalArgumentException e) {
             throw new BadCredentialsException("Credenciais inválidas", e);
+        } catch (Exception e) {
+            logger.error("Erro durante o login: ", e);
+            throw new BadCredentialsException("Erro durante a autenticação");
         }
     }
 
@@ -241,7 +244,12 @@ public class AuthService {
             }
 
             // Validação de nome
-            String nome = request.getName() != null ? request.getName() : "";
+            String nome = request.getName() != null ? request.getName().trim() : "";
+            if (nome.isEmpty()) {
+                Map<String, String> response = new HashMap<>();
+                response.put("error", "Nome é obrigatório");
+                return ResponseEntity.badRequest().body(response);
+            }
 
             // Buscar role padrão (USER)
             Role userRole = roleRepository.findByName("USER");
@@ -306,7 +314,7 @@ public class AuthService {
             }
 
             // Enviar email de boas-vindas (assíncrono)
-            System.out.println("👤 Usuário salvo no banco: " + savedUser.getEmail());
+            logger.info("👤 Usuário salvo no banco: {}", savedUser.getEmail());
             CompletableFuture.runAsync(() -> {
                 try {
                     emailService.enviarEmailBoasVindas(
@@ -315,10 +323,9 @@ public class AuthService {
                             savedUser.getInvestorProfile().name(),
                             savedUser.getNotificationPreference()
                     );
-                    System.out.println("✅ Email de boas-vindas enviado para: " + savedUser.getEmail());
+                    logger.info("✅ Email de boas-vindas enviado para: {}", savedUser.getEmail());
                 } catch (Exception e) {
-                    System.err.println("❌ Erro ao enviar email: " + e.getMessage());
-                    e.printStackTrace();
+                    logger.error("❌ Erro ao enviar email: {}", e.getMessage(), e);
                 }
             });
 
