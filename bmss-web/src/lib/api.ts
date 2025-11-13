@@ -915,9 +915,9 @@ export async function getNotifications(
     const payload = response.data ?? {};
     const rawData = Array.isArray(payload.data) ? payload.data : [];
 
-    const data = rawData
-      .map((item: unknown, index: number) => mapNotificationPayload(item, index))
-      .filter((item): item is NotificationPayload => Boolean(item));
+   const data = rawData
+  .map((item: unknown, index: number) => mapNotificationPayload(item, index))
+  .filter((item: NotificationPayload | null): item is NotificationPayload => Boolean(item));
 
     const metaRecord = isRecord(payload.meta) ? payload.meta : {};
     const total = typeof metaRecord.total === "number" ? metaRecord.total : data.length;
