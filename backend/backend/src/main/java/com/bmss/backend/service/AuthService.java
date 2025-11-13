@@ -20,6 +20,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.BadSqlGrammarException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -50,6 +52,9 @@ public class AuthService {
     @Autowired(required = false)
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private org.springframework.security.authentication.AuthenticationManager authenticationManager;
+
     // ========================================
     // 🔹 LOGIN
     // ========================================
@@ -57,6 +62,12 @@ public class AuthService {
         try {
             String sanitizedEmail = UserSanitizer.normalizeEmail(request.getEmail());
 
+            // Autenticar usando Spring Security
+            Authentication authentication = authenticationManager.authenticate(
+                new UsernamePasswordAuthenticationToken(sanitizedEmail, request.getPassword())
+            );
+
+            // Buscar usuário após autenticação bem-sucedida
             User user = userRepository.findByEmailIgnoreCase(sanitizedEmail);
             if (user == null) {
                 user = userRepository.findByEmailNormalized(sanitizedEmail);
@@ -74,55 +85,55 @@ public class AuthService {
                 throw new BadCredentialsException("Credenciais inválidas");
             }
 
-            String storedPassword = user.getResolvedPasswordHash();
-            if ((storedPassword == null || storedPassword.isBlank()) && jdbcTemplate != null) {
-                String legacyPassword = fetchLegacyPassword(user.getId());
-                if (legacyPassword != null && !legacyPassword.isBlank()) {
-                    user.setLegacyPassword(legacyPassword);
-                    storedPassword = legacyPassword;
-                    logger.info("Senha legada recuperada para usuário {}", sanitizedEmail);
-                }
-            }
+            String storedPassword = user.getPasswordHash();
             if (storedPassword == null || storedPassword.isBlank()) {
                 throw new BadCredentialsException("Credenciais inválidas");
             }
 
-            boolean legacyOnly = user.isLegacyPasswordOnly();
             String normalizedHash = PasswordHashUtils.normalizeLegacyHash(storedPassword);
-            if (normalizedHash == null || normalizedHash.isBlank()) {
+            if (normalizedHash == null || normalizedHash.isEmpty()) {
                 throw new BadCredentialsException("Credenciais inválidas");
             }
 
             String trimmedOriginal = storedPassword.trim();
             PasswordHashType hashType = PasswordHashUtils.detectHashType(normalizedHash);
 
-            boolean passwordMatches = matchesAgainstKnownHashes(rawPassword, normalizedHash, trimmedOriginal);
+            // Verificar se a senha corresponde usando o PasswordEncoder
+            boolean passwordMatches;
+            try {
+                passwordMatches = passwordEncoder.matches(rawPassword, normalizedHash);
+                if (!passwordMatches && !trimmedOriginal.equals(normalizedHash)) {
+                    passwordMatches = passwordEncoder.matches(rawPassword, trimmedOriginal);
+                }
+            } catch (IllegalArgumentException encoderError) {
+                passwordMatches = false;
+            }
 
             if (!passwordMatches) {
                 throw new BadCredentialsException("Credenciais inválidas");
             }
 
-            boolean upgradedHash = passwordEncoder.upgradeEncoding(normalizedHash)
-                    || legacyOnly
-                    || !normalizedHash.equals(trimmedOriginal);
-
+            // Atualizar hash se necessário
+            boolean upgradedHash = passwordEncoder.upgradeEncoding(normalizedHash);
             if (upgradedHash) {
-                String reencoded = passwordEncoder.encode(rawPassword);
-                user.setPasswordHash(reencoded);
+                user.setPasswordHash(passwordEncoder.encode(rawPassword));
                 logger.info("Atualizando hash de senha legado ({} -> delegating) para usuário {}",
                         hashType,
                         sanitizedEmail);
             }
 
+            // Corrigir email se necessário
             if (emailNeedsUpdate) {
                 user.setEmail(sanitizedEmail);
                 logger.info("Corrigindo email com espaços extras para usuário {}", sanitizedEmail);
             }
 
+            // Salvar atualizações se necessário
             if (upgradedHash || emailNeedsUpdate) {
                 userRepository.save(user);
             }
 
+            // Gerar token JWT
             var jwtToken = jwtService.generateToken(user.getEmail());
 
             String message;
@@ -145,19 +156,9 @@ public class AuthService {
             throw e;
         } catch (IllegalArgumentException e) {
             throw new BadCredentialsException("Credenciais inválidas", e);
-        }
-    }
-
-    private boolean matchesAgainstKnownHashes(String rawPassword, String normalizedHash, String originalHash) {
-        try {
-            boolean matches = passwordEncoder.matches(rawPassword, normalizedHash);
-            if (!matches && originalHash != null && !originalHash.equals(normalizedHash)) {
-                matches = passwordEncoder.matches(rawPassword, originalHash);
-            }
-            return matches;
-        } catch (IllegalArgumentException encoderError) {
-            logger.warn("Falha ao validar hash legado: {}", encoderError.getMessage());
-            return false;
+        } catch (Exception e) {
+            logger.error("Erro durante o login: ", e);
+            throw new BadCredentialsException("Erro durante a autenticação");
         }
     }
 
@@ -199,7 +200,12 @@ public class AuthService {
             }
 
             // Validação de nome
-            String nome = request.getName() != null ? request.getName() : "";
+            String nome = request.getName() != null ? request.getName().trim() : "";
+            if (nome.isEmpty()) {
+                Map<String, String> response = new HashMap<>();
+                response.put("error", "Nome é obrigatório");
+                return ResponseEntity.badRequest().body(response);
+            }
 
             // Buscar role padrão (USER)
             Role userRole = roleRepository.findByName("USER");
@@ -234,6 +240,13 @@ public class AuthService {
                 return ResponseEntity.badRequest().body(response);
             }
 
+            // Validar senha
+            if (request.getPassword() == null || request.getPassword().trim().length() < 6) {
+                Map<String, String> response = new HashMap<>();
+                response.put("error", "Senha deve ter pelo menos 6 caracteres");
+                return ResponseEntity.badRequest().body(response);
+            }
+
             String encodedPassword = passwordEncoder.encode(request.getPassword());
 
             // Criar novo usuário
@@ -250,7 +263,7 @@ public class AuthService {
             User savedUser = userRepository.save(newUser);
 
             // Enviar email de boas-vindas (assíncrono)
-            System.out.println("👤 Usuário salvo no banco: " + savedUser.getEmail());
+            logger.info("👤 Usuário salvo no banco: {}", savedUser.getEmail());
             CompletableFuture.runAsync(() -> {
                 try {
                     emailService.enviarEmailBoasVindas(
@@ -259,10 +272,9 @@ public class AuthService {
                             savedUser.getInvestorProfile().name(),
                             savedUser.getNotificationPreference()
                     );
-                    System.out.println("✅ Email de boas-vindas enviado para: " + savedUser.getEmail());
+                    logger.info("✅ Email de boas-vindas enviado para: {}", savedUser.getEmail());
                 } catch (Exception e) {
-                    System.err.println("❌ Erro ao enviar email: " + e.getMessage());
-                    e.printStackTrace();
+                    logger.error("❌ Erro ao enviar email: {}", e.getMessage(), e);
                 }
             });
 
