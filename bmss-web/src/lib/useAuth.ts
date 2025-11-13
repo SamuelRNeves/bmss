@@ -18,7 +18,8 @@ type UserPatch = Partial<
   Pick<UserData, "investorProfile" | "notificationPreference" | "profileImageUrl">
 >;
 
-const PROFILE_IMAGE_MAX_CHARS = 3_600_000;
+const PROFILE_IMAGE_MAX_BYTES = 2_500_000;
+const DATA_URL_PREFIX = /^data:image\/[-+\w.]+;base64,/i;
 
 const normalizeProfileImageValue = (
   value: string | null | undefined
@@ -38,16 +39,60 @@ const normalizeProfileImageValue = (
   return trimmed.replace(/\s+/g, "");
 };
 
+const estimateBase64Size = (value: string): number => {
+  const payload = value.replace(DATA_URL_PREFIX, "");
+  return Math.ceil((payload.length * 3) / 4);
+};
+
 const enforceProfileImageLimit = (
   value: string | null | undefined
 ): string | null | undefined => {
   const normalized = normalizeProfileImageValue(value);
-  if (typeof normalized === "string" && normalized.length > PROFILE_IMAGE_MAX_CHARS) {
-    throw new Error(
-      "A imagem do perfil ficou muito grande após a otimização. Escolha um arquivo menor (até 3 MB em base64)."
-    );
+  if (typeof normalized !== "string") {
+    return normalized;
   }
+
+  if (normalized.startsWith("http://") || normalized.startsWith("https://") || normalized.startsWith("/")) {
+    return normalized;
+  }
+
+  const estimatedBytes = estimateBase64Size(normalized);
+  if (estimatedBytes > PROFILE_IMAGE_MAX_BYTES) {
+    throw new Error("A imagem do perfil excede 2.5 MB. Escolha um arquivo menor.");
+  }
+
   return normalized;
+};
+
+const resolvePublicBase = (apiBase: string): string => {
+  const sanitized = apiBase.replace(/\/+$/, "");
+  return sanitized.replace(/\/api\/v1$/i, "");
+};
+
+const resolveProfileImageSource = (
+  value: string | null | undefined,
+  apiBase: string
+): string | null | undefined => {
+  const normalized = normalizeProfileImageValue(value);
+  if (normalized === undefined) {
+    return undefined;
+  }
+
+  if (normalized === null) {
+    return null;
+  }
+
+  if (normalized.startsWith("data:image")) {
+    return normalized;
+  }
+
+  if (normalized.startsWith("http://") || normalized.startsWith("https://")) {
+    return normalized;
+  }
+
+  const publicBase = resolvePublicBase(apiBase);
+  const suffix = normalized.startsWith("/") ? normalized : `/${normalized}`;
+  return `${publicBase}${suffix}`;
 };
 
 const resolveApiBase = (): string => {
@@ -77,7 +122,21 @@ export function useAuth() {
       .get("/auth/me")
       .then((res) => {
         if (!isMounted) return;
-        setUser(res.data);
+        const payload = res.data as Partial<UserData> | undefined;
+        if (payload) {
+          const resolvedProfile = resolveProfileImageSource(payload.profileImageUrl, apiBase);
+          const normalizedUser: UserData = {
+            id: payload.id as number | undefined,
+            name: (payload.name as string) ?? "",
+            email: (payload.email as string) ?? "",
+            investorProfile: (payload.investorProfile as string) ?? "MODERADO",
+            notificationPreference: payload.notificationPreference as string | undefined,
+            profileImageUrl: resolvedProfile ?? null,
+          };
+          setUser(normalizedUser);
+        } else {
+          setUser(null);
+        }
       })
       .catch((error) => {
         if (error.response?.status === 401) {
@@ -98,7 +157,7 @@ export function useAuth() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [apiBase]);
 
   useEffect(() => {
     const handler: EventListener = (event) => {
@@ -143,8 +202,8 @@ export function useAuth() {
         }
 
         if (delta.profileImageUrl !== undefined) {
-          const normalized = normalizeProfileImageValue(delta.profileImageUrl);
-          sanitized.profileImageUrl = normalized ?? null;
+          const resolved = resolveProfileImageSource(delta.profileImageUrl, apiBase);
+          sanitized.profileImageUrl = resolved ?? null;
         }
 
         setUser((prev) => {
@@ -201,7 +260,7 @@ export function useAuth() {
 
       if (patch.profileImageUrl !== undefined) {
         const normalized = enforceProfileImageLimit(patch.profileImageUrl);
-        requestPayload.profileImageUrl = normalized ?? "";
+        requestPayload.profileImage = normalized ?? "";
       }
 
       const response = await fetch(`${apiBase}/users/${user.id}`, {
@@ -223,6 +282,10 @@ export function useAuth() {
         payload = await response.json();
       } catch {
         payload = null;
+      }
+
+      if (payload && typeof payload.token === "string" && payload.token.trim()) {
+        localStorage.setItem("jwtToken", payload.token.trim());
       }
 
       const normalized: UserPatch = {};
@@ -252,9 +315,9 @@ export function useAuth() {
           ? (payload?.profileImageUrl as string | null | undefined)
           : patch.profileImageUrl;
 
-        const normalizedProfile = normalizeProfileImageValue(rawProfileImage);
-        if (normalizedProfile !== undefined) {
-          normalized.profileImageUrl = normalizedProfile ?? null;
+        const resolvedProfile = resolveProfileImageSource(rawProfileImage ?? undefined, apiBase);
+        if (resolvedProfile !== undefined) {
+          normalized.profileImageUrl = resolvedProfile ?? null;
         }
       }
 
