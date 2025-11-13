@@ -62,10 +62,17 @@ public class AuthService {
             );
 
             // Buscar usuário após autenticação bem-sucedida
-            var user = userRepository.findByEmailIgnoreCase(sanitizedEmail);
+            User user = userRepository.findByEmailIgnoreCase(sanitizedEmail);
+            if (user == null) {
+                user = userRepository.findByEmailNormalized(sanitizedEmail);
+            }
+
             if (user == null) {
                 throw new BadCredentialsException("Credenciais inválidas");
             }
+
+            String storedEmail = user.getEmail() != null ? user.getEmail() : "";
+            boolean emailNeedsUpdate = !storedEmail.equals(sanitizedEmail);
 
             String rawPassword = request.getPassword();
             if (rawPassword == null || rawPassword.isBlank()) {
@@ -92,18 +99,28 @@ public class AuthService {
                 throw new BadCredentialsException("Credenciais inválidas");
             }
 
-            // Gerar token JWT
-            var jwtToken = jwtService.generateToken(user.getEmail());
-
             // Atualizar hash se necessário
             boolean upgradedHash = passwordEncoder.upgradeEncoding(normalizedHash);
             if (upgradedHash) {
                 user.setPasswordHash(passwordEncoder.encode(rawPassword));
-                userRepository.save(user);
                 logger.info("Atualizando hash de senha legado ({} -> delegating) para usuário {}",
                         hashType,
                         sanitizedEmail);
             }
+
+            // Corrigir email se necessário
+            if (emailNeedsUpdate) {
+                user.setEmail(sanitizedEmail);
+                logger.info("Corrigindo email com espaços extras para usuário {}", sanitizedEmail);
+            }
+
+            // Salvar atualizações se necessário
+            if (upgradedHash || emailNeedsUpdate) {
+                userRepository.save(user);
+            }
+
+            // Gerar token JWT
+            var jwtToken = jwtService.generateToken(user.getEmail());
 
             String message;
             if (upgradedHash) {
