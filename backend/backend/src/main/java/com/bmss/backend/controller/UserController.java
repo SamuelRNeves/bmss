@@ -17,7 +17,7 @@ import java.util.Optional;
 @RequestMapping("/api/v1/users")
 @CrossOrigin(origins = {
         "http://localhost:3000",
-        "https://bmss-sytem.vercel.app"
+        "https://bmss.com.br"
 }, allowCredentials = "true")
 public class UserController {
 
@@ -58,7 +58,7 @@ public class UserController {
     ) {
         try {
             String email = jwtService.extractUsernameFromAuthHeader(authHeader);
-            User user = userRepository.findByEmail(email);
+            User user = userRepository.findByEmailIgnoreCase(email);
 
             if (user == null || !user.getId().equals(id)) {
                 return ResponseEntity.status(403).body("Acesso negado");
@@ -114,7 +114,7 @@ public class UserController {
             }
 
             String email = jwtService.extractUsernameFromAuthHeader(authHeader);
-            User user = userRepository.findByEmail(email);
+            User user = userRepository.findByEmailIgnoreCase(email);
 
             if (user == null || !user.getId().equals(id)) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Acesso negado");
