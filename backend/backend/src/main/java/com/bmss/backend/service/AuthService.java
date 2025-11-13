@@ -15,7 +15,10 @@ import com.bmss.backend.util.UserSanitizer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.BadSqlGrammarException;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -45,6 +48,9 @@ public class AuthService {
 
     @Autowired
     private EmailService emailService;
+
+    @Autowired(required = false)
+    private JdbcTemplate jdbcTemplate;
 
     @Autowired
     private org.springframework.security.authentication.AuthenticationManager authenticationManager;
@@ -84,13 +90,21 @@ public class AuthService {
                 throw new BadCredentialsException("Credenciais inválidas");
             }
 
-            String normalizedHash = storedPassword.strip();
+            String normalizedHash = PasswordHashUtils.normalizeLegacyHash(storedPassword);
+            if (normalizedHash == null || normalizedHash.isEmpty()) {
+                throw new BadCredentialsException("Credenciais inválidas");
+            }
+
+            String trimmedOriginal = storedPassword.trim();
             PasswordHashType hashType = PasswordHashUtils.detectHashType(normalizedHash);
 
             // Verificar se a senha corresponde usando o PasswordEncoder
             boolean passwordMatches;
             try {
                 passwordMatches = passwordEncoder.matches(rawPassword, normalizedHash);
+                if (!passwordMatches && !trimmedOriginal.equals(normalizedHash)) {
+                    passwordMatches = passwordEncoder.matches(rawPassword, trimmedOriginal);
+                }
             } catch (IllegalArgumentException encoderError) {
                 passwordMatches = false;
             }
@@ -128,6 +142,8 @@ public class AuthService {
                     message = "Login bem-sucedido. Senha criptografada com segurança.";
                 } else if (hashType == PasswordHashType.SHA256) {
                     message = "Login bem-sucedido. Hash de senha modernizado.";
+                } else if (hashType == PasswordHashType.BCRYPT && !PasswordHashUtils.hasDelegatingPrefix(trimmedOriginal)) {
+                    message = "Login bem-sucedido. Hash BCrypt atualizado.";
                 } else {
                     message = "Login bem-sucedido";
                 }
@@ -143,6 +159,29 @@ public class AuthService {
         } catch (Exception e) {
             logger.error("Erro durante o login: ", e);
             throw new BadCredentialsException("Erro durante a autenticação");
+        }
+    }
+
+    private String fetchLegacyPassword(Integer userId) {
+        if (userId == null || jdbcTemplate == null) {
+            return null;
+        }
+
+        try {
+            String legacy = jdbcTemplate.queryForObject(
+                    "SELECT password FROM users WHERE id = ?",
+                    String.class,
+                    userId
+            );
+            return legacy != null ? legacy.trim() : null;
+        } catch (BadSqlGrammarException missingColumn) {
+            logger.debug("Coluna de senha legada ausente: {}", missingColumn.getMessage());
+            return null;
+        } catch (DataAccessException dataAccessException) {
+            logger.warn("Não foi possível recuperar senha legada para usuário {}: {}",
+                    userId,
+                    dataAccessException.getMessage());
+            return null;
         }
     }
 
@@ -208,11 +247,13 @@ public class AuthService {
                 return ResponseEntity.badRequest().body(response);
             }
 
+            String encodedPassword = passwordEncoder.encode(request.getPassword());
+
             // Criar novo usuário
             User newUser = User.builder()
                     .name(nome)
                     .email(sanitizedEmail)
-                    .passwordHash(passwordEncoder.encode(request.getPassword()))
+                    .passwordHash(encodedPassword)
                     .role(userRole)
                     .notificationPreference(notificationPreference)
                     .investorProfile(profile)

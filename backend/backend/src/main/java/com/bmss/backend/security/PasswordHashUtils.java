@@ -24,6 +24,62 @@ public final class PasswordHashUtils {
         EMPTY
     }
 
+    public static String normalizeLegacyHash(String rawStoredHash) {
+        if (rawStoredHash == null) {
+            return null;
+        }
+
+        String normalized = rawStoredHash.trim();
+
+        if (normalized.isEmpty()) {
+            return normalized;
+        }
+
+        if ((normalized.startsWith("\"") && normalized.endsWith("\""))
+                || (normalized.startsWith("'") && normalized.endsWith("'"))) {
+            normalized = normalized.substring(1, normalized.length() - 1).trim();
+        }
+
+        normalized = normalized
+                .replace("\r", "")
+                .replace("\n", "")
+                .trim();
+
+        if (normalized.isEmpty()) {
+            return normalized;
+        }
+
+        String lower = normalized.toLowerCase(Locale.ROOT);
+
+        if (lower.startsWith("bcrypt:")) {
+            int idx = normalized.indexOf(':');
+            normalized = idx >= 0 && idx + 1 < normalized.length()
+                    ? normalized.substring(idx + 1).trim()
+                    : normalized;
+        }
+
+        if (lower.startsWith("bcrypt$")) {
+            int idx = normalized.indexOf('$');
+            normalized = idx >= 0 ? normalized.substring(idx) : normalized;
+        }
+
+        if (lower.startsWith("sha256:")) {
+            int idx = normalized.indexOf(':');
+            normalized = idx >= 0 && idx + 1 < normalized.length()
+                    ? normalized.substring(idx + 1).trim()
+                    : normalized;
+        }
+
+        if (lower.startsWith("sha-256:")) {
+            int idx = normalized.indexOf(':');
+            normalized = idx >= 0 && idx + 1 < normalized.length()
+                    ? normalized.substring(idx + 1).trim()
+                    : normalized;
+        }
+
+        return normalized;
+    }
+
     public static PasswordHashType detectHashType(String rawEncodedPassword) {
         if (rawEncodedPassword == null) {
             return PasswordHashType.EMPTY;
@@ -47,6 +103,14 @@ public final class PasswordHashUtils {
         }
 
         return PasswordHashType.PLAINTEXT_OR_UNKNOWN;
+    }
+
+    public static boolean hasDelegatingPrefix(String candidate) {
+        if (candidate == null) {
+            return false;
+        }
+        String trimmed = candidate.trim();
+        return trimmed.startsWith("{") && trimmed.contains("}");
     }
 
     public static boolean isBcryptHash(String candidate) {

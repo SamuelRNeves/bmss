@@ -80,13 +80,13 @@ public class SecurityConfig {
                     return false;
                 }
 
-                String normalized = encodedPassword.trim();
-                if (normalized.isEmpty()) {
+                String normalized = PasswordHashUtils.normalizeLegacyHash(encodedPassword);
+                if (normalized == null || normalized.isEmpty()) {
                     return false;
                 }
 
                 PasswordHashType type = PasswordHashUtils.detectHashType(normalized);
-                return switch (type) {
+                boolean matches = switch (type) {
                     case DELEGATING -> delegating.matches(rawPassword, normalized);
                     case BCRYPT -> bcrypt.matches(rawPassword, normalized);
                     case SHA256 -> PasswordHashUtils.matchesSha256(rawPassword, normalized);
@@ -96,6 +96,25 @@ public class SecurityConfig {
                     );
                     case EMPTY -> false;
                 };
+
+                if (!matches) {
+                    String trimmedOriginal = encodedPassword == null ? null : encodedPassword.trim();
+                    if (trimmedOriginal != null && !trimmedOriginal.equals(normalized)) {
+                        PasswordHashType fallbackType = PasswordHashUtils.detectHashType(trimmedOriginal);
+                        matches = switch (fallbackType) {
+                            case DELEGATING -> delegating.matches(rawPassword, trimmedOriginal);
+                            case BCRYPT -> bcrypt.matches(rawPassword, trimmedOriginal);
+                            case SHA256 -> PasswordHashUtils.matchesSha256(rawPassword, trimmedOriginal);
+                            case PLAINTEXT_OR_UNKNOWN -> PasswordHashUtils.slowEquals(
+                                    trimmedOriginal,
+                                    rawPassword == null ? null : rawPassword.toString()
+                            );
+                            case EMPTY -> false;
+                        };
+                    }
+                }
+
+                return matches;
             }
 
             @Override
@@ -104,13 +123,19 @@ public class SecurityConfig {
                     return true;
                 }
 
-                String normalized = encodedPassword.trim();
-                if (normalized.isEmpty()) {
+                String normalized = PasswordHashUtils.normalizeLegacyHash(encodedPassword);
+                if (normalized == null || normalized.isEmpty()) {
                     return true;
                 }
 
                 PasswordHashType type = PasswordHashUtils.detectHashType(normalized);
-                return type == PasswordHashType.SHA256 || type == PasswordHashType.PLAINTEXT_OR_UNKNOWN;
+                return switch (type) {
+                    case DELEGATING -> false;
+                    case BCRYPT -> true;
+                    case SHA256 -> true;
+                    case PLAINTEXT_OR_UNKNOWN -> true;
+                    case EMPTY -> true;
+                };
             }
         };
     }

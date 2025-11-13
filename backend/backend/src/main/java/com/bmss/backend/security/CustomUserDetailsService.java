@@ -40,9 +40,14 @@ public class CustomUserDetailsService implements UserDetailsService {
 
         String roleName = user.getRole() != null ? user.getRole().getName() : "USER";
 
+        String resolvedPassword = user.getResolvedPasswordHash();
+        if (resolvedPassword == null || resolvedPassword.trim().isEmpty()) {
+            throw new UsernameNotFoundException("Usuário não encontrado com email: " + email);
+        }
+
         return org.springframework.security.core.userdetails.User.builder()
                 .username(user.getEmail())
-                .password(user.getPasswordHash())
+                .password(resolvedPassword.trim())
                 .roles(roleName)
                 .build();
     }
