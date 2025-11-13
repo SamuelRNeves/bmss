@@ -229,42 +229,6 @@ public class AuthService {
         }
     }
 
-    private boolean matchesAgainstKnownHashes(String rawPassword, String normalizedHash, String originalHash) {
-        try {
-            boolean matches = passwordEncoder.matches(rawPassword, normalizedHash);
-            if (!matches && originalHash != null && !originalHash.equals(normalizedHash)) {
-                matches = passwordEncoder.matches(rawPassword, originalHash);
-            }
-            return matches;
-        } catch (IllegalArgumentException encoderError) {
-            logger.warn("Falha ao validar hash legado: {}", encoderError.getMessage());
-            return false;
-        }
-    }
-
-    private String fetchLegacyPassword(Integer userId) {
-        if (userId == null || jdbcTemplate == null) {
-            return null;
-        }
-
-        try {
-            String legacy = jdbcTemplate.queryForObject(
-                    "SELECT password FROM users WHERE id = ?",
-                    String.class,
-                    userId
-            );
-            return legacy != null ? legacy.trim() : null;
-        } catch (BadSqlGrammarException missingColumn) {
-            logger.debug("Coluna de senha legada ausente: {}", missingColumn.getMessage());
-            return null;
-        } catch (DataAccessException dataAccessException) {
-            logger.warn("Não foi possível recuperar senha legada para usuário {}: {}",
-                    userId,
-                    dataAccessException.getMessage());
-            return null;
-        }
-    }
-
     // ========================================
     // 🔹 CADASTRO
     // ========================================
@@ -312,8 +276,6 @@ public class AuthService {
             );
 
             String rawProfileImage = request.getProfileImageUrl();
-
-            String encodedPassword = passwordEncoder.encode(request.getPassword());
 
             String encodedPassword = passwordEncoder.encode(request.getPassword());
 
