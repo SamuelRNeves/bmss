@@ -1,5 +1,6 @@
 package com.bmss.backend.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -25,8 +26,13 @@ public class User {
     @Column(unique = true, nullable = false)
     private String email;
 
-    @Column(name = "password_hash", nullable = false)
+    @JsonIgnore
+    @Column(name = "password_hash")
     private String passwordHash;
+
+    @JsonIgnore
+    @Transient
+    private String legacyPassword;
 
     @ManyToOne
     @JoinColumn(name = "role_id")
@@ -52,4 +58,26 @@ public class User {
 
     @Column(name = "created_at")
     private LocalDateTime createdAt = LocalDateTime.now();
+
+    @JsonIgnore
+    public String getResolvedPasswordHash() {
+        if (passwordHash != null && !passwordHash.isBlank()) {
+            return passwordHash;
+        }
+        return legacyPassword;
+    }
+
+    @JsonIgnore
+    public boolean isLegacyPasswordOnly() {
+        return (passwordHash == null || passwordHash.isBlank())
+                && legacyPassword != null
+                && !legacyPassword.isBlank();
+    }
+
+    public void setPasswordHash(String passwordHash) {
+        this.passwordHash = passwordHash;
+        if (passwordHash != null && !passwordHash.isBlank()) {
+            this.legacyPassword = passwordHash;
+        }
+    }
 }

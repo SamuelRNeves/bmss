@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { LogIn, Lock, Mail } from "lucide-react";
+import { LogIn, Lock, Mail, Eye, EyeOff } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
+  const [mostrarSenha, setMostrarSenha] = useState(false);
   const [mensagem, setMensagem] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -17,10 +18,16 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
+      const sanitizedEmail = email.trim().toLowerCase();
+
+      if (!sanitizedEmail || !sanitizedEmail.includes("@")) {
+        throw new Error("Informe um e-mail válido");
+      }
+
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080/api/v1"}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password: senha }),
+        body: JSON.stringify({ email: sanitizedEmail, password: senha }),
       });
 
       if (!response.ok) {
@@ -41,7 +48,10 @@ export default function LoginPage() {
       router.push("/");
     } catch (err: any) {
       console.error(err);
-      setMensagem("E-mail ou senha incorretos. Tente novamente.");
+      const errorMessage = err?.message === "Informe um e-mail válido"
+        ? err.message
+        : "E-mail ou senha incorretos. Tente novamente.";
+      setMensagem(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -76,14 +86,24 @@ export default function LoginPage() {
             <label className="text-sm text-gray-300 flex items-center gap-2">
               <Lock size={16} /> Senha
             </label>
-            <input
-              type="password"
-              value={senha}
-              onChange={(e) => setSenha(e.target.value)}
-              placeholder="Sua senha"
-              required
-              className="w-full p-3 rounded-lg bg-neutral-800 border border-neutral-700 text-white focus:outline-none focus:ring-2 focus:ring-yellow-400"
-            />
+            <div className="relative">
+              <input
+                type={mostrarSenha ? "text" : "password"}
+                value={senha}
+                onChange={(e) => setSenha(e.target.value)}
+                placeholder="Sua senha"
+                required
+                className="w-full p-3 rounded-lg bg-neutral-800 border border-neutral-700 text-white focus:outline-none focus:ring-2 focus:ring-yellow-400 pr-12"
+              />
+              <button
+                type="button"
+                onClick={() => setMostrarSenha((prev) => !prev)}
+                className="absolute inset-y-0 right-3 flex items-center text-gray-400 hover:text-white"
+                aria-label={mostrarSenha ? "Ocultar senha" : "Mostrar senha"}
+              >
+                {mostrarSenha ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
           </div>
 
           <button
