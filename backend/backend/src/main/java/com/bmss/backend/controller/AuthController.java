@@ -22,7 +22,7 @@ import java.util.LinkedHashMap;
 @CrossOrigin(
         origins = {
                 "http://localhost:3000",
-                "https://bmss-sytem.vercel.app",
+                "https://bmss.com.br",
                 "https://bmss-sytem-1b8p5pt9k-samuel-neves-projects.vercel.app"
         },
         allowCredentials = "true"
@@ -95,7 +95,7 @@ public class AuthController {
 
             log.info("🔍 Buscando usuário: {}", email);
 
-            User user = userRepository.findByEmail(email);
+            User user = userRepository.findByEmailIgnoreCase(email);
             if (user == null) {
                 log.error("❌ Usuário não encontrado para email: {}", email);
                 return ResponseEntity.status(404).body(Map.of("error", "Usuário não encontrado"));

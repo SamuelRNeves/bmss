@@ -9,15 +9,14 @@ import com.bmss.backend.model.User.InvestorProfile;
 import com.bmss.backend.repository.RoleRepository;
 import com.bmss.backend.repository.UserRepository;
 import com.bmss.backend.security.JwtService;
+import com.bmss.backend.security.PasswordHashUtils;
+import com.bmss.backend.security.PasswordHashUtils.PasswordHashType;
 import com.bmss.backend.util.UserSanitizer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -29,9 +28,6 @@ import java.util.concurrent.CompletableFuture;
 public class AuthService {
 
     private static final Logger logger = LoggerFactory.getLogger(AuthService.class);
-
-    @Autowired
-    private AuthenticationManager authenticationManager;
 
     @Autowired
     private JwtService jwtService;
@@ -53,21 +49,80 @@ public class AuthService {
     // ========================================
     public AuthResponse login(AuthRequest request) {
         try {
-            authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
-            );
+            String sanitizedEmail = UserSanitizer.normalizeEmail(request.getEmail());
 
-            var user = userRepository.findByEmail(request.getEmail());
+            User user = userRepository.findByEmailIgnoreCase(sanitizedEmail);
+            if (user == null) {
+                user = userRepository.findByEmailNormalized(sanitizedEmail);
+            }
+
             if (user == null) {
                 throw new BadCredentialsException("Credenciais inválidas");
             }
 
+            String storedEmail = user.getEmail() != null ? user.getEmail() : "";
+            boolean emailNeedsUpdate = !storedEmail.equals(sanitizedEmail);
+
+            String rawPassword = request.getPassword();
+            if (rawPassword == null || rawPassword.isBlank()) {
+                throw new BadCredentialsException("Credenciais inválidas");
+            }
+
+            String storedPassword = user.getPasswordHash();
+            if (storedPassword == null || storedPassword.isBlank()) {
+                throw new BadCredentialsException("Credenciais inválidas");
+            }
+
+            String normalizedHash = storedPassword.strip();
+            PasswordHashType hashType = PasswordHashUtils.detectHashType(normalizedHash);
+
+            boolean passwordMatches;
+            try {
+                passwordMatches = passwordEncoder.matches(rawPassword, normalizedHash);
+            } catch (IllegalArgumentException encoderError) {
+                passwordMatches = false;
+            }
+
+            if (!passwordMatches) {
+                throw new BadCredentialsException("Credenciais inválidas");
+            }
+
+            boolean upgradedHash = passwordEncoder.upgradeEncoding(normalizedHash);
+            if (upgradedHash) {
+                user.setPasswordHash(passwordEncoder.encode(rawPassword));
+                logger.info("Atualizando hash de senha legado ({} -> delegating) para usuário {}",
+                        hashType,
+                        sanitizedEmail);
+            }
+
+            if (emailNeedsUpdate) {
+                user.setEmail(sanitizedEmail);
+                logger.info("Corrigindo email com espaços extras para usuário {}", sanitizedEmail);
+            }
+
+            if (upgradedHash || emailNeedsUpdate) {
+                userRepository.save(user);
+            }
+
             var jwtToken = jwtService.generateToken(user.getEmail());
 
-            return new AuthResponse(jwtToken, null, "Login bem-sucedido");
+            String message;
+            if (upgradedHash) {
+                if (hashType == PasswordHashType.PLAINTEXT_OR_UNKNOWN) {
+                    message = "Login bem-sucedido. Senha criptografada com segurança.";
+                } else if (hashType == PasswordHashType.SHA256) {
+                    message = "Login bem-sucedido. Hash de senha modernizado.";
+                } else {
+                    message = "Login bem-sucedido";
+                }
+            } else {
+                message = "Login bem-sucedido";
+            }
+
+            return new AuthResponse(jwtToken, null, message);
         } catch (BadCredentialsException e) {
             throw e;
-        } catch (AuthenticationException e) {
+        } catch (IllegalArgumentException e) {
             throw new BadCredentialsException("Credenciais inválidas", e);
         }
     }
@@ -78,7 +133,9 @@ public class AuthService {
     public ResponseEntity<?> register(RegisterRequest request) {
         try {
             // Verificar se o email já existe
-            if (userRepository.findByEmail(request.getEmail()) != null) {
+            String sanitizedEmail = UserSanitizer.normalizeEmail(request.getEmail());
+
+            if (userRepository.findByEmailIgnoreCase(sanitizedEmail) != null) {
                 Map<String, String> response = new HashMap<>();
                 response.put("error", "Email já está cadastrado para receber notificações");
                 return ResponseEntity.badRequest().body(response);
@@ -97,9 +154,12 @@ public class AuthService {
             }
 
             // Converter string para enum InvestorProfile
+            String investorProfileRaw = request.getInvestorProfile();
             InvestorProfile profile;
             try {
-                profile = InvestorProfile.valueOf(request.getInvestorProfile().toUpperCase());
+                profile = investorProfileRaw != null
+                        ? InvestorProfile.valueOf(investorProfileRaw.trim().toUpperCase())
+                        : InvestorProfile.MODERADO;
             } catch (Exception e) {
                 profile = InvestorProfile.MODERADO; // valor padrão
             }
@@ -120,7 +180,7 @@ public class AuthService {
             // Criar novo usuário
             User newUser = User.builder()
                     .name(nome)
-                    .email(request.getEmail())
+                    .email(sanitizedEmail)
                     .passwordHash(passwordEncoder.encode(request.getPassword()))
                     .role(userRole)
                     .notificationPreference(notificationPreference)
@@ -167,6 +227,10 @@ public class AuthService {
 
             return ResponseEntity.ok(response);
 
+        } catch (IllegalArgumentException e) {
+            Map<String, String> response = new HashMap<>();
+            response.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(response);
         } catch (Exception e) {
             logger.error("Erro no cadastro: ", e);
             Map<String, String> response = new HashMap<>();
