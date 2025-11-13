@@ -17,6 +17,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -44,6 +46,9 @@ public class AuthService {
     @Autowired
     private EmailService emailService;
 
+    @Autowired
+    private org.springframework.security.authentication.AuthenticationManager authenticationManager;
+
     // ========================================
     // 🔹 LOGIN
     // ========================================
@@ -51,6 +56,12 @@ public class AuthService {
         try {
             String sanitizedEmail = UserSanitizer.normalizeEmail(request.getEmail());
 
+            // Autenticar usando Spring Security
+            Authentication authentication = authenticationManager.authenticate(
+                new UsernamePasswordAuthenticationToken(sanitizedEmail, request.getPassword())
+            );
+
+            // Buscar usuário após autenticação bem-sucedida
             var user = userRepository.findByEmailIgnoreCase(sanitizedEmail);
             if (user == null) {
                 throw new BadCredentialsException("Credenciais inválidas");
@@ -69,6 +80,7 @@ public class AuthService {
             String normalizedHash = storedPassword.strip();
             PasswordHashType hashType = PasswordHashUtils.detectHashType(normalizedHash);
 
+            // Verificar se a senha corresponde usando o PasswordEncoder
             boolean passwordMatches;
             try {
                 passwordMatches = passwordEncoder.matches(rawPassword, normalizedHash);
@@ -80,8 +92,10 @@ public class AuthService {
                 throw new BadCredentialsException("Credenciais inválidas");
             }
 
+            // Gerar token JWT
             var jwtToken = jwtService.generateToken(user.getEmail());
 
+            // Atualizar hash se necessário
             boolean upgradedHash = passwordEncoder.upgradeEncoding(normalizedHash);
             if (upgradedHash) {
                 user.setPasswordHash(passwordEncoder.encode(rawPassword));
@@ -109,6 +123,9 @@ public class AuthService {
             throw e;
         } catch (IllegalArgumentException e) {
             throw new BadCredentialsException("Credenciais inválidas", e);
+        } catch (Exception e) {
+            logger.error("Erro durante o login: ", e);
+            throw new BadCredentialsException("Erro durante a autenticação");
         }
     }
 
@@ -127,7 +144,12 @@ public class AuthService {
             }
 
             // Validação de nome
-            String nome = request.getName() != null ? request.getName() : "";
+            String nome = request.getName() != null ? request.getName().trim() : "";
+            if (nome.isEmpty()) {
+                Map<String, String> response = new HashMap<>();
+                response.put("error", "Nome é obrigatório");
+                return ResponseEntity.badRequest().body(response);
+            }
 
             // Buscar role padrão (USER)
             Role userRole = roleRepository.findByName("USER");
@@ -162,6 +184,13 @@ public class AuthService {
                 return ResponseEntity.badRequest().body(response);
             }
 
+            // Validar senha
+            if (request.getPassword() == null || request.getPassword().trim().length() < 6) {
+                Map<String, String> response = new HashMap<>();
+                response.put("error", "Senha deve ter pelo menos 6 caracteres");
+                return ResponseEntity.badRequest().body(response);
+            }
+
             // Criar novo usuário
             User newUser = User.builder()
                     .name(nome)
@@ -176,7 +205,7 @@ public class AuthService {
             User savedUser = userRepository.save(newUser);
 
             // Enviar email de boas-vindas (assíncrono)
-            System.out.println("👤 Usuário salvo no banco: " + savedUser.getEmail());
+            logger.info("👤 Usuário salvo no banco: {}", savedUser.getEmail());
             CompletableFuture.runAsync(() -> {
                 try {
                     emailService.enviarEmailBoasVindas(
@@ -185,10 +214,9 @@ public class AuthService {
                             savedUser.getInvestorProfile().name(),
                             savedUser.getNotificationPreference()
                     );
-                    System.out.println("✅ Email de boas-vindas enviado para: " + savedUser.getEmail());
+                    logger.info("✅ Email de boas-vindas enviado para: {}", savedUser.getEmail());
                 } catch (Exception e) {
-                    System.err.println("❌ Erro ao enviar email: " + e.getMessage());
-                    e.printStackTrace();
+                    logger.error("❌ Erro ao enviar email: {}", e.getMessage(), e);
                 }
             });
 
