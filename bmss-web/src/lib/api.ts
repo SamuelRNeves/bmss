@@ -917,7 +917,7 @@ export async function getNotifications(
 
     const data = rawData
       .map((item: unknown, index: number) => mapNotificationPayload(item, index))
-      .filter((item): item is NotificationPayload => Boolean(item));
+      .filter((item: NotificationPayload | null): item is NotificationPayload => Boolean(item));
 
     const metaRecord = isRecord(payload.meta) ? payload.meta : {};
     const total = typeof metaRecord.total === "number" ? metaRecord.total : data.length;
