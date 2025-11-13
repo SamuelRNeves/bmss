@@ -92,7 +92,7 @@ public class ProfileImageStorageService {
             Files.createDirectories(userFolder);
             Path destination = userFolder.resolve(fileName);
             Files.write(destination, data, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-            return publicPrefix + "/" + storageRoot.relativize(destination).toString().replace('\\\', '/');
+            return publicPrefix + "/" + storageRoot.relativize(destination).toString().replace('\\', '/');
         } catch (IOException ioException) {
             logger.error("Falha ao salvar imagem de perfil", ioException);
             throw new IllegalStateException("Não foi possível salvar a imagem de perfil. Tente novamente mais tarde.", ioException);

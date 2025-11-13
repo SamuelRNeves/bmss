@@ -21,8 +21,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.BadSqlGrammarException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.BadCredentialsException;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -59,9 +57,6 @@ public class AuthService {
     @Autowired(required = false)
     private JdbcTemplate jdbcTemplate;
 
-    @Autowired
-    private org.springframework.security.authentication.AuthenticationManager authenticationManager;
-
     // ========================================
     // 🔹 LOGIN
     // ========================================
@@ -69,12 +64,6 @@ public class AuthService {
         try {
             String sanitizedEmail = UserSanitizer.normalizeEmail(request.getEmail());
 
-            // Autenticar usando Spring Security
-            Authentication authentication = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(sanitizedEmail, request.getPassword())
-            );
-
-            // Buscar usuário após autenticação bem-sucedida
             User user = userRepository.findByEmailIgnoreCase(sanitizedEmail);
             if (user == null) {
                 user = userRepository.findByEmailNormalized(sanitizedEmail);
@@ -240,6 +229,42 @@ public class AuthService {
         }
     }
 
+    private boolean matchesAgainstKnownHashes(String rawPassword, String normalizedHash, String originalHash) {
+        try {
+            boolean matches = passwordEncoder.matches(rawPassword, normalizedHash);
+            if (!matches && originalHash != null && !originalHash.equals(normalizedHash)) {
+                matches = passwordEncoder.matches(rawPassword, originalHash);
+            }
+            return matches;
+        } catch (IllegalArgumentException encoderError) {
+            logger.warn("Falha ao validar hash legado: {}", encoderError.getMessage());
+            return false;
+        }
+    }
+
+    private String fetchLegacyPassword(Integer userId) {
+        if (userId == null || jdbcTemplate == null) {
+            return null;
+        }
+
+        try {
+            String legacy = jdbcTemplate.queryForObject(
+                    "SELECT password FROM users WHERE id = ?",
+                    String.class,
+                    userId
+            );
+            return legacy != null ? legacy.trim() : null;
+        } catch (BadSqlGrammarException missingColumn) {
+            logger.debug("Coluna de senha legada ausente: {}", missingColumn.getMessage());
+            return null;
+        } catch (DataAccessException dataAccessException) {
+            logger.warn("Não foi possível recuperar senha legada para usuário {}: {}",
+                    userId,
+                    dataAccessException.getMessage());
+            return null;
+        }
+    }
+
     // ========================================
     // 🔹 CADASTRO
     // ========================================
@@ -288,12 +313,7 @@ public class AuthService {
 
             String rawProfileImage = request.getProfileImageUrl();
 
-            // Validar senha
-            if (request.getPassword() == null || request.getPassword().trim().length() < 6) {
-                Map<String, String> response = new HashMap<>();
-                response.put("error", "Senha deve ter pelo menos 6 caracteres");
-                return ResponseEntity.badRequest().body(response);
-            }
+            String encodedPassword = passwordEncoder.encode(request.getPassword());
 
             String encodedPassword = passwordEncoder.encode(request.getPassword());
 
