@@ -112,6 +112,13 @@
             <version>${lombok.version}</version>
             <scope>compileOnly</scope>
         </dependency>
+
+        <!-- Cloudinary -->
+<dependency>
+    <groupId>com.cloudinary</groupId>
+    <artifactId>cloudinary-http44</artifactId>
+    <version>1.38.0</version>
+</dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>

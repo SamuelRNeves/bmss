@@ -229,135 +229,140 @@ public class AuthService {
         }
     }
 
-    // ========================================
-    // 🔹 CADASTRO
-    // ========================================
-    public ResponseEntity<?> register(RegisterRequest request) {
-        try {
-            // Verificar se o email já existe
-            String sanitizedEmail = UserSanitizer.normalizeEmail(request.getEmail());
+   // ========================================
+// 🔹 CADASTRO
+// ========================================
+public ResponseEntity<?> register(RegisterRequest request) {
+    User savedUser = null; // Declarar fora do bloco try para evitar o problema
+    
+    try {
+        // Verificar se o email já existe
+        String sanitizedEmail = UserSanitizer.normalizeEmail(request.getEmail());
 
-            if (userRepository.findByEmailIgnoreCase(sanitizedEmail) != null) {
-                Map<String, String> response = new HashMap<>();
-                response.put("error", "Email já está cadastrado para receber notificações");
-                return ResponseEntity.badRequest().body(response);
-            }
-
-            // Validação de nome
-            String nome = request.getName() != null ? request.getName().trim() : "";
-            if (nome.isEmpty()) {
-                Map<String, String> response = new HashMap<>();
-                response.put("error", "Nome é obrigatório");
-                return ResponseEntity.badRequest().body(response);
-            }
-
-            // Buscar role padrão (USER)
-            Role userRole = roleRepository.findByName("USER");
-            if (userRole == null) {
-                userRole = Role.builder()
-                        .name("USER")
-                        .build();
-                roleRepository.save(userRole);
-            }
-
-            // Converter string para enum InvestorProfile
-            String investorProfileRaw = request.getInvestorProfile();
-            InvestorProfile profile;
-            try {
-                profile = investorProfileRaw != null
-                        ? InvestorProfile.valueOf(investorProfileRaw.trim().toUpperCase())
-                        : InvestorProfile.MODERADO;
-            } catch (Exception e) {
-                profile = InvestorProfile.MODERADO; // valor padrão
-            }
-
-            String notificationPreference = UserSanitizer.normalizeNotificationPreference(
-                    request.getNotificationPreference()
-            );
-
-            String rawProfileImage = request.getProfileImageUrl();
-
-            String encodedPassword = passwordEncoder.encode(request.getPassword());
-
-            // Criar novo usuário
-            User newUser = User.builder()
-                    .name(nome)
-                    .email(sanitizedEmail)
-                    .passwordHash(encodedPassword)
-                    .role(userRole)
-                    .notificationPreference(notificationPreference)
-                    .investorProfile(profile)
-                    .profileImageUrl(null)
-                    .build();
-
-            User savedUser = userRepository.save(newUser);
-
-            if (rawProfileImage != null && !rawProfileImage.trim().isEmpty()) {
-                try {
-                    String storedValue;
-                    if (profileImageStorageService.isDataUrl(rawProfileImage)) {
-                        storedValue = profileImageStorageService.storeBase64Image(rawProfileImage, savedUser.getId());
-                    } else {
-                        storedValue = UserSanitizer.sanitizeProfileImageUrl(rawProfileImage);
-                    }
-                    savedUser.setProfileImageUrl(storedValue);
-                    savedUser = userRepository.save(savedUser);
-                } catch (IllegalArgumentException imageError) {
-                    Map<String, String> response = new HashMap<>();
-                    response.put("error", imageError.getMessage());
-                    return ResponseEntity.badRequest().body(response);
-                } catch (IllegalStateException storageError) {
-                    Map<String, String> response = new HashMap<>();
-                    response.put("error", "Não foi possível salvar a imagem de perfil. Tente novamente com um arquivo menor.");
-                    return ResponseEntity.status(500).body(response);
-                }
-            }
-
-            // Enviar email de boas-vindas (assíncrono)
-            logger.info("👤 Usuário salvo no banco: {}", savedUser.getEmail());
-            CompletableFuture.runAsync(() -> {
-                try {
-                    emailService.enviarEmailBoasVindas(
-                            savedUser.getEmail(),
-                            savedUser.getName(),
-                            savedUser.getInvestorProfile().name(),
-                            savedUser.getNotificationPreference()
-                    );
-                    logger.info("✅ Email de boas-vindas enviado para: {}", savedUser.getEmail());
-                } catch (Exception e) {
-                    logger.error("❌ Erro ao enviar email: {}", e.getMessage(), e);
-                }
-            });
-
-            // Gerar token JWT
-            var jwtToken = jwtService.generateToken(savedUser.getEmail());
-
-            // Montar resposta
-            Map<String, Object> userData = new HashMap<>();
-            userData.put("id", savedUser.getId());
-            userData.put("name", savedUser.getName());
-            userData.put("email", savedUser.getEmail());
-            userData.put("notificationPreference", savedUser.getNotificationPreference());
-            userData.put("investorProfile", savedUser.getInvestorProfile().name());
-            userData.put("profileImageUrl", savedUser.getProfileImageUrl());
-
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
-            response.put("message", "Cadastro realizado com sucesso!");
-            response.put("token", jwtToken);
-            response.put("user", userData);
-
-            return ResponseEntity.ok(response);
-
-        } catch (IllegalArgumentException e) {
+        if (userRepository.findByEmailIgnoreCase(sanitizedEmail) != null) {
             Map<String, String> response = new HashMap<>();
-            response.put("error", e.getMessage());
-            return ResponseEntity.badRequest().body(response);
-        } catch (Exception e) {
-            logger.error("Erro no cadastro: ", e);
-            Map<String, String> response = new HashMap<>();
-            response.put("error", "Erro ao realizar cadastro. Tente novamente.");
+            response.put("error", "Email já está cadastrado para receber notificações");
             return ResponseEntity.badRequest().body(response);
         }
+
+        // Validação de nome
+        String nome = request.getName() != null ? request.getName().trim() : "";
+        if (nome.isEmpty()) {
+            Map<String, String> response = new HashMap<>();
+            response.put("error", "Nome é obrigatório");
+            return ResponseEntity.badRequest().body(response);
+        }
+
+        // Buscar role padrão (USER)
+        Role userRole = roleRepository.findByName("USER");
+        if (userRole == null) {
+            userRole = Role.builder()
+                    .name("USER")
+                    .build();
+            roleRepository.save(userRole);
+        }
+
+        // Converter string para enum InvestorProfile
+        String investorProfileRaw = request.getInvestorProfile();
+        InvestorProfile profile;
+        try {
+            profile = investorProfileRaw != null
+                    ? InvestorProfile.valueOf(investorProfileRaw.trim().toUpperCase())
+                    : InvestorProfile.MODERADO;
+        } catch (Exception e) {
+            profile = InvestorProfile.MODERADO; // valor padrão
+        }
+
+        String notificationPreference = UserSanitizer.normalizeNotificationPreference(
+                request.getNotificationPreference()
+        );
+
+        String rawProfileImage = request.getProfileImageUrl();
+
+        String encodedPassword = passwordEncoder.encode(request.getPassword());
+
+        // Criar novo usuário
+        User newUser = User.builder()
+                .name(nome)
+                .email(sanitizedEmail)
+                .passwordHash(encodedPassword)
+                .role(userRole)
+                .notificationPreference(notificationPreference)
+                .investorProfile(profile)
+                .profileImageUrl(null)
+                .build();
+
+        savedUser = userRepository.save(newUser);
+
+        // Criar uma referência final para usar na lambda
+        final User finalSavedUser = savedUser;
+
+        if (rawProfileImage != null && !rawProfileImage.trim().isEmpty()) {
+            try {
+                String storedValue;
+                if (profileImageStorageService.isDataUrl(rawProfileImage)) {
+                    storedValue = profileImageStorageService.storeBase64Image(rawProfileImage, finalSavedUser.getId());
+                } else {
+                    storedValue = UserSanitizer.sanitizeProfileImageUrl(rawProfileImage);
+                }
+                finalSavedUser.setProfileImageUrl(storedValue);
+                userRepository.save(finalSavedUser);
+            } catch (IllegalArgumentException imageError) {
+                Map<String, String> response = new HashMap<>();
+                response.put("error", imageError.getMessage());
+                return ResponseEntity.badRequest().body(response);
+            } catch (IllegalStateException storageError) {
+                Map<String, String> response = new HashMap<>();
+                response.put("error", "Não foi possível salvar a imagem de perfil. Tente novamente com um arquivo menor.");
+                return ResponseEntity.status(500).body(response);
+            }
+        }
+
+        // Enviar email de boas-vindas (assíncrono)
+        logger.info("👤 Usuário salvo no banco: {}", finalSavedUser.getEmail());
+        CompletableFuture.runAsync(() -> {
+            try {
+                emailService.enviarEmailBoasVindas(
+                        finalSavedUser.getEmail(),
+                        finalSavedUser.getName(),
+                        finalSavedUser.getInvestorProfile().name(),
+                        finalSavedUser.getNotificationPreference()
+                );
+                logger.info("✅ Email de boas-vindas enviado para: {}", finalSavedUser.getEmail());
+            } catch (Exception e) {
+                logger.error("❌ Erro ao enviar email: {}", e.getMessage(), e);
+            }
+        });
+
+        // Gerar token JWT
+        var jwtToken = jwtService.generateToken(finalSavedUser.getEmail());
+
+        // Montar resposta
+        Map<String, Object> userData = new HashMap<>();
+        userData.put("id", finalSavedUser.getId());
+        userData.put("name", finalSavedUser.getName());
+        userData.put("email", finalSavedUser.getEmail());
+        userData.put("notificationPreference", finalSavedUser.getNotificationPreference());
+        userData.put("investorProfile", finalSavedUser.getInvestorProfile().name());
+        userData.put("profileImageUrl", finalSavedUser.getProfileImageUrl());
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("message", "Cadastro realizado com sucesso!");
+        response.put("token", jwtToken);
+        response.put("user", userData);
+
+        return ResponseEntity.ok(response);
+
+    } catch (IllegalArgumentException e) {
+        Map<String, String> response = new HashMap<>();
+        response.put("error", e.getMessage());
+        return ResponseEntity.badRequest().body(response);
+    } catch (Exception e) {
+        logger.error("Erro no cadastro: ", e);
+        Map<String, String> response = new HashMap<>();
+        response.put("error", "Erro ao realizar cadastro. Tente novamente.");
+        return ResponseEntity.badRequest().body(response);
     }
+}
 }
