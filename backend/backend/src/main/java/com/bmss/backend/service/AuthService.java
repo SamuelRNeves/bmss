@@ -20,6 +20,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.BadSqlGrammarException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -53,6 +55,9 @@ public class AuthService {
     @Autowired(required = false)
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private org.springframework.security.authentication.AuthenticationManager authenticationManager;
+
     // ========================================
     // 🔹 LOGIN
     // ========================================
@@ -60,6 +65,12 @@ public class AuthService {
         try {
             String sanitizedEmail = UserSanitizer.normalizeEmail(request.getEmail());
 
+            // Autenticar usando Spring Security
+            Authentication authentication = authenticationManager.authenticate(
+                new UsernamePasswordAuthenticationToken(sanitizedEmail, request.getPassword())
+            );
+
+            // Buscar usuário após autenticação bem-sucedida
             User user = userRepository.findByEmailIgnoreCase(sanitizedEmail);
             if (user == null) {
                 user = userRepository.findByEmailNormalized(sanitizedEmail);
@@ -183,6 +194,9 @@ public class AuthService {
             throw e;
         } catch (IllegalArgumentException e) {
             throw new BadCredentialsException("Credenciais inválidas", e);
+        } catch (Exception e) {
+            logger.error("Erro durante o login: ", e);
+            throw new BadCredentialsException("Erro durante a autenticação");
         }
     }
 
@@ -196,29 +210,6 @@ public class AuthService {
         } catch (IllegalArgumentException encoderError) {
             logger.warn("Falha ao validar hash legado: {}", encoderError.getMessage());
             return false;
-        }
-    }
-
-    private String fetchLegacyPassword(Integer userId) {
-        if (userId == null || jdbcTemplate == null) {
-            return null;
-        }
-
-        try {
-            String legacy = jdbcTemplate.queryForObject(
-                    "SELECT password FROM users WHERE id = ?",
-                    String.class,
-                    userId
-            );
-            return legacy != null ? legacy.trim() : null;
-        } catch (BadSqlGrammarException missingColumn) {
-            logger.debug("Coluna de senha legada ausente: {}", missingColumn.getMessage());
-            return null;
-        } catch (DataAccessException dataAccessException) {
-            logger.warn("Não foi possível recuperar senha legada para usuário {}: {}",
-                    userId,
-                    dataAccessException.getMessage());
-            return null;
         }
     }
 
@@ -237,7 +228,12 @@ public class AuthService {
             }
 
             // Validação de nome
-            String nome = request.getName() != null ? request.getName() : "";
+            String nome = request.getName() != null ? request.getName().trim() : "";
+            if (nome.isEmpty()) {
+                Map<String, String> response = new HashMap<>();
+                response.put("error", "Nome é obrigatório");
+                return ResponseEntity.badRequest().body(response);
+            }
 
             // Buscar role padrão (USER)
             Role userRole = roleRepository.findByName("USER");
@@ -272,6 +268,13 @@ public class AuthService {
                 return ResponseEntity.badRequest().body(response);
             }
 
+            // Validar senha
+            if (request.getPassword() == null || request.getPassword().trim().length() < 6) {
+                Map<String, String> response = new HashMap<>();
+                response.put("error", "Senha deve ter pelo menos 6 caracteres");
+                return ResponseEntity.badRequest().body(response);
+            }
+
             String encodedPassword = passwordEncoder.encode(request.getPassword());
 
             // Criar novo usuário
@@ -288,7 +291,7 @@ public class AuthService {
             User savedUser = userRepository.save(newUser);
 
             // Enviar email de boas-vindas (assíncrono)
-            System.out.println("👤 Usuário salvo no banco: " + savedUser.getEmail());
+            logger.info("👤 Usuário salvo no banco: {}", savedUser.getEmail());
             CompletableFuture.runAsync(() -> {
                 try {
                     emailService.enviarEmailBoasVindas(
@@ -297,10 +300,9 @@ public class AuthService {
                             savedUser.getInvestorProfile().name(),
                             savedUser.getNotificationPreference()
                     );
-                    System.out.println("✅ Email de boas-vindas enviado para: " + savedUser.getEmail());
+                    logger.info("✅ Email de boas-vindas enviado para: {}", savedUser.getEmail());
                 } catch (Exception e) {
-                    System.err.println("❌ Erro ao enviar email: " + e.getMessage());
-                    e.printStackTrace();
+                    logger.error("❌ Erro ao enviar email: {}", e.getMessage(), e);
                 }
             });
 

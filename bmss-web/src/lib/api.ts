@@ -1,8 +1,6 @@
 // lib/api.ts
 import axios, { AxiosError } from "axios";
 
-
-
 // =====================================================
 // 🔧 Configuração global do Axios
 // =====================================================
@@ -76,8 +74,6 @@ api.interceptors.request.use((config) => {
 
   return config;
 });
-
-
 
 const COINGECKO_BASE_URL =
   process.env.NEXT_PUBLIC_COINGECKO_BASE_URL ||
@@ -759,7 +755,6 @@ function generateRealisticTrends() {
 // 👤 FUNÇÕES DE CADASTRO
 // =====================================================
 
-
 export async function cadastrarUsuario(dados: {
   name: string;
   email: string;
@@ -798,8 +793,6 @@ export async function cadastrarUsuario(dados: {
     };
   }
 }
-
-
 
 // =====================================================
 // 🔔 NOTIFICAÇÕES BASEADAS EM ANÁLISES
@@ -949,7 +942,6 @@ export async function getNotifications(
   }
 }
 
-
 // =====================================================
 // 📰 NOTÍCIAS e TWEETS
 // =====================================================
@@ -1065,61 +1057,4 @@ function processarDadosHistoricos(data: any, dias: number): HistoricoData {
       volume: Math.round(volume / 1000000)
     })),
     periodo: `${dias} dias`,
-    atualizado: new Date(prices[prices.length - 1][0]).toISOString(),
-    isFallback: false
-  };
-}
-
-// Fallback para histórico de 30 dias/1 ano
-function gerarDadosHistoricosFallback(dias: number): HistoricoData {
-  const prices: PricePoint[] = [];
-  const volumes: VolumePoint[] = [];
-  const basePrice = 45000;
-  const today = new Date();
-  
-  for (let i = dias; i >= 0; i--) {
-    const date = new Date();
-    date.setDate(today.getDate() - i);
-    
-    const variation = (Math.random() - 0.5) * 0.1;
-    const price = basePrice * (1 + variation * (i / dias));
-    const volume = 25000 + Math.random() * 15000;
-    
-    prices.push({
-      date: date.toLocaleDateString('pt-BR'),
-      timestamp: date.getTime(),
-      price: Number(price.toFixed(2)),
-      priceFormatted: new Intl.NumberFormat('pt-BR', {
-        style: 'currency',
-        currency: 'USD'
-      }).format(price)
-    });
-    
-    volumes.push({
-      date: date.toLocaleDateString('pt-BR'),
-      timestamp: date.getTime(),
-      volume: Math.round(volume)
-    });
-  }
-  
-  return {
-    prices,
-    volumes,
-    periodo: `${dias} dias`,
-    atualizado: new Date().toISOString(),
-    isFallback: true
-  };
-}
-
-// =====================================================
-// 📊 ENDPOINTS ADICIONAIS PARA HISTÓRICO
-// =====================================================
-export async function getBitcoinHistorico30Dias(): Promise<ApiResponse<HistoricoData>> {
-  return getBitcoinHistorico(30);
-}
-
-export async function getBitcoinHistorico1Ano(): Promise<ApiResponse<HistoricoData>> {
-  return getBitcoinHistorico(365);
-}
-
-export default api;
+    atualizado: new Date
