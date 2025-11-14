@@ -22,6 +22,13 @@ import { useAuth } from "@/lib/useAuth";
 import BitcoinPriceClient from "../BitcoinPriceClient";
 import { ErrorBoundary } from "next/dist/client/components/error-boundary";
 import { SentimentDistribution } from "@/componentes/charts/sentiment-distribution";
+import DailyHighlightCard from "@/componentes/home/DailyHighlightCard";
+import {
+  FeedItem,
+  createFallbackNews,
+  createFallbackTweet,
+  mapApiItemToFeedItem,
+} from "@/componentes/news/feed-utils";
 
 // LAZY LOAD DE TODOS OS COMPONENTES PESADOS
 const Recomendacoes = React.lazy(() => import("@/componentes/Recomendacoes"));
@@ -48,22 +55,240 @@ const INITIAL_STATS: DashboardStats = {
   neutralSentiment: 0,
 };
 
-const generateFallbackNews = () => Array.from({ length: 24 }, (_, i) => ({
-  id: i + 1,
-  titulo: `Notícia Bitcoin ${i + 1}`,
-  descricao: `Descrição da notícia sobre Bitcoin ${i + 1}`,
-  sentiment: ["positive", "negative", "neutral"][i % 3],
-  dataPublicacao: new Date().toISOString(),
-  fonte: "Fonte de Exemplo",
-}));
+const generateFallbackNews = (): FeedItem[] =>
+  Array.from({ length: 24 }, (_, index) => {
+    const base = createFallbackNews();
+    const publishedAt = new Date(Date.now() - index * 60 * 60 * 1000).toISOString();
+    return {
+      ...base,
+      title: `Notícia Bitcoin ${index + 1}`,
+      description: `Atualização #${index + 1} sobre o comportamento do Bitcoin e seus efeitos no mercado cripto institucional.`,
+      source: index % 2 === 0 ? "BMSS Insights" : "CryptoNewsWire",
+      date: publishedAt,
+      sentiment: ["positive", "negative", "neutral"][index % 3] as FeedItem["sentiment"],
+      score: Math.max(0.32, Math.min(0.92, base.score - index * 0.015)),
+      url: base.url === "#" ? `https://bmss.digital/noticia/${index + 1}` : base.url,
+      isTweet: false,
+    };
+  });
 
-const generateFallbackTweets = () => Array.from({ length: 156 }, (_, i) => ({
-  id: i + 1,
-  text: `Tweet sobre Bitcoin ${i + 1} #BTC #Crypto`,
-  usuario: `user${i + 1}`,
-  sentiment: ["positive", "negative", "neutral"][i % 3],
-  dataCriacao: new Date().toISOString(),
-}));
+const generateFallbackTweets = (): FeedItem[] =>
+  Array.from({ length: 156 }, (_, index) => {
+    const base = createFallbackTweet();
+    const publishedAt = new Date(Date.now() - index * 15 * 60 * 1000).toISOString();
+    return {
+      ...base,
+      title: `Tweet Bitcoin ${index + 1}`,
+      description: `Comentário #${index + 1} sobre Bitcoin, ETFs e movimentos de mercado capturado pelo BMSS.`,
+      source: index % 2 === 0 ? "@bmss_ai" : "@onchainintel",
+      date: publishedAt,
+      sentiment: ["positive", "negative", "neutral"][index % 3] as FeedItem["sentiment"],
+      score: Math.max(0.28, Math.min(0.88, base.score - index * 0.004)),
+      url: base.url,
+      tweetUrl: base.tweetUrl,
+      isTweet: true,
+    };
+  });
+
+const DAILY_HIGHLIGHT_STORAGE_KEY = "bmss:daily-highlight:v1";
+
+interface StoredHeadlinePayload {
+  generatedAt: string;
+  headline: FeedItem;
+}
+
+type SentimentTrendPoint = {
+  label: string;
+  positive: number;
+  negative: number;
+  neutral: number;
+};
+
+const buildSentimentTrend = (
+  items: FeedItem[],
+  options: { buckets?: number; defaultRatios?: { positive: number; negative: number; neutral: number } } = {}
+): SentimentTrendPoint[] => {
+  const bucketCount = options.buckets ?? 7;
+  type TrendSlice = Pick<SentimentTrendPoint, "positive" | "negative" | "neutral">;
+  const normalizePercentages = (positive: number, negative: number, neutral: number): TrendSlice => {
+    let p = Math.round(positive);
+    let n = Math.round(negative);
+    let z = Math.round(neutral);
+
+    let total = p + n + z;
+    if (total !== 100) {
+      if (total > 100) {
+        let diff = total - 100;
+        const adjustments: Array<{ key: keyof TrendSlice; value: number }> = [
+          { key: "positive", value: p },
+          { key: "negative", value: n },
+          { key: "neutral", value: z },
+        ].sort((a, b) => b.value - a.value);
+        for (const entry of adjustments) {
+          if (diff <= 0) break;
+          if (entry.value <= 0) continue;
+          const amount = Math.min(entry.value, diff);
+          diff -= amount;
+          if (entry.key === "positive") p -= amount;
+          else if (entry.key === "negative") n -= amount;
+          else z -= amount;
+        }
+      } else if (total < 100) {
+        let diff = 100 - total;
+        const adjustments: Array<{ key: keyof TrendSlice; value: number }> = [
+          { key: "positive", value: p },
+          { key: "negative", value: n },
+          { key: "neutral", value: z },
+        ].sort((a, b) => a.value - b.value);
+        for (const entry of adjustments) {
+          if (diff <= 0) break;
+          const capacity = 100 - entry.value;
+          if (capacity <= 0) continue;
+          const amount = Math.min(capacity, diff);
+          diff -= amount;
+          if (entry.key === "positive") p += amount;
+          else if (entry.key === "negative") n += amount;
+          else z += amount;
+        }
+      }
+    }
+
+    total = p + n + z;
+    if (total !== 100) {
+      const remainder = 100 - total;
+      if (remainder > 0) {
+        if (z <= p && z <= n) z += remainder;
+        else if (p <= n) p += remainder;
+        else n += remainder;
+      } else {
+        let diff = Math.abs(remainder);
+        const order: Array<{ key: keyof TrendSlice; value: number }> = [
+          { key: "positive", value: p },
+          { key: "negative", value: n },
+          { key: "neutral", value: z },
+        ].sort((a, b) => b.value - a.value);
+        for (const entry of order) {
+          if (diff <= 0) break;
+          if (entry.value <= 0) continue;
+          const amount = Math.min(entry.value, diff);
+          diff -= amount;
+          if (entry.key === "positive") p -= amount;
+          else if (entry.key === "negative") n -= amount;
+          else z -= amount;
+        }
+      }
+    }
+
+    return { positive: p, negative: n, neutral: z };
+  };
+
+  const defaults = options.defaultRatios ?? { positive: 34, negative: 33, neutral: 33 };
+  const defaultsTotal = defaults.positive + defaults.negative + defaults.neutral;
+  const baseline = defaultsTotal
+    ? normalizePercentages(
+        (defaults.positive / defaultsTotal) * 100,
+        (defaults.negative / defaultsTotal) * 100,
+        (defaults.neutral / defaultsTotal) * 100
+      )
+    : normalizePercentages(34, 33, 33);
+
+  const now = new Date();
+  const anchor = new Date(now);
+  anchor.setMinutes(0, 0, 0);
+
+  const buckets = Array.from({ length: bucketCount }, (_, index) => {
+    const start = new Date(anchor);
+    start.setHours(anchor.getHours() - (bucketCount - 1 - index));
+    const end = new Date(start);
+    end.setHours(start.getHours() + 1);
+    return {
+      label: start.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
+      start,
+      end,
+      counts: { positive: 0, negative: 0, neutral: 0 },
+    };
+  });
+
+  items.forEach((item) => {
+    const published = new Date((item.date as string) ?? "");
+    if (Number.isNaN(published.getTime())) return;
+    const bucket = buckets.find(({ start, end }) => published >= start && published < end);
+    if (!bucket) return;
+
+    const normalized = (item.sentiment || "neutral").toLowerCase();
+    if (normalized.includes("pos")) bucket.counts.positive += 1;
+    else if (normalized.includes("neg")) bucket.counts.negative += 1;
+    else bucket.counts.neutral += 1;
+  });
+
+  let lastKnown: TrendSlice | null = null;
+
+  return buckets.map(({ label, counts }) => {
+    const total = counts.positive + counts.negative + counts.neutral;
+
+    if (total === 0) {
+      const fallback = lastKnown ?? baseline;
+      const point: SentimentTrendPoint = {
+        label,
+        positive: fallback.positive,
+        negative: fallback.negative,
+        neutral: fallback.neutral,
+      };
+      lastKnown = fallback;
+      return point;
+    }
+
+    const normalized = normalizePercentages(
+      (counts.positive / total) * 100,
+      (counts.negative / total) * 100,
+      (counts.neutral / total) * 100
+    );
+
+    const point: SentimentTrendPoint = {
+      label,
+      positive: normalized.positive,
+      negative: normalized.negative,
+      neutral: normalized.neutral,
+    };
+
+    lastKnown = normalized;
+    return point;
+  });
+};
+
+const aggregateSentimentCounts = (items: FeedItem[]) =>
+  items.reduce(
+    (acc, item) => {
+      const s = (item.sentiment || "neutral").toLowerCase();
+      if (s.includes("pos")) acc.positive += 1;
+      else if (s.includes("neg")) acc.negative += 1;
+      else acc.neutral += 1;
+      return acc;
+    },
+    { positive: 0, negative: 0, neutral: 0 }
+  );
+
+const getStartOfDay = (value: Date) => {
+  const clone = new Date(value);
+  clone.setHours(0, 0, 0, 0);
+  return clone;
+};
+
+const isSameCalendarDay = (left: Date, right: Date) => getStartOfDay(left).getTime() === getStartOfDay(right).getTime();
+
+const sanitizeHeadlineForStorage = (headline: FeedItem): FeedItem => ({
+  ...headline,
+  url: typeof headline.url === "string" ? headline.url.trim() : "#",
+  tweetUrl: typeof headline.tweetUrl === "string" ? headline.tweetUrl.trim() : headline.tweetUrl,
+});
+
+const isFallbackHeadline = (headline: FeedItem | null) => {
+  if (!headline) return true;
+  const url = typeof headline.url === "string" ? headline.url.trim() : "";
+  if (!url || url === "#") return true;
+  if (/^https?:\/\/bmss\.digital\/noticia\//i.test(url)) return true;
+  return false;
+};
 
 export default function HomeClient() {
   const { user, loading: authLoading } = useAuth();
@@ -74,11 +299,113 @@ export default function HomeClient() {
   const [lastUpdate, setLastUpdate] = useState<string>("");
   const previousStatsRef = useRef<DashboardStats | null>(null);
   const mountedRef = useRef(true);
+  const [dailyHeadline, setDailyHeadline] = useState<FeedItem | null>(null);
+  const fallbackTrend = useMemo(
+    () => buildSentimentTrend([...generateFallbackNews(), ...generateFallbackTweets()]),
+    []
+  );
+  const [sentimentTrend, setSentimentTrend] = useState<SentimentTrendPoint[]>(fallbackTrend);
 
   const fallbackMode = useMemo(() => {
     const raw = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
     return Boolean(raw && raw.toLowerCase().includes("fallback"));
   }, []);
+
+  const fallbackHeadline = useMemo<FeedItem>(() => ({
+    ...createFallbackNews(),
+    title: "Bitcoin lidera buscas após ondas de volatilidade",
+    description:
+      "O ativo voltou ao topo das atenções com forte volume nas últimas horas. Analistas acompanham possíveis gatilhos macroeconômicos.",
+    source: "BMSS Insights",
+    sentiment: "positive",
+    score: 0.82,
+    url: "#",
+  }), []);
+
+  const loadStoredHighlight = useCallback((): FeedItem | null => {
+    if (typeof window === "undefined") return null;
+
+    try {
+      const raw = window.localStorage.getItem(DAILY_HIGHLIGHT_STORAGE_KEY);
+      if (!raw) return null;
+
+      const parsed = JSON.parse(raw) as StoredHeadlinePayload | null;
+      if (!parsed?.headline || !parsed.generatedAt) return null;
+
+      const generatedAt = new Date(parsed.generatedAt);
+      if (Number.isNaN(generatedAt.getTime())) {
+        window.localStorage.removeItem(DAILY_HIGHLIGHT_STORAGE_KEY);
+        return null;
+      }
+
+      if (!isSameCalendarDay(generatedAt, new Date())) {
+        window.localStorage.removeItem(DAILY_HIGHLIGHT_STORAGE_KEY);
+        return null;
+      }
+
+      return parsed.headline;
+    } catch (error) {
+      console.warn("Não foi possível carregar o destaque diário armazenado:", error);
+      return null;
+    }
+  }, []);
+
+  const persistHighlight = useCallback((headline: FeedItem) => {
+    if (typeof window === "undefined") return;
+    try {
+      const payload: StoredHeadlinePayload = {
+        generatedAt: new Date().toISOString(),
+        headline: sanitizeHeadlineForStorage(headline),
+      };
+      window.localStorage.setItem(DAILY_HIGHLIGHT_STORAGE_KEY, JSON.stringify(payload));
+    } catch (error) {
+      console.warn("Não foi possível salvar o destaque diário:", error);
+    }
+  }, []);
+
+  const clearStoredHighlight = useCallback(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.removeItem(DAILY_HIGHLIGHT_STORAGE_KEY);
+  }, []);
+
+  useEffect(() => {
+    const stored = loadStoredHighlight();
+    if (stored && !isFallbackHeadline(stored)) {
+      setDailyHeadline(stored);
+    }
+  }, [loadStoredHighlight]);
+
+  const pickDailyHighlight = useCallback(
+    (items: FeedItem[]): FeedItem => {
+      if (!items || items.length === 0) {
+        return fallbackHeadline;
+      }
+
+      const startOfToday = new Date();
+      startOfToday.setHours(0, 0, 0, 0);
+
+      const scoredItems = items.map((item) => {
+        const published = new Date(item.date ?? "");
+        const isToday = !Number.isNaN(published.getTime()) && published >= startOfToday;
+        const hoursAgo = Number.isNaN(published.getTime())
+          ? 48
+          : Math.max(0, (Date.now() - published.getTime()) / 36e5);
+        const freshness = Math.max(0, 1 - Math.min(hoursAgo, 48) / 48);
+        const baseScore = Number.isFinite(item.score) ? item.score : 0.4;
+        const sentimentBoost = item.sentiment === "positive" ? 0.08 : item.sentiment === "negative" ? 0.04 : 0.02;
+        const accessWeight = baseScore * 0.65 + freshness * 0.3 + sentimentBoost;
+
+        return {
+          item,
+          weight: accessWeight + (isToday ? 0.15 : 0),
+        };
+      });
+
+      scoredItems.sort((a, b) => b.weight - a.weight);
+      return scoredItems[0]?.item ?? fallbackHeadline;
+    },
+    [fallbackHeadline]
+  );
 
   // useCallback com dependências corretas
   const fetchStats = useCallback(async () => {
@@ -94,17 +421,38 @@ export default function HomeClient() {
         console.warn("API configurada em modo fallback. Usando dados de demonstração.");
         showToast("warning", "Modo Offline", "Exibindo dados de demonstração.", 5000);
 
-        const fallback = {
-          totalNews: 24,
-          totalTweets: 156,
-          positiveSentiment: 48,
-          negativeSentiment: 22,
-          neutralSentiment: 30,
+        const fallbackNews = generateFallbackNews();
+        const fallbackTweets = generateFallbackTweets();
+        const fallbackItems = [...fallbackNews, ...fallbackTweets];
+        const sentimentCounts = aggregateSentimentCounts(fallbackItems);
+        const fallbackTotal = fallbackItems.length || 1;
+        const fallbackStats = {
+          totalNews: fallbackNews.length,
+          totalTweets: fallbackTweets.length,
+          positiveSentiment: Math.round((sentimentCounts.positive / fallbackTotal) * 100),
+          negativeSentiment: Math.round((sentimentCounts.negative / fallbackTotal) * 100),
+          neutralSentiment: Math.round((sentimentCounts.neutral / fallbackTotal) * 100),
         };
 
-        previousStatsRef.current = fallback;
-        setStats(fallback);
+        previousStatsRef.current = fallbackStats;
+        setStats(fallbackStats);
         setLastUpdate(new Date().toLocaleTimeString("pt-BR"));
+        setSentimentTrend(
+          buildSentimentTrend(fallbackItems, {
+            defaultRatios: {
+              positive: fallbackStats.positiveSentiment,
+              negative: fallbackStats.negativeSentiment,
+              neutral: fallbackStats.neutralSentiment,
+            },
+          })
+        );
+        const storedHeadline = loadStoredHighlight();
+        if (storedHeadline && !isFallbackHeadline(storedHeadline)) {
+          setDailyHeadline(storedHeadline);
+        } else {
+          setDailyHeadline(fallbackHeadline);
+          clearStoredHighlight();
+        }
         return;
       }
 
@@ -113,27 +461,47 @@ export default function HomeClient() {
         fetch(buildApiUrl("noticias/tweets/ultimos?limit=50&q=bitcoin"), { signal: controller.signal }),
       ]);
 
-      const newsItems = newsRes.status === "fulfilled" && newsRes.value.ok
-        ? (await newsRes.value.json()).data || []
-        : generateFallbackNews();
+      let mappedNews: FeedItem[] = [];
+      if (newsRes.status === "fulfilled" && newsRes.value.ok) {
+        const body = await newsRes.value.json();
+        const data = Array.isArray(body?.data) ? body.data : [];
+        if (data.length > 0) {
+          mappedNews = data.map((item: unknown, index: number) =>
+            mapApiItemToFeedItem(item, {
+              ...createFallbackNews(),
+              title: `Notícia Bitcoin ${index + 1}`,
+            })
+          );
+        }
+      }
+      if (mappedNews.length === 0) {
+        mappedNews = generateFallbackNews();
+      }
 
-      const tweetItems = tweetsRes.status === "fulfilled" && tweetsRes.value.ok
-        ? (await tweetsRes.value.json()).data || []
-        : generateFallbackTweets();
+      let mappedTweets: FeedItem[] = [];
+      if (tweetsRes.status === "fulfilled" && tweetsRes.value.ok) {
+        const body = await tweetsRes.value.json();
+        const data = Array.isArray(body?.data) ? body.data : [];
+        if (data.length > 0) {
+          mappedTweets = data.map((item: unknown, index: number) =>
+            mapApiItemToFeedItem(item, {
+              ...createFallbackTweet(),
+              title: `Tweet Bitcoin ${index + 1}`,
+            })
+          );
+        }
+      }
+      if (mappedTweets.length === 0) {
+        mappedTweets = generateFallbackTweets();
+      }
 
-      const allItems = [...newsItems, ...tweetItems];
-      const sentimentCounts = allItems.reduce((acc, item) => {
-        const s = (item.sentimento || item.sentiment || "neutral").toLowerCase();
-        if (s.includes("pos")) acc.positive++;
-        else if (s.includes("neg")) acc.negative++;
-        else acc.neutral++;
-        return acc;
-      }, { positive: 0, negative: 0, neutral: 0 });
+      const allItems = [...mappedNews, ...mappedTweets];
+      const sentimentCounts = aggregateSentimentCounts(allItems);
 
       const total = allItems.length || 1;
       const newStats = {
-        totalNews: newsItems.length,
-        totalTweets: tweetItems.length,
+        totalNews: mappedNews.length,
+        totalTweets: mappedTweets.length,
         positiveSentiment: Math.round((sentimentCounts.positive / total) * 100),
         negativeSentiment: Math.round((sentimentCounts.negative / total) * 100),
         neutralSentiment: Math.round((sentimentCounts.neutral / total) * 100),
@@ -149,22 +517,75 @@ export default function HomeClient() {
       previousStatsRef.current = newStats;
       setStats(newStats);
       setLastUpdate(new Date().toLocaleTimeString("pt-BR"));
+      setSentimentTrend(
+        buildSentimentTrend(allItems, {
+          defaultRatios: {
+            positive: newStats.positiveSentiment,
+            negative: newStats.negativeSentiment,
+            neutral: newStats.neutralSentiment,
+          },
+        })
+      );
 
-    } catch (err: any) {
-      console.error("Erro:", err);
-      showToast("error", "Erro", getFetchErrorMessage(err));
-      setStats({
-        totalNews: 24,
-        totalTweets: 156,
-        positiveSentiment: 45,
-        negativeSentiment: 25,
-        neutralSentiment: 30,
-      });
+      const candidateHeadline = pickDailyHighlight(mappedNews);
+      const storedHeadline = loadStoredHighlight();
+
+      if (storedHeadline && !isFallbackHeadline(storedHeadline)) {
+        setDailyHeadline(storedHeadline);
+      } else {
+        setDailyHeadline(candidateHeadline);
+        if (!isFallbackHeadline(candidateHeadline)) {
+          persistHighlight(candidateHeadline);
+        } else {
+          clearStoredHighlight();
+        }
+      }
+
+    } catch (error) {
+      console.error("Erro:", error);
+      showToast("error", "Erro", getFetchErrorMessage(error));
+      const fallbackNews = generateFallbackNews();
+      const fallbackTweets = generateFallbackTweets();
+      const fallbackItems = [...fallbackNews, ...fallbackTweets];
+      const sentimentCounts = aggregateSentimentCounts(fallbackItems);
+      const fallbackTotal = fallbackItems.length || 1;
+      const fallbackStats = {
+        totalNews: fallbackNews.length,
+        totalTweets: fallbackTweets.length,
+        positiveSentiment: Math.round((sentimentCounts.positive / fallbackTotal) * 100),
+        negativeSentiment: Math.round((sentimentCounts.negative / fallbackTotal) * 100),
+        neutralSentiment: Math.round((sentimentCounts.neutral / fallbackTotal) * 100),
+      };
+      previousStatsRef.current = fallbackStats;
+      setStats(fallbackStats);
+      setSentimentTrend(
+        buildSentimentTrend(fallbackItems, {
+          defaultRatios: {
+            positive: fallbackStats.positiveSentiment,
+            negative: fallbackStats.negativeSentiment,
+            neutral: fallbackStats.neutralSentiment,
+          },
+        })
+      );
+      const storedHeadline = loadStoredHighlight();
+      if (storedHeadline && !isFallbackHeadline(storedHeadline)) {
+        setDailyHeadline(storedHeadline);
+      } else {
+        setDailyHeadline(fallbackHeadline);
+        clearStoredHighlight();
+      }
     } finally {
       clearTimeout(timeoutId);
       if (mountedRef.current) setIsLoading(false);
     }
-  }, [fallbackMode]);
+  }, [
+    fallbackMode,
+    fallbackHeadline,
+    pickDailyHighlight,
+    loadStoredHighlight,
+    persistHighlight,
+    clearStoredHighlight,
+  ]);
 
   // useEffect com cleanup
   useEffect(() => {
@@ -266,6 +687,8 @@ export default function HomeClient() {
             {sentimentBadges}
           </div>
 
+          {dailyHeadline && <DailyHighlightCard headline={dailyHeadline} />}
+
           <Suspense fallback={<div className="h-32 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}>
             <BitcoinPriceClient />
           </Suspense>
@@ -288,7 +711,7 @@ export default function HomeClient() {
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <Suspense fallback={<div className="h-80 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}>
-                <SentimentChart />
+                <SentimentChart trend={sentimentTrend} />
               </Suspense>
               <Suspense fallback={<div className="h-80 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}>
                 <SentimentDistribution distribution={{
