@@ -26,7 +26,9 @@ import org.w3c.dom.NodeList;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
+import java.io.IOException;
 import java.io.InputStream;
+import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLEncoder;
@@ -413,31 +415,60 @@ private String normalizeSentimentToEnglish(String sentiment) {
     // ============================================================
     private List<FeedDTO> fetchFromGoogleNewsRSS(String keyword) {
         List<FeedDTO> list = new ArrayList<>();
+        String sanitizedKeyword = (keyword == null || keyword.isBlank()) ? "bitcoin" : keyword.trim();
+
         try {
-            String rssUrl = "https://news.google.com/rss/search?q=" + keyword +
-                    "+bitcoin+mercado+financeiro&hl=pt-BR&gl=BR&ceid=BR:pt-419";
+            String query = (sanitizedKeyword + " bitcoin mercado financeiro").trim().replaceAll("\\s+", " ");
+            String encodedQuery = URLEncoder.encode(query, StandardCharsets.UTF_8);
+            String rssUrl = "https://news.google.com/rss/search?q=" + encodedQuery +
+                    "&hl=pt-BR&gl=BR&ceid=BR:pt-419";
+
             URL url = new URL(rssUrl);
-            InputStream stream = url.openStream();
-            DocumentBuilder builder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
-            Document doc = builder.parse(stream);
-            NodeList items = doc.getElementsByTagName("item");
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+            connection.setRequestProperty("User-Agent", "Mozilla/5.0 (compatible; BMSSBot/1.0; +https://bmss.com.br)");
+            connection.setConnectTimeout(5000);
+            connection.setReadTimeout(5000);
 
-            // Usar Set para prevenir duplicatas no RSS também
-            Set<String> seenUrls = new HashSet<>();
-            
-            for (int i = 0; i < items.getLength() && i < 20; i++) {
-                Element el = (Element) items.item(i);
-                String title = el.getElementsByTagName("title").item(0).getTextContent();
-                String link = el.getElementsByTagName("link").item(0).getTextContent();
-                
-                if (isBlockedDomain(link)) continue;
-                
-                String normalizedUrl = normalizeUrl(link);
-                if (!seenUrls.add(normalizedUrl)) {
-                    continue; // Pular duplicata
+            try (InputStream stream = connection.getInputStream()) {
+                DocumentBuilder builder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
+                Document doc = builder.parse(stream);
+                NodeList items = doc.getElementsByTagName("item");
+
+                // Usar Set para prevenir duplicatas no RSS também
+                Set<String> seenUrls = new HashSet<>();
+
+                for (int i = 0; i < items.getLength() && list.size() < 20; i++) {
+                    Element el = (Element) items.item(i);
+                    String title = getElementText(el, "title");
+                    String link = getElementText(el, "link");
+
+                    if (title == null || link == null) {
+                        continue;
+                    }
+
+                    String resolvedLink = resolveGoogleNewsArticleLink(link);
+
+                    if (resolvedLink == null || resolvedLink.isBlank()) {
+                        continue;
+                    }
+
+                    if (!resolvedLink.contains("news.google.com") && isBlockedDomain(resolvedLink)) {
+                        continue;
+                    }
+
+                    String normalizedUrl = normalizeUrl(resolvedLink);
+                    if (!seenUrls.add(normalizedUrl)) {
+                        continue; // Pular duplicata
+                    }
+
+                    String description = Optional.ofNullable(getElementText(el, "description")).orElse("");
+                    String publishedAt = normalizeRssDate(getElementText(el, "pubDate"));
+
+                    list.add(new FeedDTO(title, description, resolvedLink, "Google News", publishedAt,
+                            "neutral", 0.0, false, null));
                 }
-
-                list.add(new FeedDTO(title, "", link, "Google News", LocalDateTime.now().toString(), "neutral", 0.0, false, null));
+            } finally {
+                connection.disconnect();
             }
 
             log.info("🪶 Fallback RSS retornou {} notícias.", list.size());
@@ -445,6 +476,72 @@ private String normalizeSentimentToEnglish(String sentiment) {
             log.error("❌ Erro no fallback RSS: {}", e.getMessage());
         }
         return list;
+    }
+
+    private String getElementText(Element element, String tagName) {
+        NodeList nodes = element.getElementsByTagName(tagName);
+        if (nodes.getLength() == 0 || nodes.item(0) == null) {
+            return null;
+        }
+        return nodes.item(0).getTextContent();
+    }
+
+    private String normalizeRssDate(String pubDateRaw) {
+        if (pubDateRaw == null || pubDateRaw.isBlank()) {
+            return LocalDateTime.now().toString();
+        }
+
+        try {
+            OffsetDateTime odt = OffsetDateTime.parse(pubDateRaw, DateTimeFormatter.RFC_1123_DATE_TIME);
+            return odt.atZoneSameInstant(ZoneId.systemDefault()).toLocalDateTime().toString();
+        } catch (DateTimeParseException e) {
+            log.debug("⚠️ Não foi possível converter pubDate do RSS: {}", pubDateRaw);
+            return LocalDateTime.now().toString();
+        }
+    }
+
+    private String resolveGoogleNewsArticleLink(String link) {
+        if (link == null || link.isBlank() || !link.contains("news.google.com")) {
+            return link;
+        }
+
+        HttpURLConnection connection = null;
+        try {
+            connection = (HttpURLConnection) new URL(link).openConnection();
+            connection.setInstanceFollowRedirects(true);
+            connection.setRequestMethod("HEAD");
+            connection.setRequestProperty("User-Agent", "Mozilla/5.0 (compatible; BMSSBot/1.0; +https://bmss.com.br)");
+            connection.setConnectTimeout(5000);
+            connection.setReadTimeout(5000);
+
+            int status = connection.getResponseCode();
+            if (isRedirectStatus(status)) {
+                String location = connection.getHeaderField("Location");
+                if (location != null && !location.isBlank()) {
+                    return location;
+                }
+            }
+
+            String finalUrl = connection.getURL().toString();
+            return (finalUrl != null && !finalUrl.isBlank()) ? finalUrl : link;
+
+        } catch (IOException e) {
+            log.warn("⚠️ Falha ao resolver link do Google News '{}': {}", link, e.getMessage());
+            return link;
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
+    }
+
+    private boolean isRedirectStatus(int status) {
+        return status == HttpURLConnection.HTTP_MOVED_PERM
+                || status == HttpURLConnection.HTTP_MOVED_TEMP
+                || status == HttpURLConnection.HTTP_SEE_OTHER
+                || status == HttpURLConnection.HTTP_MULT_CHOICE
+                || status == 307
+                || status == 308;
     }
 
     private boolean isBlockedDomain(String url) {
