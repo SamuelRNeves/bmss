@@ -2,7 +2,15 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { LogIn, Lock, Mail, Eye, EyeOff, Sparkles } from "lucide-react";
+import {
+  LogIn,
+  Lock,
+  Mail,
+  Eye,
+  EyeOff,
+  Sparkles,
+  ArrowRight,
+} from "lucide-react";
 import { buildApiUrl } from "@/lib/api";
 
 export default function LoginPage() {
@@ -58,104 +66,127 @@ export default function LoginPage() {
     }
   };
 
+  const suggestions = [
+    {
+      title: "Alertas inteligentes",
+      description: "Automatize o envio de insights críticos assim que eles surgirem.",
+    },
+    {
+      title: "Equipe em sintonia",
+      description: "Convide analistas e tome decisões colaborativas em tempo real.",
+    },
+    {
+      title: "Dashboard personalizado",
+      description: "Escolha quais métricas entram em destaque no seu início de dia.",
+    },
+  ];
+
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-neutral-950 via-neutral-900 to-black">
-      <div className="pointer-events-none absolute -top-32 -left-32 h-96 w-96 rounded-full bg-yellow-500/20 blur-3xl" />
-      <div className="pointer-events-none absolute bottom-0 right-0 h-[28rem] w-[28rem] rounded-full bg-sky-500/10 blur-3xl" />
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(250,204,21,0.12),_transparent_55%)]" />
+    <div className="relative flex min-h-screen flex-col overflow-hidden bg-neutral-950">
+      <div
+        className="pointer-events-none absolute inset-0 opacity-90"
+        aria-hidden
+      >
+        <div
+          className="absolute -top-40 left-1/2 h-[36rem] w-[36rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,_rgba(250,204,21,0.45)_0%,_rgba(250,204,21,0)_70%)]"
+          style={{ animation: "float 18s ease-in-out infinite" }}
+        />
+        <div
+          className="absolute bottom-[-14rem] right-[-8rem] h-[32rem] w-[32rem] rounded-full bg-[radial-gradient(circle,_rgba(56,189,248,0.4)_0%,_rgba(56,189,248,0)_70%)]"
+          style={{ animation: "float 22s ease-in-out infinite", animationDelay: "-6s" }}
+        />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(250,250,249,0.1),_transparent_60%)]" />
+        <div className="absolute inset-0 bg-[linear-gradient(120deg,rgba(15,23,42,0.2)_0%,rgba(15,23,42,0)_40%,rgba(250,204,21,0.1)_70%,rgba(15,23,42,0)_100%)]" />
+      </div>
 
-      <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl items-center px-6 py-16">
-        <div className="grid w-full gap-10 lg:grid-cols-[1.1fr_0.9fr]">
-          <section className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/5 p-10 backdrop-blur-xl">
-            <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(250,204,21,0.15),transparent_45%)]" />
-            <div className="absolute -top-12 right-6 h-32 w-32 rounded-full border border-yellow-400/40" />
-            <div className="absolute bottom-10 left-14 h-16 w-16 rounded-full border border-white/10" />
+      <div className="relative z-10 mx-auto flex w-full max-w-6xl flex-1 flex-col justify-center px-6 py-12 lg:flex-row lg:items-center lg:gap-12 lg:py-24">
+        <section className="relative mb-16 max-w-xl space-y-10 text-white lg:mb-0 lg:w-[50%]">
+          <div className="absolute -inset-8 hidden rounded-[3rem] border border-white/5 bg-white/[0.03] blur-3xl lg:block" aria-hidden />
+          <div className="relative space-y-6">
+            <span className="inline-flex items-center gap-2 rounded-full border border-yellow-400/20 bg-yellow-500/10 px-4 py-1 text-xs font-semibold uppercase tracking-[0.4em] text-yellow-200">
+              <Sparkles size={14} /> BMSS 2.0
+            </span>
+            <h1 className="text-4xl font-black tracking-tight sm:text-5xl">
+              Uma experiência de login digna da sua próxima decisão
+            </h1>
+            <p className="max-w-lg text-base text-gray-300 sm:text-lg">
+              Envolvemos os dados certos em uma interface suave, com foco absoluto na ação. Entre em um ambiente minimalista, rápido e pronto para surpreender seus clientes.
+            </p>
 
-            <div className="relative flex flex-col gap-6 text-white">
-              <span className="inline-flex items-center gap-2 self-start rounded-full border border-yellow-400/30 bg-yellow-500/10 px-4 py-1 text-xs font-semibold uppercase tracking-[0.35em] text-yellow-300">
-                <Sparkles size={14} /> BMSS Insights
-              </span>
-              <h1 className="text-4xl font-black leading-tight sm:text-5xl">
-                Entre em um painel pensado para decisões rápidas e inteligentes
-              </h1>
-              <p className="max-w-xl text-base text-gray-300 sm:text-lg">
-                Acompanhe métricas em tempo real, descubra tendências relevantes e mantenha sua equipe alinhada com as notícias que mais importam para o seu negócio.
-              </p>
-
-              <dl className="grid gap-4 text-sm text-gray-300 sm:grid-cols-2">
-                <div className="rounded-2xl border border-white/10 bg-black/20 p-5 backdrop-blur">
-                  <dt className="font-semibold text-white">Painéis Inteligentes</dt>
-                  <dd className="mt-2 text-sm text-gray-300">
-                    Visualizações dinâmicas, alertas instantâneos e curadoria automática das notícias mais relevantes.
-                  </dd>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {suggestions.map((item) => (
+                <div
+                  key={item.title}
+                  className="group relative overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-5 transition-transform duration-500 hover:-translate-y-1 hover:border-yellow-300/40 hover:bg-white/10"
+                >
+                  <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-yellow-400/10 blur-2xl transition-opacity duration-500 group-hover:opacity-100" />
+                  <div className="relative space-y-2">
+                    <p className="text-sm font-semibold text-white">{item.title}</p>
+                    <p className="text-xs text-gray-300">{item.description}</p>
+                  </div>
                 </div>
-                <div className="rounded-2xl border border-white/10 bg-black/20 p-5 backdrop-blur">
-                  <dt className="font-semibold text-white">Segurança em Primeiro Lugar</dt>
-                  <dd className="mt-2 text-sm text-gray-300">
-                    Login protegido, dados criptografados e monitoramento constante para garantir a sua tranquilidade.
-                  </dd>
-                </div>
-              </dl>
-
-              <div className="flex flex-wrap items-center gap-3 text-xs text-gray-400">
-                <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1">
-                  <span className="h-2 w-2 rounded-full bg-emerald-400" /> Uptime garantido 99,9%
-                </div>
-                <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1">
-                  <span className="h-2 w-2 rounded-full bg-sky-400" /> Notificações em tempo real
-                </div>
-              </div>
+              ))}
             </div>
-          </section>
 
-          <div className="relative rounded-3xl border border-white/10 bg-neutral-900/80 p-10 shadow-2xl shadow-yellow-500/10 backdrop-blur-xl">
-            <div className="mb-8 text-center">
-              <h2 className="text-3xl font-bold text-white">Acessar Painel</h2>
-              <p className="mt-2 text-sm text-gray-400">Entre com suas credenciais para continuar</p>
+            <a
+              href="/"
+              className="inline-flex items-center gap-2 rounded-full border border-yellow-300/30 bg-yellow-300/20 px-4 py-2 text-xs font-semibold uppercase tracking-[0.35em] text-yellow-200 transition hover:border-yellow-200/60 hover:bg-yellow-200/20"
+            >
+              Ver tendências recentes <ArrowRight size={14} />
+            </a>
+          </div>
+        </section>
+
+        <div className="relative w-full max-w-md">
+          <div className="absolute -inset-[1px] rounded-[28px] bg-gradient-to-r from-yellow-500/70 via-yellow-300/50 to-sky-400/60 opacity-80 blur" aria-hidden />
+          <div className="relative rounded-[28px] border border-white/10 bg-neutral-900/80 p-8 shadow-[0_40px_80px_rgba(15,23,42,0.45)] backdrop-blur-xl">
+            <div className="mb-8 space-y-3 text-center">
+              <h2 className="text-3xl font-bold">Bem-vindo de volta</h2>
+              <p className="text-sm text-gray-400">
+                Use seu e-mail corporativo para destravar as análises em tempo real.
+              </p>
             </div>
 
             <form onSubmit={handleLogin} className="space-y-6">
-              {/* Campo Email */}
               <div className="space-y-2">
-                <label className="text-sm text-gray-300 flex items-center gap-2">
-                  <Mail size={16} /> E-mail
+                <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.3em] text-gray-400">
+                  <Mail size={14} /> E-mail
                 </label>
                 <div className="relative">
-                  <div className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-gray-500">
+                  <div className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-gray-500">
                     <Mail size={16} />
                   </div>
                   <input
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="seu@email.com"
+                    placeholder="nome@empresa.com"
                     required
-                    className="w-full rounded-xl border border-white/10 bg-white/5 py-3 pl-11 pr-3 text-white transition focus:border-yellow-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/40"
+                    className="w-full rounded-2xl border border-white/10 bg-white/5 py-3 pl-12 pr-4 text-sm text-white transition-all duration-300 focus:border-yellow-300 focus:bg-white/10 focus:outline-none focus:ring-2 focus:ring-yellow-300/40"
                   />
                 </div>
               </div>
 
-              {/* Campo Senha */}
               <div className="space-y-2">
-                <label className="text-sm text-gray-300 flex items-center gap-2">
-                  <Lock size={16} /> Senha
+                <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.3em] text-gray-400">
+                  <Lock size={14} /> Senha
                 </label>
                 <div className="relative">
-                  <div className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-gray-500">
+                  <div className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-gray-500">
                     <Lock size={16} />
                   </div>
                   <input
                     type={mostrarSenha ? "text" : "password"}
                     value={senha}
                     onChange={(e) => setSenha(e.target.value)}
-                    placeholder="Sua senha"
+                    placeholder="********"
                     required
-                    className="w-full rounded-xl border border-white/10 bg-white/5 py-3 pl-11 pr-12 text-white transition focus:border-yellow-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/40"
+                    className="w-full rounded-2xl border border-white/10 bg-white/5 py-3 pl-12 pr-12 text-sm text-white transition-all duration-300 focus:border-yellow-300 focus:bg-white/10 focus:outline-none focus:ring-2 focus:ring-yellow-300/40"
                   />
                   <button
                     type="button"
                     onClick={() => setMostrarSenha((prev) => !prev)}
-                    className="absolute inset-y-0 right-3 flex items-center text-gray-400 transition hover:text-white"
+                    className="absolute inset-y-0 right-4 flex items-center text-gray-400 transition hover:text-white"
                     aria-label={mostrarSenha ? "Ocultar senha" : "Mostrar senha"}
                   >
                     {mostrarSenha ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -166,34 +197,48 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className={`w-full flex items-center justify-center gap-2 rounded-xl py-3 text-base font-semibold transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-neutral-900 ${
-                  loading
-                    ? "bg-yellow-700/80 text-black/70"
-                    : "bg-yellow-400 text-black shadow-lg shadow-yellow-400/30 hover:bg-yellow-300"
+                className={`group relative flex w-full items-center justify-center gap-2 overflow-hidden rounded-2xl py-3 text-sm font-semibold uppercase tracking-[0.35em] transition focus:outline-none focus:ring-2 focus:ring-yellow-200/60 focus:ring-offset-2 focus:ring-offset-neutral-950 ${
+                  loading ? "bg-yellow-500/30 text-yellow-200" : "bg-gradient-to-r from-yellow-400 via-amber-300 to-yellow-200 text-black shadow-lg shadow-yellow-500/40"
                 }`}
               >
-                <LogIn size={18} />
-                {loading ? "Entrando..." : "Entrar"}
+                {!loading && (
+                  <span className="absolute inset-0 translate-x-[-120%] bg-white/40 transition duration-700 ease-out group-hover:translate-x-[120%]" aria-hidden />
+                )}
+                <span className="relative flex items-center gap-3">
+                  <LogIn size={18} />
+                  {loading ? "Entrando" : "Entrar"}
+                </span>
               </button>
             </form>
 
             {mensagem && (
-              <div className="mt-6 rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-center text-sm text-red-300">
+              <div className="mt-6 rounded-2xl border border-red-400/50 bg-red-500/10 p-4 text-center text-xs text-red-200">
                 {mensagem}
               </div>
             )}
 
-            <div className="mt-8 text-center text-sm text-gray-400">
+            <div className="mt-8 text-center text-xs text-gray-400">
               <p>
-                Ainda não tem uma conta?{" "}
-                <a href="/cadastrar" className="font-medium text-yellow-300 transition hover:text-yellow-200">
-                  Cadastre-se
+                Precisa de acesso?{" "}
+                <a href="/cadastrar" className="font-medium text-yellow-200 transition hover:text-yellow-100">
+                  Solicite credenciais
                 </a>
               </p>
             </div>
           </div>
         </div>
       </div>
+
+      <style jsx global>{`
+        @keyframes float {
+          0%, 100% {
+            transform: translate3d(0, 0, 0) scale(1);
+          }
+          50% {
+            transform: translate3d(0, -18px, 0) scale(1.05);
+          }
+        }
+      `}</style>
     </div>
   );
 }
