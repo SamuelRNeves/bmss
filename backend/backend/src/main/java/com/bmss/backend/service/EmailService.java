@@ -1,11 +1,15 @@
 package com.bmss.backend.service;
 
+import com.bmss.backend.config.EmailProperties;
 import com.resend.Resend;
 import com.resend.services.emails.model.SendEmailRequest;
 import com.resend.services.emails.model.SendEmailResponse;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+
+import java.time.Instant;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Service
 @Slf4j
@@ -17,33 +21,41 @@ public class EmailService {
 
     private final boolean emailEnabled;
 
-    public EmailService(@Value("${resend.api.key:}") String apiKey,
-                        @Value("${resend.from.email:BMSS System <noreply@bmss.tech>}") String fromAddress) {
-        if (apiKey == null || apiKey.isBlank()) {
-            log.warn("⚠️ resend.api.key não configurado. Os envios de email serão ignorados até que a chave seja informada.");
+    private final String disabledReason;
+
+    private final AtomicReference<EmailDeliveryResult> lastDeliveryResult = new AtomicReference<>();
+
+    public EmailService(EmailProperties emailProperties) {
+        this.fromAddress = emailProperties.resolveFromEmail();
+        if (emailProperties.isEnabled()) {
+            this.resend = new Resend(emailProperties.getApiKey());
+            this.emailEnabled = true;
+            this.disabledReason = null;
+        } else {
             this.resend = null;
-            this.fromAddress = fromAddress;
             this.emailEnabled = false;
-            return;
+            this.disabledReason = emailProperties.getDisabledReason()
+                    .orElse("Serviço de email desabilitado");
         }
-        this.resend = new Resend(apiKey);
-        this.fromAddress = fromAddress;
-        this.emailEnabled = true;
     }
 
-    public void enviarEmailBoasVindas(String email, String nome, String perfilInvestidor, String notificacao) {
-        try {
-            if (!emailEnabled) {
-                log.warn("📭 Tentativa de envio para {} ignorada porque o serviço de email está desabilitado.", email);
-                return;
-            }
+    public EmailDeliveryResult enviarEmailBoasVindas(String email, String nome, String perfilInvestidor, String notificacao) {
+        Instant attemptAt = Instant.now();
+        String subject = "Bem-vindo ao BMSS 🚀";
 
+        if (!emailEnabled) {
+            EmailDeliveryResult result = EmailDeliveryResult.failure(email, subject, attemptAt, disabledReason);
+            lastDeliveryResult.set(result);
+            log.warn("📭 Tentativa de envio para {} ignorada: {}", email, disabledReason);
+            return result;
+        }
+
+        try {
             log.info("📧 Enviando email de boas-vindas para {}", email);
 
             Preferencia preferenciaNormalizada = normalizarPreferencia(notificacao);
             String perfilFormatado = formatarPerfilInvestidor(perfilInvestidor);
 
-            // CORREÇÃO: primeiro formate o HTML, depois passe para o builder
             String htmlContent = """
                     <h2>Olá, %s! 👋</h2>
                     <p>Você agora está inscrito para receber análises inteligentes do sentimento do mercado Bitcoin.</p>
@@ -61,19 +73,39 @@ public class EmailService {
                 """.formatted(nome, perfilFormatado, preferenciaNormalizada.descricao());
 
             SendEmailRequest request = SendEmailRequest.builder()
-                .from(fromAddress)
-                .to(email)
-                .subject("Bem-vindo ao BMSS 🚀")
-                .html(htmlContent) // Agora passando a String já formatada
-                .build();
+                    .from(fromAddress)
+                    .to(email)
+                    .subject(subject)
+                    .html(htmlContent)
+                    .build();
 
             SendEmailResponse response = resend.emails().send(request);
 
+            EmailDeliveryResult result = EmailDeliveryResult.success(email, subject, attemptAt, response.getId());
+            lastDeliveryResult.set(result);
+
             log.info("✅ Email enviado com sucesso! ID: {}", response.getId());
 
+            return result;
         } catch (Exception e) {
-            log.error("❌ Erro ao enviar email: {}", e.getMessage(), e);
+            String message = Optional.ofNullable(e.getMessage()).orElse("Erro desconhecido ao enviar email");
+            EmailDeliveryResult result = EmailDeliveryResult.failure(email, subject, attemptAt, message);
+            lastDeliveryResult.set(result);
+            log.error("❌ Erro ao enviar email: {}", message, e);
+            return result;
         }
+    }
+
+    public Optional<EmailDeliveryResult> getLastDeliveryResult() {
+        return Optional.ofNullable(lastDeliveryResult.get());
+    }
+
+    public boolean isEmailEnabled() {
+        return emailEnabled;
+    }
+
+    public Optional<String> getDisabledReasonMessage() {
+        return Optional.ofNullable(disabledReason);
     }
 
     private Preferencia normalizarPreferencia(String notificacao) {

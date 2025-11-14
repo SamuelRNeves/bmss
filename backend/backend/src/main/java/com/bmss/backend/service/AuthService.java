@@ -13,6 +13,7 @@ import com.bmss.backend.security.PasswordHashUtils;
 import com.bmss.backend.service.ProfileImageStorageService;
 import com.bmss.backend.security.PasswordHashUtils.PasswordHashType;
 import com.bmss.backend.util.UserSanitizer;
+import com.bmss.backend.service.EmailDeliveryResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -322,15 +323,27 @@ public ResponseEntity<?> register(RegisterRequest request) {
         logger.info("👤 Usuário salvo no banco: {}", finalSavedUser.getEmail());
         CompletableFuture.runAsync(() -> {
             try {
-                emailService.enviarEmailBoasVindas(
+                EmailDeliveryResult result = emailService.enviarEmailBoasVindas(
                         finalSavedUser.getEmail(),
                         finalSavedUser.getName(),
                         finalSavedUser.getInvestorProfile().name(),
                         finalSavedUser.getNotificationPreference()
                 );
-                logger.info("✅ Email de boas-vindas enviado para: {}", finalSavedUser.getEmail());
-            } catch (Exception e) {
-                logger.error("❌ Erro ao enviar email: {}", e.getMessage(), e);
+
+                if (result.sent()) {
+                    logger.info("✅ Email de boas-vindas enviado para: {} (ID: {})",
+                            finalSavedUser.getEmail(),
+                            result.providerMessageId());
+                } else {
+                    logger.warn("📭 Email de boas-vindas não enviado para {}: {}",
+                            finalSavedUser.getEmail(),
+                            result.failureReason());
+                }
+            } catch (Exception asyncError) {
+                logger.error("❌ Erro inesperado ao acionar envio de email para {}: {}",
+                        finalSavedUser.getEmail(),
+                        asyncError.getMessage(),
+                        asyncError);
             }
         });
 

@@ -8,7 +8,8 @@ import {
   Legend,
   ChartOptions
 } from 'chart.js';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useIsMobile } from '@/hooks/useBreakpoint';
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
@@ -26,6 +27,7 @@ export function SentimentDistribution({ distribution }: SentimentDistributionPro
     negative: 25,
     neutral: 30
   });
+  const isMobile = useIsMobile();
 
   // Usar dados passados como props ou dados simulados
   useEffect(() => {
@@ -66,17 +68,18 @@ export function SentimentDistribution({ distribution }: SentimentDistributionPro
     ],
   };
 
-  const options: ChartOptions<'doughnut'> = {
+  const options = useMemo<ChartOptions<'doughnut'>>(() => ({
     responsive: true,
+    maintainAspectRatio: false,
     plugins: {
       legend: {
         position: 'bottom',
         labels: {
           color: '#9ca3af',
           font: {
-            size: 12
+            size: isMobile ? 10 : 12
           },
-          padding: 20,
+          padding: isMobile ? 12 : 20,
           usePointStyle: true,
         },
       },
@@ -90,52 +93,52 @@ export function SentimentDistribution({ distribution }: SentimentDistributionPro
         }
       },
     },
-    cutout: '65%',
-  };
+    cutout: isMobile ? '58%' : '65%',
+  }), [isMobile]);
 
   const total = currentDistribution.positive + currentDistribution.negative + currentDistribution.neutral;
   const positivePercentage = total > 0 ? ((currentDistribution.positive / total) * 100) : 0;
 
   return (
-    <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 hover:border-yellow-400/30 transition-all duration-300">
-      <h3 className="text-white text-lg font-semibold mb-4 text-center">
+    <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 sm:p-6 hover:border-yellow-400/30 transition-all duration-300">
+      <h3 className="text-white text-base sm:text-lg font-semibold mb-4 text-center">
         Distribuição de Sentimento
       </h3>
-      
-      <div className="relative h-64">
+
+      <div className="relative h-56 sm:h-64">
         <Doughnut data={data} options={options} />
-        
+
         {/* Centro do gráfico com porcentagem principal */}
         <div className="absolute inset-0 flex items-center justify-center flex-col">
-          <span className="text-2xl font-bold text-white">{positivePercentage.toFixed(1)}%</span>
-          <span className="text-sm text-green-400">Positivo</span>
+          <span className="text-xl sm:text-2xl font-bold text-white">{positivePercentage.toFixed(1)}%</span>
+          <span className="text-xs sm:text-sm text-green-400">Positivo</span>
         </div>
       </div>
 
       {/* Estatísticas detalhadas */}
-      <div className="grid grid-cols-3 gap-4 mt-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mt-6">
         <div className="text-center">
           <div className="flex items-center justify-center gap-2 mb-1">
             <div className="w-3 h-3 rounded-full bg-green-500"></div>
             <span className="text-white font-semibold">{currentDistribution.positive.toFixed(1)}%</span>
           </div>
-          <span className="text-xs text-gray-400">Positivo</span>
+          <span className="text-[11px] sm:text-xs text-gray-400">Positivo</span>
         </div>
-        
+
         <div className="text-center">
           <div className="flex items-center justify-center gap-2 mb-1">
             <div className="w-3 h-3 rounded-full bg-red-500"></div>
             <span className="text-white font-semibold">{currentDistribution.negative.toFixed(1)}%</span>
           </div>
-          <span className="text-xs text-gray-400">Negativo</span>
+          <span className="text-[11px] sm:text-xs text-gray-400">Negativo</span>
         </div>
-        
+
         <div className="text-center">
           <div className="flex items-center justify-center gap-2 mb-1">
             <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
             <span className="text-white font-semibold">{currentDistribution.neutral.toFixed(1)}%</span>
           </div>
-          <span className="text-xs text-gray-400">Neutro</span>
+          <span className="text-[11px] sm:text-xs text-gray-400">Neutro</span>
         </div>
       </div>
     </div>
