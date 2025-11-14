@@ -16,6 +16,7 @@ import {
   Upload,
 } from "lucide-react";
 import { useAuth } from "@/lib/useAuth";
+import { buildApiUrl } from "@/lib/api";
 
 interface PasswordFormState {
   currentPassword: string;
@@ -255,8 +256,7 @@ export default function UserSessionPage() {
         throw new Error("Sessão expirada. Faça login novamente.");
       }
 
-      const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, "") ?? "https://bmss-backend.onrender.com").replace(/\/+$/, "");
-      const response = await fetch(`${apiBase}/users/${user.id}/password`, {
+      const response = await fetch(buildApiUrl(`users/${user.id}/password`), {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",

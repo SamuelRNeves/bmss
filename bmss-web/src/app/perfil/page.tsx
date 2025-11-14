@@ -12,6 +12,7 @@ import {
   GaugeCircle,
   Flame,
 } from "lucide-react";
+import { buildApiUrl } from "@/lib/api";
 
 export default function PerfilPage() {
   const router = useRouter();
@@ -33,12 +34,9 @@ export default function PerfilPage() {
 
     const fetchUser = async () => {
       try {
-        const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_BASE_URL || "https://bmss-backend.onrender.com"}/auth/me`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
+        const response = await fetch(buildApiUrl("auth/me"), {
+          headers: { Authorization: `Bearer ${token}` },
+        });
 
         if (!response.ok) throw new Error("Sessão expirada");
         
@@ -75,20 +73,17 @@ export default function PerfilPage() {
     setSaving(true);
 
     try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL || "https://bmss-backend.onrender.com"}/users/${user.id}`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            investorProfile,
-            notificationPreference,
-          }),
-        }
-      );
+      const response = await fetch(buildApiUrl(`users/${user.id}`), {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          investorProfile,
+          notificationPreference,
+        }),
+      });
 
       if (!response.ok) throw new Error("Erro ao salvar alterações");
 

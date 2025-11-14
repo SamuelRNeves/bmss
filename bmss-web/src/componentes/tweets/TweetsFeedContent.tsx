@@ -29,8 +29,8 @@ export default function TweetsFeedContent() {
   const generateFallbackTweets = useCallback(() => buildFallbackList("tweets"), []);
 
   const fetchTweets = useCallback(async () => {
-    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
-    const shouldUseFallback = !apiBaseUrl || apiBaseUrl.includes("fallback");
+    const configuredBase = process.env.NEXT_PUBLIC_API_BASE_URL?.trim().toLowerCase();
+    const shouldUseFallback = Boolean(configuredBase && configuredBase.includes("fallback"));
 
     if (shouldUseFallback) {
       const fallback = generateFallbackTweets();
