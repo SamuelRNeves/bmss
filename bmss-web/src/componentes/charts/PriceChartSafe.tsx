@@ -17,10 +17,13 @@ const FALLBACK_DATA = [
 ];
 
 export default function PriceChartSafe() {
+  // 🔥 CORREÇÃO: Garantir que todos os hooks sejam chamados na mesma ordem
   const [dados, setDados] = useState<any[]>(FALLBACK_DATA);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [variacao, setVariacao] = useState<number>(0);
+  
+  // 🔥 CORREÇÃO: useIsMobile deve sempre ser chamado, independente das condições
   const isMobile = useIsMobile();
 
   const carregarDados = async () => {
@@ -76,6 +79,14 @@ export default function PriceChartSafe() {
     return null;
   };
 
+  // 🔥 CORREÇÃO: useMemo deve vir DEPOIS de todos os hooks básicos
+  const chartMargins = useMemo(() => (
+    isMobile
+      ? { top: 10, right: 8, left: -10, bottom: 0 }
+      : { top: 12, right: 16, left: 0, bottom: 0 }
+  ), [isMobile]);
+
+  // 🔥 CORREÇÃO: Condicionais APENAS no final, depois de todos os hooks
   if (loading) {
     return (
       <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6">
@@ -97,12 +108,6 @@ export default function PriceChartSafe() {
       </div>
     );
   }
-
-  const chartMargins = useMemo(() => (
-    isMobile
-      ? { top: 10, right: 8, left: -10, bottom: 0 }
-      : { top: 12, right: 16, left: 0, bottom: 0 }
-  ), [isMobile]);
 
   return (
     <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 sm:p-6">

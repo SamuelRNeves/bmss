@@ -92,7 +92,7 @@ export function DailyHighlightCard({ headline }: DailyHighlightCardProps) {
     : parsedDate.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 
   return (
-    <section className="relative z-0 mb-10 sm:mb-12">
+    <section className="relative mb-10 sm:mb-12 isolate">
       <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-4">
         <div className="flex items-center gap-2 rounded-full bg-yellow-400/10 border border-yellow-400/30 px-3 py-1 text-yellow-200">
           <Sparkles size={isMobile ? 14 : 16} />
