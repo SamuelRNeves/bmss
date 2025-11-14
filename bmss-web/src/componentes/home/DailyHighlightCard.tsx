@@ -47,7 +47,7 @@ const formatPublishedDistance = (dateString: string) => {
     return `há ${diffHours}h`;
   }
 
-  const diffDays = Math.floor(diffHours / 24);
+  const diffDays = Math.floor(ddiffHours / 24);
   if (diffDays === 1) {
     return "ontem";
   }
@@ -90,7 +90,7 @@ export function DailyHighlightCard({ headline }: DailyHighlightCardProps) {
     : parsedDate.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 
   return (
-    <section className="mb-12">
+    <section className="relative mb-12 isolate">
       <div className="flex flex-wrap items-center gap-3 mb-4">
         <div className="flex items-center gap-2 rounded-full bg-yellow-400/10 border border-yellow-400/30 px-3 py-1 text-yellow-200">
           <Sparkles size={16} />
@@ -102,15 +102,15 @@ export function DailyHighlightCard({ headline }: DailyHighlightCardProps) {
       </div>
 
       <div
-        className="relative overflow-hidden rounded-3xl border border-neutral-800 bg-neutral-900/80 shadow-[0_20px_60px_-30px_rgba(250,204,21,0.45)]"
+        className="relative z-0 overflow-hidden rounded-3xl border border-neutral-800 bg-neutral-900/80 shadow-[0_20px_60px_-30px_rgba(250,204,21,0.45)]"
       >
         <div
-          className="absolute inset-0 opacity-80"
+          className="absolute inset-0 opacity-80 pointer-events-none -z-10"
           style={{ background: gradient }}
           aria-hidden
         />
 
-        <div className="relative p-6 sm:p-10 grid gap-8 lg:grid-cols-[1.4fr_minmax(220px,0.6fr)] items-start">
+        <div className="relative z-10 p-6 sm:p-10 grid gap-8 lg:grid-cols-[1.4fr_minmax(220px,0.6fr)] items-start">
           <div className="space-y-4">
             <div className="flex items-center gap-2 text-sm font-medium" style={{ color: colors.text }}>
               <Flame size={18} />
