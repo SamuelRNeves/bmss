@@ -776,6 +776,7 @@ export default function HomeClient() {
                 <TweetsFeed />
               </Suspense>
             </div>
+          </div>
         </div>
       </div>
     </ErrorBoundary>
