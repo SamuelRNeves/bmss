@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { getBitcoin24h } from "@/lib/api";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { TrendingUp, TrendingDown, RefreshCw, AlertTriangle } from "lucide-react";
+import { useIsMobile } from "@/hooks/useBreakpoint";
 
 // Dados fallback garantidos
 const FALLBACK_DATA = [
@@ -20,6 +21,7 @@ export default function PriceChartSafe() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [variacao, setVariacao] = useState<number>(0);
+  const isMobile = useIsMobile();
 
   const carregarDados = async () => {
     try {
@@ -96,25 +98,33 @@ export default function PriceChartSafe() {
     );
   }
 
+  const chartMargins = useMemo(() => (
+    isMobile
+      ? { top: 10, right: 8, left: -10, bottom: 0 }
+      : { top: 12, right: 16, left: 0, bottom: 0 }
+  ), [isMobile]);
+
   return (
-    <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h3 className="text-xl font-bold text-white flex items-center gap-3">
-            <TrendingUp size={24} />
-            Preço do Bitcoin (24h)
+    <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 sm:p-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
+        <div className="space-y-1">
+          <h3 className="text-lg sm:text-xl font-bold text-white flex items-center gap-3">
+            <TrendingUp size={22} className="hidden sm:inline" />
+            <TrendingUp size={20} className="sm:hidden" />
+            <span>Preço do Bitcoin (24h)</span>
           </h3>
-          <div className={`flex items-center gap-1 mt-1 ${variacaoColor}`}>
-            <VariacaoIcon size={16} />
+          <div className={`flex items-center gap-1 ${variacaoColor}`}>
+            <VariacaoIcon size={14} className="sm:hidden" />
+            <VariacaoIcon size={16} className="hidden sm:block" />
             <span className="text-sm font-medium">
               {variacao > 0 ? '+' : ''}{variacao}%
             </span>
           </div>
         </div>
-        
-        <div className="flex items-center gap-3">
+
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           {error && (
-            <span className="bg-orange-500 text-white text-xs px-2 py-1 rounded-full flex items-center gap-1">
+            <span className="bg-orange-500 text-white text-[11px] sm:text-xs px-2 py-1 rounded-full flex items-center gap-1">
               <AlertTriangle size={10} />
               SIMULAÇÃO
             </span>
@@ -128,37 +138,38 @@ export default function PriceChartSafe() {
         </div>
       </div>
 
-      <div className="h-80">
+      <div className="h-64 sm:h-80">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={dados}>
+          <LineChart data={dados} margin={chartMargins}>
             <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-            <XAxis 
-              dataKey="time" 
+            <XAxis
+              dataKey="time"
               stroke="#9CA3AF"
-              fontSize={12}
-              interval="preserveStartEnd"
+              fontSize={isMobile ? 10 : 12}
+              interval={isMobile ? 1 : "preserveStartEnd"}
             />
-            <YAxis 
+            <YAxis
               stroke="#9CA3AF"
-              fontSize={12}
-              tickFormatter={(value) => `$${value / 1000}k`}
+              fontSize={isMobile ? 10 : 12}
+              tickFormatter={(value) => `$${Math.round(value / 1000)}k`}
+              width={isMobile ? 38 : 46}
               domain={['dataMin - 1000', 'dataMax + 1000']}
             />
-            <Tooltip content={<CustomTooltip />} />
-            <Line 
-              type="monotone" 
-              dataKey="price" 
-              stroke="#F59E0B" 
-              strokeWidth={2}
+            <Tooltip content={<CustomTooltip />} wrapperStyle={{ outline: 'none' }} />
+            <Line
+              type="monotone"
+              dataKey="price"
+              stroke="#F59E0B"
+              strokeWidth={isMobile ? 2 : 2.5}
               dot={false}
-              activeDot={{ r: 4, fill: "#F59E0B" }}
+              activeDot={{ r: isMobile ? 3.5 : 4.5, fill: "#F59E0B" }}
             />
           </LineChart>
         </ResponsiveContainer>
       </div>
 
       {error && (
-        <p className="text-orange-400 text-xs mt-2 flex items-center gap-1">
+        <p className="text-orange-400 text-[11px] sm:text-xs mt-2 flex items-center gap-1">
           <AlertTriangle size={10} />
           {error}
         </p>

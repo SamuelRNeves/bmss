@@ -3,6 +3,7 @@
 import { Flame, Sparkles, Clock, ExternalLink } from "lucide-react";
 import { FeedItem } from "@/componentes/news/feed-utils";
 import { getSentimentColors, getSentimentGradient } from "@/componentes/utils/sentiment-colors";
+import { useIsMobile } from "@/hooks/useBreakpoint";
 
 interface DailyHighlightCardProps {
   headline: FeedItem;
@@ -75,6 +76,7 @@ export function DailyHighlightCard({ headline }: DailyHighlightCardProps) {
   const colors = getSentimentColors(sentiment, normalizedScore);
   const gradient = getSentimentGradient(sentiment, normalizedScore);
   const sentimentCopy = SENTIMENT_COPY[sentiment];
+  const isMobile = useIsMobile();
 
   const rawUrl = (isTweet && tweetUrl ? tweetUrl : url) ?? "";
   const trimmedUrl = rawUrl.trim();
@@ -90,13 +92,13 @@ export function DailyHighlightCard({ headline }: DailyHighlightCardProps) {
     : parsedDate.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 
   return (
-    <section className="relative mb-12 isolate">
-      <div className="flex flex-wrap items-center gap-3 mb-4">
+    <section className="relative mb-10 sm:mb-12 isolate">
+      <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-4">
         <div className="flex items-center gap-2 rounded-full bg-yellow-400/10 border border-yellow-400/30 px-3 py-1 text-yellow-200">
-          <Sparkles size={16} />
-          <span className="text-sm font-semibold uppercase tracking-wide">Principal notícia do dia</span>
+          <Sparkles size={isMobile ? 14 : 16} />
+          <span className="text-xs sm:text-sm font-semibold uppercase tracking-wide">Principal notícia do dia</span>
         </div>
-        <span className="text-xs text-gray-400">
+        <span className="text-[11px] sm:text-xs text-gray-400">
           Atualizamos automaticamente com base no engajamento capturado nas últimas 24h.
         </span>
       </div>
@@ -110,63 +112,63 @@ export function DailyHighlightCard({ headline }: DailyHighlightCardProps) {
           aria-hidden
         />
 
-        <div className="relative z-10 p-6 sm:p-10 grid gap-8 lg:grid-cols-[1.4fr_minmax(220px,0.6fr)] items-start">
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 text-sm font-medium" style={{ color: colors.text }}>
-              <Flame size={18} />
+        <div className="relative z-10 p-5 sm:p-8 lg:p-10 grid gap-6 lg:gap-8 lg:grid-cols-[1.4fr_minmax(220px,0.6fr)] items-start">
+          <div className="space-y-4 sm:space-y-5">
+            <div className="flex items-center gap-2 text-xs sm:text-sm font-medium" style={{ color: colors.text }}>
+              <Flame size={isMobile ? 16 : 18} />
               <span>
                 {sentimentCopy.tone} {sentimentCopy.emoji}
               </span>
             </div>
 
-            <h2 className="text-2xl sm:text-3xl font-black leading-tight text-white drop-shadow">
+            <h2 className="text-xl sm:text-3xl font-black leading-tight text-white drop-shadow">
               {title}
             </h2>
 
-            <p className="text-base text-gray-100/90 leading-relaxed max-w-3xl">
+            <p className="text-sm sm:text-base text-gray-100/90 leading-relaxed max-w-3xl">
               {description || "Esta matéria ganhou tração e lidera o ranking de leituras do ecossistema cripto hoje."}
             </p>
 
-            <div className="flex flex-wrap items-center gap-3 text-sm text-gray-200">
-              <span className="rounded-full bg-black/30 px-3 py-1 border border-white/10 uppercase tracking-wide text-xs">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-[11px] sm:text-sm text-gray-200">
+              <span className="rounded-full bg-black/30 px-3 py-1 border border-white/10 uppercase tracking-wide text-[10px] sm:text-xs">
                 {source || "Fonte desconhecida"}
               </span>
               <span className="flex items-center gap-1 text-yellow-200/90">
-                <Clock size={14} /> {publishedDistance}
+                <Clock size={isMobile ? 12 : 14} /> {publishedDistance}
               </span>
-              <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold" style={{ color: colors.text }}>
+              <span className="rounded-full bg-white/10 px-3 py-1 text-[10px] sm:text-xs font-semibold" style={{ color: colors.text }}>
                 {sentimentCopy.label}
               </span>
-              <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-white/90">
+              <span className="rounded-full bg-white/10 px-3 py-1 text-[10px] sm:text-xs font-semibold text-white/90">
                 Engajamento {engagementScore}%
               </span>
-              <span className="rounded-full bg-black/40 px-3 py-1 text-xs text-gray-200">
+              <span className="rounded-full bg-black/40 px-3 py-1 text-[10px] sm:text-xs text-gray-200">
                 {viewEstimate.toLocaleString("pt-BR")} leituras acompanhadas
               </span>
             </div>
 
-            <div className="flex flex-wrap gap-3 pt-2">
+            <div className="flex flex-wrap gap-2 sm:gap-3 pt-2">
               <a
                 href={resolvedUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 rounded-full bg-yellow-400 px-5 py-2 font-semibold text-neutral-900 transition hover:bg-yellow-300"
+                className="inline-flex items-center gap-2 rounded-full bg-yellow-400 px-4 sm:px-5 py-2 text-sm sm:text-base font-semibold text-neutral-900 transition hover:bg-yellow-300"
               >
                 Ler agora
-                <ExternalLink size={16} />
+                <ExternalLink size={isMobile ? 14 : 16} />
               </a>
-              <div className="flex items-center gap-2 text-xs text-gray-300/90">
+              <div className="flex items-center gap-1 sm:gap-2 text-[11px] sm:text-xs text-gray-300/90">
                 <span className="h-2 w-2 rounded-full" style={{ backgroundColor: colors.border }} />
                 Curadoria automática BMSS Insight Engine
               </div>
             </div>
           </div>
 
-          <div className="grid gap-4 rounded-2xl border border-white/10 bg-black/30 p-6 text-sm text-gray-200">
+          <div className="grid gap-4 rounded-2xl border border-white/10 bg-black/30 p-4 sm:p-6 text-[13px] sm:text-sm text-gray-200">
             <div>
-              <p className="text-xs uppercase tracking-[0.24em] text-white/60">Sentimento previsto</p>
-              <p className="mt-1 text-lg font-semibold text-white">
-                {sentimentCopy.label} <span className="text-white/70 text-sm font-normal">({engagementScore}% de confiança)</span>
+              <p className="text-[11px] uppercase tracking-[0.24em] text-white/60">Sentimento previsto</p>
+              <p className="mt-1 text-base sm:text-lg font-semibold text-white">
+                {sentimentCopy.label} <span className="text-white/70 text-xs sm:text-sm font-normal">({engagementScore}% de confiança)</span>
               </p>
             </div>
 
@@ -194,7 +196,7 @@ export function DailyHighlightCard({ headline }: DailyHighlightCardProps) {
               </div>
             </div>
 
-            <div className="flex items-center justify-between text-xs text-gray-400">
+            <div className="flex items-center justify-between text-[11px] sm:text-xs text-gray-400">
               <span>Atualizado</span>
               <span>{formattedDate}</span>
             </div>

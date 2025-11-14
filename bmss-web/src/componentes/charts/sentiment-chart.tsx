@@ -15,6 +15,7 @@ import {
   ChartOptions,
   ChartData,
 } from "chart.js";
+import { useIsMobile } from "@/hooks/useBreakpoint";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler);
 
@@ -40,6 +41,7 @@ const FALLBACK_TREND: SentimentTrendPoint[] = [
 ];
 
 export default function SentimentChart({ trend }: SentimentChartProps) {
+  const isMobile = useIsMobile();
   const points = useMemo(() => {
     const source = trend && trend.length > 0 ? trend : FALLBACK_TREND;
     return source.slice(-7);
@@ -55,8 +57,9 @@ export default function SentimentChart({ trend }: SentimentChartProps) {
         backgroundColor: "rgba(16, 185, 129, 0.15)",
         fill: true,
         tension: 0.35,
-        borderWidth: 2,
-        pointRadius: 3,
+        borderWidth: isMobile ? 1.5 : 2,
+        pointRadius: isMobile ? 2 : 3,
+        pointHoverRadius: isMobile ? 3 : 4,
         pointBackgroundColor: "#10b981",
       },
       {
@@ -66,8 +69,9 @@ export default function SentimentChart({ trend }: SentimentChartProps) {
         backgroundColor: "rgba(239, 68, 68, 0.15)",
         fill: true,
         tension: 0.35,
-        borderWidth: 2,
-        pointRadius: 3,
+        borderWidth: isMobile ? 1.5 : 2,
+        pointRadius: isMobile ? 2 : 3,
+        pointHoverRadius: isMobile ? 3 : 4,
         pointBackgroundColor: "#ef4444",
       },
       {
@@ -77,25 +81,45 @@ export default function SentimentChart({ trend }: SentimentChartProps) {
         backgroundColor: "rgba(245, 158, 11, 0.15)",
         fill: true,
         tension: 0.35,
-        borderWidth: 2,
-        pointRadius: 3,
+        borderWidth: isMobile ? 1.5 : 2,
+        pointRadius: isMobile ? 2 : 3,
+        pointHoverRadius: isMobile ? 3 : 4,
         pointBackgroundColor: "#f59e0b",
       },
     ],
-  }), [points]);
+  }), [isMobile, points]);
 
   const options = useMemo<ChartOptions<"line">>(
     () => ({
       responsive: true,
       maintainAspectRatio: false,
+      layout: {
+        padding: isMobile
+          ? {
+              top: 12,
+              bottom: 12,
+              left: 4,
+              right: 12,
+            }
+          : {
+              top: 16,
+              bottom: 16,
+              left: 16,
+              right: 24,
+            },
+      },
       plugins: {
         legend: {
-          position: "top",
+          position: isMobile ? "bottom" : "top",
           labels: {
             color: "#d1d5db",
             usePointStyle: true,
             pointStyle: "circle",
-            padding: 20,
+            padding: isMobile ? 12 : 20,
+            boxWidth: isMobile ? 8 : 12,
+            font: {
+              size: isMobile ? 10 : 12,
+            },
           },
         },
         tooltip: {
@@ -112,6 +136,11 @@ export default function SentimentChart({ trend }: SentimentChartProps) {
         x: {
           ticks: {
             color: "#9ca3af",
+            maxTicksLimit: isMobile ? 4 : undefined,
+            maxRotation: isMobile ? 0 : 0,
+            font: {
+              size: isMobile ? 10 : 12,
+            },
           },
           grid: {
             color: "rgba(75, 85, 99, 0.2)",
@@ -124,6 +153,9 @@ export default function SentimentChart({ trend }: SentimentChartProps) {
             stepSize: 20,
             color: "#9ca3af",
             callback: (value) => `${value}%`,
+            font: {
+              size: isMobile ? 10 : 12,
+            },
           },
           grid: {
             color: "rgba(75, 85, 99, 0.2)",
@@ -131,13 +163,13 @@ export default function SentimentChart({ trend }: SentimentChartProps) {
         },
       },
     }),
-    []
+    [isMobile]
   );
 
   return (
-    <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 h-full">
-      <h3 className="text-xl font-bold text-white mb-4">Evolução do Sentimento</h3>
-      <div className="h-72">
+    <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 sm:p-6 h-full min-w-0">
+      <h3 className="text-lg sm:text-xl font-bold text-white mb-4">Evolução do Sentimento</h3>
+      <div className="h-[18rem] sm:h-72">
         <Line data={data} options={options} />
       </div>
     </div>

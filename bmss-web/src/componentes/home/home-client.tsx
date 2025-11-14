@@ -663,112 +663,119 @@ export default function HomeClient() {
         <StatusBar />
         <ToastNotifier />
 
-        <div className="p-6 lg:p-8">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-8 gap-4">
-            <div>
-              <h1 className="text-3xl font-bold text-white">Dashboard Bitcoin</h1>
-              <p className="text-gray-400 mt-2">
-                Análise de sentimento em tempo real
-                {lastUpdate && <span className="text-gray-500 text-sm ml-2">• Atualizado: {lastUpdate}</span>}
-              </p>
-            </div>
-            <button
-              onClick={handleManualRefresh}
-              disabled={isLoading}
-              className="flex items-center gap-2 bg-yellow-500 text-black px-4 py-2 rounded-lg hover:bg-yellow-400 disabled:opacity-70 transition font-medium"
-            >
-              <RefreshCw size={16} className={isLoading ? "animate-spin" : ""} />
-              {isLoading ? "Atualizando..." : "Atualizar"}
-            </button>
-          </div>
-
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-8 p-4 bg-neutral-900 rounded-lg border border-neutral-800">
-            <span className="text-gray-400 text-sm whitespace-nowrap">Sentimento Geral:</span>
-            {sentimentBadges}
-          </div>
-
-          {dailyHeadline && <DailyHighlightCard headline={dailyHeadline} />}
-
-          <Suspense fallback={<div className="h-32 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}>
-            <BitcoinPriceClient />
-          </Suspense>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 my-8">
-            <StatsCard title="Notícias" value={isLoading ? "..." : stats.totalNews.toString()} change={8.2} icon={<Newspaper size={24} />} sentiment="positive" />
-            <StatsCard title="Tweets" value={isLoading ? "..." : stats.totalTweets.toString()} change={15.7} icon={<Twitter size={24} />} sentiment="positive" />
-            <StatsCard title="Positivo" value={isLoading ? "..." : `${stats.positiveSentiment}%`} change={2.5} icon={<TrendingUp size={24} />} sentiment="positive" />
-            <StatsCard title="Negativo" value={isLoading ? "..." : `${stats.negativeSentiment}%`} change={-1.2} icon={<TrendingDown size={24} />} sentiment="negative" />
-          </div>
-
-          <Suspense fallback={<div className="h-48 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}>
-            <Recomendacoes />
-          </Suspense>
-
-          <div className="my-12">
-            <div className="flex items-center gap-2 mb-6">
-              <BarChart3 className="text-yellow-400" size={28} />
-              <h2 className="text-2xl font-bold">Análise de Sentimento</h2>
-            </div>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              <Suspense fallback={<div className="h-80 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}>
-                <SentimentChart trend={sentimentTrend} />
-              </Suspense>
-              <Suspense fallback={<div className="h-80 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}>
-                <SentimentDistribution distribution={{
-                  positive: stats.positiveSentiment,
-                  negative: stats.negativeSentiment,
-                  neutral: stats.neutralSentiment,
-                }} />
-              </Suspense>
-            </div>
-          </div>
-
-          <div className="my-12">
-            <Suspense fallback={<div className="h-96 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}>
-              <PriceChartSafe />
-            </Suspense>
-          </div>
-
-          <div className="my-12">
-            <Suspense fallback={<div className="h-96 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}>
-              <BitcoinCompletoWrapper />
-            </Suspense>
-          </div>
-
-          <div className="my-12">
-            <Suspense fallback={<div className="h-96 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}>
-              <BitcoinChartWrapper />
-            </Suspense>
-          </div>
-
-          <div className="my-8">
-            <Suspense fallback={<div className="h-24 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}>
-              <LegendaSentimentos />
-            </Suspense>
-          </div>
-
-          <div className="my-12">
-            <Suspense fallback={
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {[1,2,3,4,5,6].map(i => (
-                  <div key={i} className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 h-48 animate-pulse" />
-                ))}
+        <div className="px-4 py-6 sm:px-6 lg:px-8">
+          <div className="mx-auto w-full max-w-7xl">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-6 sm:mb-8 gap-4">
+              <div className="space-y-2">
+                <h1 className="text-2xl sm:text-3xl font-bold text-white">Dashboard Bitcoin</h1>
+                <p className="text-sm sm:text-base text-gray-400">
+                  Análise de sentimento em tempo real
+                  {lastUpdate && <span className="block sm:inline text-gray-500 text-xs sm:text-sm sm:ml-2">• Atualizado: {lastUpdate}</span>}
+                </p>
               </div>
-            }>
-              <NewsFeed />
-            </Suspense>
-          </div>
+              <button
+                onClick={handleManualRefresh}
+                disabled={isLoading}
+                className="inline-flex items-center justify-center gap-2 bg-yellow-500 text-black px-4 py-2 rounded-lg hover:bg-yellow-400 disabled:opacity-70 transition font-medium w-full sm:w-auto"
+              >
+                <RefreshCw size={16} className={isLoading ? "animate-spin" : ""} />
+                {isLoading ? "Atualizando..." : "Atualizar"}
+              </button>
+            </div>
 
-          <div className="my-12">
-            <Suspense fallback={
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {[1,2,3,4,5,6].map(i => (
-                  <div key={i} className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 h-48 animate-pulse" />
-                ))}
-              </div>
-            }>
-              <TweetsFeed />
+            <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-3 sm:gap-4 mb-8 p-4 bg-neutral-900 rounded-lg border border-neutral-800">
+              <span className="text-gray-400 text-xs sm:text-sm">Sentimento Geral:</span>
+              <div className="w-full sm:w-auto flex flex-wrap gap-3">{sentimentBadges}</div>
+            </div>
+
+            {dailyHeadline && <DailyHighlightCard headline={dailyHeadline} />}
+
+            <Suspense fallback={<div className="h-32 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}>
+              <BitcoinPriceClient />
             </Suspense>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 my-8">
+              <StatsCard title="Notícias" value={isLoading ? "..." : stats.totalNews.toString()} change={8.2} icon={<Newspaper size={24} />} sentiment="positive" />
+              <StatsCard title="Tweets" value={isLoading ? "..." : stats.totalTweets.toString()} change={15.7} icon={<Twitter size={24} />} sentiment="positive" />
+              <StatsCard title="Positivo" value={isLoading ? "..." : `${stats.positiveSentiment}%`} change={2.5} icon={<TrendingUp size={24} />} sentiment="positive" />
+              <StatsCard title="Negativo" value={isLoading ? "..." : `${stats.negativeSentiment}%`} change={-1.2} icon={<TrendingDown size={24} />} sentiment="negative" />
+            </div>
+
+            <Suspense fallback={<div className="h-48 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}>
+              <Recomendacoes />
+            </Suspense>
+
+            <div className="my-10 sm:my-12">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+                <div className="flex items-center gap-2">
+                  <BarChart3 className="text-yellow-400" size={24} />
+                  <h2 className="text-xl sm:text-2xl font-bold">Análise de Sentimento</h2>
+                </div>
+                <p className="text-xs text-gray-500 sm:hidden">
+                  Explore os gráficos deslizando para ver todos os dados.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
+                <Suspense fallback={<div className="h-72 sm:h-80 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}> 
+                  <SentimentChart trend={sentimentTrend} />
+                </Suspense>
+                <Suspense fallback={<div className="h-72 sm:h-80 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}> 
+                  <SentimentDistribution distribution={{
+                    positive: stats.positiveSentiment,
+                    negative: stats.negativeSentiment,
+                    neutral: stats.neutralSentiment,
+                  }} />
+                </Suspense>
+              </div>
+            </div>
+
+            <div className="my-10 sm:my-12">
+              <Suspense fallback={<div className="h-80 sm:h-96 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}>
+                <PriceChartSafe />
+              </Suspense>
+            </div>
+
+            <div className="my-10 sm:my-12">
+              <Suspense fallback={<div className="h-80 sm:h-96 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}>
+                <BitcoinCompletoWrapper />
+              </Suspense>
+            </div>
+
+            <div className="my-10 sm:my-12">
+              <Suspense fallback={<div className="h-80 sm:h-96 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}>
+                <BitcoinChartWrapper />
+              </Suspense>
+            </div>
+
+            <div className="my-8">
+              <Suspense fallback={<div className="h-24 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}>
+                <LegendaSentimentos />
+              </Suspense>
+            </div>
+
+            <div className="my-10 sm:my-12">
+              <Suspense fallback={
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                  {[1,2,3,4,5,6].map(i => (
+                    <div key={i} className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 sm:p-6 h-40 sm:h-48 animate-pulse" />
+                  ))}
+                </div>
+              }>
+                <NewsFeed />
+              </Suspense>
+            </div>
+
+            <div className="my-10 sm:my-12">
+              <Suspense fallback={
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                  {[1,2,3,4,5,6].map(i => (
+                    <div key={i} className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 sm:p-6 h-40 sm:h-48 animate-pulse" />
+                  ))}
+                </div>
+              }>
+                <TweetsFeed />
+              </Suspense>
+            </div>
           </div>
         </div>
       </div>

@@ -117,11 +117,11 @@ export default function Header() {
   };
 
   return (
-    <header className="flex justify-between items-center px-6 py-4 bg-neutral-900 border-b border-neutral-800">
-      <h1 className="text-xl font-bold text-yellow-400">BMSS Dashboard</h1>
+    <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between px-4 sm:px-6 py-4 bg-neutral-900 border-b border-neutral-800">
+      <h1 className="text-lg sm:text-xl font-bold text-yellow-400">BMSS Dashboard</h1>
 
       {user ? (
-        <div className="flex items-center gap-6">
+        <div className="flex flex-wrap items-center justify-end gap-3 sm:gap-6">
           <div className="flex items-center gap-3">
             <Link
               href="/sessao"
@@ -149,7 +149,7 @@ export default function Header() {
               </span>
             </Link>
             <div className="text-right" ref={menuRef}>
-              <p className="text-sm font-semibold text-white">{user.name}</p>
+              <p className="text-sm font-semibold text-white line-clamp-1 max-w-[10rem] sm:max-w-none">{user.name}</p>
               <div className="relative mt-1">
                 <button
                   type="button"
@@ -209,7 +209,10 @@ export default function Header() {
           </button>
         </div>
       ) : (
-        <p className="text-gray-400 text-sm">Carregando...</p>
+        <div className="flex items-center gap-2 text-sm text-gray-400">
+          <Loader2 size={14} className="animate-spin" />
+          <span>Carregando usuário...</span>
+        </div>
       )}
     </header>
   );
