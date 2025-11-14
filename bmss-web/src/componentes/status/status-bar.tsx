@@ -336,8 +336,8 @@ export function StatusBar() {
   );
 
   return (
-    <div className="border-b border-neutral-800 bg-neutral-900/60 backdrop-blur-md">
-      <div className="container mx-auto px-6 py-2">
+    <div className="relative z-30 border-b border-neutral-800 bg-neutral-900/60 backdrop-blur-md">
+      <div className="container mx-auto px-4 sm:px-6 py-2">
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
           <div className="flex flex-col gap-1">
             <div
@@ -358,7 +358,7 @@ export function StatusBar() {
             )}
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
             <div className="relative">
               <button
                 ref={bellButtonRef}
