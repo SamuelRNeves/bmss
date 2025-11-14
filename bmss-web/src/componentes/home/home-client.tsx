@@ -110,6 +110,7 @@ const buildSentimentTrend = (
 ): SentimentTrendPoint[] => {
   const bucketCount = options.buckets ?? 7;
   type TrendSlice = Pick<SentimentTrendPoint, "positive" | "negative" | "neutral">;
+  
   const normalizePercentages = (positive: number, negative: number, neutral: number): TrendSlice => {
     let p = Math.round(positive);
     let n = Math.round(negative);
@@ -119,11 +120,13 @@ const buildSentimentTrend = (
     if (total !== 100) {
       if (total > 100) {
         let diff = total - 100;
+        // CORREÇÃO: Especificar explicitamente o tipo do array com 'as const'
         const adjustments: Array<{ key: keyof TrendSlice; value: number }> = [
-          { key: "positive", value: p },
-          { key: "negative", value: n },
-          { key: "neutral", value: z },
+          { key: "positive" as const, value: p },
+          { key: "negative" as const, value: n },
+          { key: "neutral" as const, value: z },
         ].sort((a, b) => b.value - a.value);
+        
         for (const entry of adjustments) {
           if (diff <= 0) break;
           if (entry.value <= 0) continue;
@@ -135,11 +138,13 @@ const buildSentimentTrend = (
         }
       } else if (total < 100) {
         let diff = 100 - total;
+        // CORREÇÃO: Especificar explicitamente o tipo do array com 'as const'
         const adjustments: Array<{ key: keyof TrendSlice; value: number }> = [
-          { key: "positive", value: p },
-          { key: "negative", value: n },
-          { key: "neutral", value: z },
+          { key: "positive" as const, value: p },
+          { key: "negative" as const, value: n },
+          { key: "neutral" as const, value: z },
         ].sort((a, b) => a.value - b.value);
+        
         for (const entry of adjustments) {
           if (diff <= 0) break;
           const capacity = 100 - entry.value;
@@ -162,11 +167,13 @@ const buildSentimentTrend = (
         else n += remainder;
       } else {
         let diff = Math.abs(remainder);
+        // CORREÇÃO: Especificar explicitamente o tipo do array com 'as const'
         const order: Array<{ key: keyof TrendSlice; value: number }> = [
-          { key: "positive", value: p },
-          { key: "negative", value: n },
-          { key: "neutral", value: z },
+          { key: "positive" as const, value: p },
+          { key: "negative" as const, value: n },
+          { key: "neutral" as const, value: z },
         ].sort((a, b) => b.value - a.value);
+        
         for (const entry of order) {
           if (diff <= 0) break;
           if (entry.value <= 0) continue;
