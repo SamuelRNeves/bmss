@@ -1,7 +1,7 @@
 // useAuth.ts
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import api from "@/lib/api";
+import api, { API_BASE_URL } from "@/lib/api";
 
 interface UserData {
   id?: number;
@@ -96,11 +96,7 @@ const resolveProfileImageSource = (
 };
 
 const resolveApiBase = (): string => {
-  const configured = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
-  if (configured && configured.length > 0) {
-    return configured.replace(/\/+$/, "");
-  }
-  return "https://bmss-backend.onrender.com";
+  return API_BASE_URL.replace(/\/+$/, "");
 };
 
 export function useAuth() {
