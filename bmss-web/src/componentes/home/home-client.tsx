@@ -97,6 +97,177 @@ interface StoredHeadlinePayload {
   headline: FeedItem;
 }
 
+type SentimentTrendPoint = {
+  label: string;
+  positive: number;
+  negative: number;
+  neutral: number;
+};
+
+const buildSentimentTrend = (
+  items: FeedItem[],
+  options: { buckets?: number; defaultRatios?: { positive: number; negative: number; neutral: number } } = {}
+): SentimentTrendPoint[] => {
+  const bucketCount = options.buckets ?? 7;
+  type TrendSlice = Pick<SentimentTrendPoint, "positive" | "negative" | "neutral">;
+  const normalizePercentages = (positive: number, negative: number, neutral: number): TrendSlice => {
+    let p = Math.round(positive);
+    let n = Math.round(negative);
+    let z = Math.round(neutral);
+
+    let total = p + n + z;
+    if (total !== 100) {
+      if (total > 100) {
+        let diff = total - 100;
+        const adjustments: Array<{ key: keyof TrendSlice; value: number }> = [
+          { key: "positive", value: p },
+          { key: "negative", value: n },
+          { key: "neutral", value: z },
+        ].sort((a, b) => b.value - a.value);
+        for (const entry of adjustments) {
+          if (diff <= 0) break;
+          if (entry.value <= 0) continue;
+          const amount = Math.min(entry.value, diff);
+          diff -= amount;
+          if (entry.key === "positive") p -= amount;
+          else if (entry.key === "negative") n -= amount;
+          else z -= amount;
+        }
+      } else if (total < 100) {
+        let diff = 100 - total;
+        const adjustments: Array<{ key: keyof TrendSlice; value: number }> = [
+          { key: "positive", value: p },
+          { key: "negative", value: n },
+          { key: "neutral", value: z },
+        ].sort((a, b) => a.value - b.value);
+        for (const entry of adjustments) {
+          if (diff <= 0) break;
+          const capacity = 100 - entry.value;
+          if (capacity <= 0) continue;
+          const amount = Math.min(capacity, diff);
+          diff -= amount;
+          if (entry.key === "positive") p += amount;
+          else if (entry.key === "negative") n += amount;
+          else z += amount;
+        }
+      }
+    }
+
+    total = p + n + z;
+    if (total !== 100) {
+      const remainder = 100 - total;
+      if (remainder > 0) {
+        if (z <= p && z <= n) z += remainder;
+        else if (p <= n) p += remainder;
+        else n += remainder;
+      } else {
+        let diff = Math.abs(remainder);
+        const order: Array<{ key: keyof TrendSlice; value: number }> = [
+          { key: "positive", value: p },
+          { key: "negative", value: n },
+          { key: "neutral", value: z },
+        ].sort((a, b) => b.value - a.value);
+        for (const entry of order) {
+          if (diff <= 0) break;
+          if (entry.value <= 0) continue;
+          const amount = Math.min(entry.value, diff);
+          diff -= amount;
+          if (entry.key === "positive") p -= amount;
+          else if (entry.key === "negative") n -= amount;
+          else z -= amount;
+        }
+      }
+    }
+
+    return { positive: p, negative: n, neutral: z };
+  };
+
+  const defaults = options.defaultRatios ?? { positive: 34, negative: 33, neutral: 33 };
+  const defaultsTotal = defaults.positive + defaults.negative + defaults.neutral;
+  const baseline = defaultsTotal
+    ? normalizePercentages(
+        (defaults.positive / defaultsTotal) * 100,
+        (defaults.negative / defaultsTotal) * 100,
+        (defaults.neutral / defaultsTotal) * 100
+      )
+    : normalizePercentages(34, 33, 33);
+
+  const now = new Date();
+  const anchor = new Date(now);
+  anchor.setMinutes(0, 0, 0);
+
+  const buckets = Array.from({ length: bucketCount }, (_, index) => {
+    const start = new Date(anchor);
+    start.setHours(anchor.getHours() - (bucketCount - 1 - index));
+    const end = new Date(start);
+    end.setHours(start.getHours() + 1);
+    return {
+      label: start.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
+      start,
+      end,
+      counts: { positive: 0, negative: 0, neutral: 0 },
+    };
+  });
+
+  items.forEach((item) => {
+    const published = new Date((item.date as string) ?? "");
+    if (Number.isNaN(published.getTime())) return;
+    const bucket = buckets.find(({ start, end }) => published >= start && published < end);
+    if (!bucket) return;
+
+    const normalized = (item.sentiment || "neutral").toLowerCase();
+    if (normalized.includes("pos")) bucket.counts.positive += 1;
+    else if (normalized.includes("neg")) bucket.counts.negative += 1;
+    else bucket.counts.neutral += 1;
+  });
+
+  let lastKnown: TrendSlice | null = null;
+
+  return buckets.map(({ label, counts }) => {
+    const total = counts.positive + counts.negative + counts.neutral;
+
+    if (total === 0) {
+      const fallback = lastKnown ?? baseline;
+      const point: SentimentTrendPoint = {
+        label,
+        positive: fallback.positive,
+        negative: fallback.negative,
+        neutral: fallback.neutral,
+      };
+      lastKnown = fallback;
+      return point;
+    }
+
+    const normalized = normalizePercentages(
+      (counts.positive / total) * 100,
+      (counts.negative / total) * 100,
+      (counts.neutral / total) * 100
+    );
+
+    const point: SentimentTrendPoint = {
+      label,
+      positive: normalized.positive,
+      negative: normalized.negative,
+      neutral: normalized.neutral,
+    };
+
+    lastKnown = normalized;
+    return point;
+  });
+};
+
+const aggregateSentimentCounts = (items: FeedItem[]) =>
+  items.reduce(
+    (acc, item) => {
+      const s = (item.sentiment || "neutral").toLowerCase();
+      if (s.includes("pos")) acc.positive += 1;
+      else if (s.includes("neg")) acc.negative += 1;
+      else acc.neutral += 1;
+      return acc;
+    },
+    { positive: 0, negative: 0, neutral: 0 }
+  );
+
 const getStartOfDay = (value: Date) => {
   const clone = new Date(value);
   clone.setHours(0, 0, 0, 0);
@@ -129,6 +300,11 @@ export default function HomeClient() {
   const previousStatsRef = useRef<DashboardStats | null>(null);
   const mountedRef = useRef(true);
   const [dailyHeadline, setDailyHeadline] = useState<FeedItem | null>(null);
+  const fallbackTrend = useMemo(
+    () => buildSentimentTrend([...generateFallbackNews(), ...generateFallbackTweets()]),
+    []
+  );
+  const [sentimentTrend, setSentimentTrend] = useState<SentimentTrendPoint[]>(fallbackTrend);
 
   const fallbackMode = useMemo(() => {
     const raw = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
@@ -245,17 +421,31 @@ export default function HomeClient() {
         console.warn("API configurada em modo fallback. Usando dados de demonstração.");
         showToast("warning", "Modo Offline", "Exibindo dados de demonstração.", 5000);
 
-        const fallback = {
-          totalNews: 24,
-          totalTweets: 156,
-          positiveSentiment: 48,
-          negativeSentiment: 22,
-          neutralSentiment: 30,
+        const fallbackNews = generateFallbackNews();
+        const fallbackTweets = generateFallbackTweets();
+        const fallbackItems = [...fallbackNews, ...fallbackTweets];
+        const sentimentCounts = aggregateSentimentCounts(fallbackItems);
+        const fallbackTotal = fallbackItems.length || 1;
+        const fallbackStats = {
+          totalNews: fallbackNews.length,
+          totalTweets: fallbackTweets.length,
+          positiveSentiment: Math.round((sentimentCounts.positive / fallbackTotal) * 100),
+          negativeSentiment: Math.round((sentimentCounts.negative / fallbackTotal) * 100),
+          neutralSentiment: Math.round((sentimentCounts.neutral / fallbackTotal) * 100),
         };
 
-        previousStatsRef.current = fallback;
-        setStats(fallback);
+        previousStatsRef.current = fallbackStats;
+        setStats(fallbackStats);
         setLastUpdate(new Date().toLocaleTimeString("pt-BR"));
+        setSentimentTrend(
+          buildSentimentTrend(fallbackItems, {
+            defaultRatios: {
+              positive: fallbackStats.positiveSentiment,
+              negative: fallbackStats.negativeSentiment,
+              neutral: fallbackStats.neutralSentiment,
+            },
+          })
+        );
         const storedHeadline = loadStoredHighlight();
         if (storedHeadline && !isFallbackHeadline(storedHeadline)) {
           setDailyHeadline(storedHeadline);
@@ -306,13 +496,7 @@ export default function HomeClient() {
       }
 
       const allItems = [...mappedNews, ...mappedTweets];
-      const sentimentCounts = allItems.reduce((acc, item) => {
-        const s = (item.sentiment || "neutral").toLowerCase();
-        if (s.includes("pos")) acc.positive++;
-        else if (s.includes("neg")) acc.negative++;
-        else acc.neutral++;
-        return acc;
-      }, { positive: 0, negative: 0, neutral: 0 });
+      const sentimentCounts = aggregateSentimentCounts(allItems);
 
       const total = allItems.length || 1;
       const newStats = {
@@ -333,6 +517,15 @@ export default function HomeClient() {
       previousStatsRef.current = newStats;
       setStats(newStats);
       setLastUpdate(new Date().toLocaleTimeString("pt-BR"));
+      setSentimentTrend(
+        buildSentimentTrend(allItems, {
+          defaultRatios: {
+            positive: newStats.positiveSentiment,
+            negative: newStats.negativeSentiment,
+            neutral: newStats.neutralSentiment,
+          },
+        })
+      );
 
       const candidateHeadline = pickDailyHighlight(mappedNews);
       const storedHeadline = loadStoredHighlight();
@@ -351,13 +544,29 @@ export default function HomeClient() {
     } catch (error) {
       console.error("Erro:", error);
       showToast("error", "Erro", getFetchErrorMessage(error));
-      setStats({
-        totalNews: 24,
-        totalTweets: 156,
-        positiveSentiment: 45,
-        negativeSentiment: 25,
-        neutralSentiment: 30,
-      });
+      const fallbackNews = generateFallbackNews();
+      const fallbackTweets = generateFallbackTweets();
+      const fallbackItems = [...fallbackNews, ...fallbackTweets];
+      const sentimentCounts = aggregateSentimentCounts(fallbackItems);
+      const fallbackTotal = fallbackItems.length || 1;
+      const fallbackStats = {
+        totalNews: fallbackNews.length,
+        totalTweets: fallbackTweets.length,
+        positiveSentiment: Math.round((sentimentCounts.positive / fallbackTotal) * 100),
+        negativeSentiment: Math.round((sentimentCounts.negative / fallbackTotal) * 100),
+        neutralSentiment: Math.round((sentimentCounts.neutral / fallbackTotal) * 100),
+      };
+      previousStatsRef.current = fallbackStats;
+      setStats(fallbackStats);
+      setSentimentTrend(
+        buildSentimentTrend(fallbackItems, {
+          defaultRatios: {
+            positive: fallbackStats.positiveSentiment,
+            negative: fallbackStats.negativeSentiment,
+            neutral: fallbackStats.neutralSentiment,
+          },
+        })
+      );
       const storedHeadline = loadStoredHighlight();
       if (storedHeadline && !isFallbackHeadline(storedHeadline)) {
         setDailyHeadline(storedHeadline);
@@ -502,7 +711,7 @@ export default function HomeClient() {
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <Suspense fallback={<div className="h-80 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}>
-                <SentimentChart />
+                <SentimentChart trend={sentimentTrend} />
               </Suspense>
               <Suspense fallback={<div className="h-80 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}>
                 <SentimentDistribution distribution={{
