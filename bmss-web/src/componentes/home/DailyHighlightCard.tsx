@@ -37,17 +37,17 @@ const formatPublishedDistance = (dateString: string) => {
     return "agora mesmo";
   }
 
-  const diffMinutes = Math.floor(diffMs / 60000);
-  if (diffMinutes < 60) {
-    return `há ${diffMinutes || 1} min`;
+  const minutesSince = Math.floor(diffMs / 60000);
+  if (minutesSince < 60) {
+    return `há ${minutesSince || 1} min`;
   }
 
-  const diffHours = Math.floor(diffMinutes / 60);
-  if (diffHours < 24) {
-    return `há ${diffHours}h`;
+  const hoursSince = Math.floor(minutesSince / 60);
+  if (hoursSince < 24) {
+    return `há ${hoursSince}h`;
   }
 
-  const diffDays = Math.floor(ddiffHours / 24);
+  const diffDays = Math.floor(hoursSince / 24);
   if (diffDays === 1) {
     return "ontem";
   }
