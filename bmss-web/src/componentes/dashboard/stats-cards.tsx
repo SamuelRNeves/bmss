@@ -20,8 +20,8 @@ export function StatsCard({ title, value, change, icon, sentiment }: StatsCardPr
   const colors = getSentimentColors(autoSentiment, Math.abs(change) / 100);
 
   return (
-    <div 
-      className="rounded-xl p-6 transition-all duration-300 hover:scale-105 border-2"
+    <div
+      className="rounded-xl p-4 sm:p-6 transition-all duration-300 hover:scale-105 border-2"
       style={{
         background: `linear-gradient(135deg, ${colors.background}, rgba(0,0,0,0.3))`,
         borderColor: colors.border,
