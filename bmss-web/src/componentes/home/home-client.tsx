@@ -90,6 +90,35 @@ const generateFallbackTweets = (): FeedItem[] =>
     };
   });
 
+const DAILY_HIGHLIGHT_STORAGE_KEY = "bmss:daily-highlight:v1";
+
+interface StoredHeadlinePayload {
+  generatedAt: string;
+  headline: FeedItem;
+}
+
+const getStartOfDay = (value: Date) => {
+  const clone = new Date(value);
+  clone.setHours(0, 0, 0, 0);
+  return clone;
+};
+
+const isSameCalendarDay = (left: Date, right: Date) => getStartOfDay(left).getTime() === getStartOfDay(right).getTime();
+
+const sanitizeHeadlineForStorage = (headline: FeedItem): FeedItem => ({
+  ...headline,
+  url: typeof headline.url === "string" ? headline.url.trim() : "#",
+  tweetUrl: typeof headline.tweetUrl === "string" ? headline.tweetUrl.trim() : headline.tweetUrl,
+});
+
+const isFallbackHeadline = (headline: FeedItem | null) => {
+  if (!headline) return true;
+  const url = typeof headline.url === "string" ? headline.url.trim() : "";
+  if (!url || url === "#") return true;
+  if (/^https?:\/\/bmss\.digital\/noticia\//i.test(url)) return true;
+  return false;
+};
+
 export default function HomeClient() {
   const { user, loading: authLoading } = useAuth();
 
@@ -116,6 +145,59 @@ export default function HomeClient() {
     score: 0.82,
     url: "#",
   }), []);
+
+  const loadStoredHighlight = useCallback((): FeedItem | null => {
+    if (typeof window === "undefined") return null;
+
+    try {
+      const raw = window.localStorage.getItem(DAILY_HIGHLIGHT_STORAGE_KEY);
+      if (!raw) return null;
+
+      const parsed = JSON.parse(raw) as StoredHeadlinePayload | null;
+      if (!parsed?.headline || !parsed.generatedAt) return null;
+
+      const generatedAt = new Date(parsed.generatedAt);
+      if (Number.isNaN(generatedAt.getTime())) {
+        window.localStorage.removeItem(DAILY_HIGHLIGHT_STORAGE_KEY);
+        return null;
+      }
+
+      if (!isSameCalendarDay(generatedAt, new Date())) {
+        window.localStorage.removeItem(DAILY_HIGHLIGHT_STORAGE_KEY);
+        return null;
+      }
+
+      return parsed.headline;
+    } catch (error) {
+      console.warn("Não foi possível carregar o destaque diário armazenado:", error);
+      return null;
+    }
+  }, []);
+
+  const persistHighlight = useCallback((headline: FeedItem) => {
+    if (typeof window === "undefined") return;
+    try {
+      const payload: StoredHeadlinePayload = {
+        generatedAt: new Date().toISOString(),
+        headline: sanitizeHeadlineForStorage(headline),
+      };
+      window.localStorage.setItem(DAILY_HIGHLIGHT_STORAGE_KEY, JSON.stringify(payload));
+    } catch (error) {
+      console.warn("Não foi possível salvar o destaque diário:", error);
+    }
+  }, []);
+
+  const clearStoredHighlight = useCallback(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.removeItem(DAILY_HIGHLIGHT_STORAGE_KEY);
+  }, []);
+
+  useEffect(() => {
+    const stored = loadStoredHighlight();
+    if (stored && !isFallbackHeadline(stored)) {
+      setDailyHeadline(stored);
+    }
+  }, [loadStoredHighlight]);
 
   const pickDailyHighlight = useCallback(
     (items: FeedItem[]): FeedItem => {
@@ -174,7 +256,13 @@ export default function HomeClient() {
         previousStatsRef.current = fallback;
         setStats(fallback);
         setLastUpdate(new Date().toLocaleTimeString("pt-BR"));
-        setDailyHeadline(fallbackHeadline);
+        const storedHeadline = loadStoredHighlight();
+        if (storedHeadline && !isFallbackHeadline(storedHeadline)) {
+          setDailyHeadline(storedHeadline);
+        } else {
+          setDailyHeadline(fallbackHeadline);
+          clearStoredHighlight();
+        }
         return;
       }
 
@@ -245,7 +333,20 @@ export default function HomeClient() {
       previousStatsRef.current = newStats;
       setStats(newStats);
       setLastUpdate(new Date().toLocaleTimeString("pt-BR"));
-      setDailyHeadline(pickDailyHighlight(mappedNews));
+
+      const candidateHeadline = pickDailyHighlight(mappedNews);
+      const storedHeadline = loadStoredHighlight();
+
+      if (storedHeadline && !isFallbackHeadline(storedHeadline)) {
+        setDailyHeadline(storedHeadline);
+      } else {
+        setDailyHeadline(candidateHeadline);
+        if (!isFallbackHeadline(candidateHeadline)) {
+          persistHighlight(candidateHeadline);
+        } else {
+          clearStoredHighlight();
+        }
+      }
 
     } catch (error) {
       console.error("Erro:", error);
@@ -257,12 +358,25 @@ export default function HomeClient() {
         negativeSentiment: 25,
         neutralSentiment: 30,
       });
-      setDailyHeadline(fallbackHeadline);
+      const storedHeadline = loadStoredHighlight();
+      if (storedHeadline && !isFallbackHeadline(storedHeadline)) {
+        setDailyHeadline(storedHeadline);
+      } else {
+        setDailyHeadline(fallbackHeadline);
+        clearStoredHighlight();
+      }
     } finally {
       clearTimeout(timeoutId);
       if (mountedRef.current) setIsLoading(false);
     }
-  }, [fallbackMode, fallbackHeadline, pickDailyHighlight]);
+  }, [
+    fallbackMode,
+    fallbackHeadline,
+    pickDailyHighlight,
+    loadStoredHighlight,
+    persistHighlight,
+    clearStoredHighlight,
+  ]);
 
   // useEffect com cleanup
   useEffect(() => {

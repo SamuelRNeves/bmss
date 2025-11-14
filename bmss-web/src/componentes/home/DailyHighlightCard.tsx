@@ -70,13 +70,19 @@ const estimateViews = (score: number) => {
 };
 
 export function DailyHighlightCard({ headline }: DailyHighlightCardProps) {
-  const { title, description, source, date, sentiment, score, url } = headline;
-  const colors = getSentimentColors(sentiment, score);
-  const gradient = getSentimentGradient(sentiment, score);
+  const { title, description, source, date, sentiment, score, url, isTweet, tweetUrl } = headline;
+  const normalizedScore = Number.isFinite(score) ? score : 0;
+  const colors = getSentimentColors(sentiment, normalizedScore);
+  const gradient = getSentimentGradient(sentiment, normalizedScore);
   const sentimentCopy = SENTIMENT_COPY[sentiment];
 
-  const engagementScore = computeEngagementScore(score);
-  const viewEstimate = estimateViews(score);
+  const rawUrl = (isTweet && tweetUrl ? tweetUrl : url) ?? "";
+  const trimmedUrl = rawUrl.trim();
+  const hasHttpScheme = /^https?:\/\//i.test(trimmedUrl);
+  const resolvedUrl = hasHttpScheme ? trimmedUrl : "#";
+
+  const engagementScore = computeEngagementScore(normalizedScore);
+  const viewEstimate = estimateViews(normalizedScore);
   const publishedDistance = formatPublishedDistance(date);
   const parsedDate = new Date(date);
   const formattedDate = Number.isNaN(parsedDate.getTime())
@@ -141,7 +147,7 @@ export function DailyHighlightCard({ headline }: DailyHighlightCardProps) {
 
             <div className="flex flex-wrap gap-3 pt-2">
               <a
-                href={url || "#"}
+                href={resolvedUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 rounded-full bg-yellow-400 px-5 py-2 font-semibold text-neutral-900 transition hover:bg-yellow-300"
@@ -167,12 +173,12 @@ export function DailyHighlightCard({ headline }: DailyHighlightCardProps) {
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <span>Score analítico</span>
-                <span className="font-semibold text-white">{(score * 100).toFixed(0)}%</span>
+                <span className="font-semibold text-white">{(normalizedScore * 100).toFixed(0)}%</span>
               </div>
               <div className="h-1.5 w-full rounded-full bg-white/10">
                 <div
                   className="h-full rounded-full"
-                  style={{ width: `${Math.max(8, Math.min(100, score * 100))}%`, backgroundColor: colors.text }}
+                  style={{ width: `${Math.max(8, Math.min(100, normalizedScore * 100))}%`, backgroundColor: colors.text }}
                 />
               </div>
             </div>
