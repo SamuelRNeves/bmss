@@ -47,7 +47,7 @@ const formatPublishedDistance = (dateString: string) => {
     return `há ${diffHours}h`;
   }
 
-  const diffDays = Math.floor(diffHours / 24);
+  const diffDays = Math.floor(ddiffHours / 24);
   if (diffDays === 1) {
     return "ontem";
   }
