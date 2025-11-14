@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { LogIn, Lock, Mail, Eye, EyeOff } from "lucide-react";
+import { buildApiUrl } from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -24,7 +25,7 @@ export default function LoginPage() {
         throw new Error("Informe um e-mail válido");
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080/api/v1"}/auth/login`, {
+      const response = await fetch(buildApiUrl("auth/login"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: sanitizedEmail, password: senha }),

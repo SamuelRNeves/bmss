@@ -75,7 +75,10 @@ export default function HomeClient() {
   const previousStatsRef = useRef<DashboardStats | null>(null);
   const mountedRef = useRef(true);
 
-  const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+  const fallbackMode = useMemo(() => {
+    const raw = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
+    return Boolean(raw && raw.toLowerCase().includes("fallback"));
+  }, []);
 
   // useCallback com dependências corretas
   const fetchStats = useCallback(async () => {
@@ -87,8 +90,8 @@ export default function HomeClient() {
     try {
       setIsLoading(true);
 
-      if (!API_URL) {
-        console.warn("API não configurada. Usando dados de exemplo.");
+      if (fallbackMode) {
+        console.warn("API configurada em modo fallback. Usando dados de demonstração.");
         showToast("warning", "Modo Offline", "Exibindo dados de demonstração.", 5000);
 
         const fallback = {
@@ -161,7 +164,7 @@ export default function HomeClient() {
       clearTimeout(timeoutId);
       if (mountedRef.current) setIsLoading(false);
     }
-  }, [API_URL]);
+  }, [fallbackMode]);
 
   // useEffect com cleanup
   useEffect(() => {
