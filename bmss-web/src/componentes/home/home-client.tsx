@@ -22,6 +22,13 @@ import { useAuth } from "@/lib/useAuth";
 import BitcoinPriceClient from "../BitcoinPriceClient";
 import { ErrorBoundary } from "next/dist/client/components/error-boundary";
 import { SentimentDistribution } from "@/componentes/charts/sentiment-distribution";
+import DailyHighlightCard from "@/componentes/home/DailyHighlightCard";
+import {
+  FeedItem,
+  createFallbackNews,
+  createFallbackTweet,
+  mapApiItemToFeedItem,
+} from "@/componentes/news/feed-utils";
 
 // LAZY LOAD DE TODOS OS COMPONENTES PESADOS
 const Recomendacoes = React.lazy(() => import("@/componentes/Recomendacoes"));
@@ -48,22 +55,69 @@ const INITIAL_STATS: DashboardStats = {
   neutralSentiment: 0,
 };
 
-const generateFallbackNews = () => Array.from({ length: 24 }, (_, i) => ({
-  id: i + 1,
-  titulo: `Notícia Bitcoin ${i + 1}`,
-  descricao: `Descrição da notícia sobre Bitcoin ${i + 1}`,
-  sentiment: ["positive", "negative", "neutral"][i % 3],
-  dataPublicacao: new Date().toISOString(),
-  fonte: "Fonte de Exemplo",
-}));
+const generateFallbackNews = (): FeedItem[] =>
+  Array.from({ length: 24 }, (_, index) => {
+    const base = createFallbackNews();
+    const publishedAt = new Date(Date.now() - index * 60 * 60 * 1000).toISOString();
+    return {
+      ...base,
+      title: `Notícia Bitcoin ${index + 1}`,
+      description: `Atualização #${index + 1} sobre o comportamento do Bitcoin e seus efeitos no mercado cripto institucional.`,
+      source: index % 2 === 0 ? "BMSS Insights" : "CryptoNewsWire",
+      date: publishedAt,
+      sentiment: ["positive", "negative", "neutral"][index % 3] as FeedItem["sentiment"],
+      score: Math.max(0.32, Math.min(0.92, base.score - index * 0.015)),
+      url: base.url === "#" ? `https://bmss.digital/noticia/${index + 1}` : base.url,
+      isTweet: false,
+    };
+  });
 
-const generateFallbackTweets = () => Array.from({ length: 156 }, (_, i) => ({
-  id: i + 1,
-  text: `Tweet sobre Bitcoin ${i + 1} #BTC #Crypto`,
-  usuario: `user${i + 1}`,
-  sentiment: ["positive", "negative", "neutral"][i % 3],
-  dataCriacao: new Date().toISOString(),
-}));
+const generateFallbackTweets = (): FeedItem[] =>
+  Array.from({ length: 156 }, (_, index) => {
+    const base = createFallbackTweet();
+    const publishedAt = new Date(Date.now() - index * 15 * 60 * 1000).toISOString();
+    return {
+      ...base,
+      title: `Tweet Bitcoin ${index + 1}`,
+      description: `Comentário #${index + 1} sobre Bitcoin, ETFs e movimentos de mercado capturado pelo BMSS.`,
+      source: index % 2 === 0 ? "@bmss_ai" : "@onchainintel",
+      date: publishedAt,
+      sentiment: ["positive", "negative", "neutral"][index % 3] as FeedItem["sentiment"],
+      score: Math.max(0.28, Math.min(0.88, base.score - index * 0.004)),
+      url: base.url,
+      tweetUrl: base.tweetUrl,
+      isTweet: true,
+    };
+  });
+
+const DAILY_HIGHLIGHT_STORAGE_KEY = "bmss:daily-highlight:v1";
+
+interface StoredHeadlinePayload {
+  generatedAt: string;
+  headline: FeedItem;
+}
+
+const getStartOfDay = (value: Date) => {
+  const clone = new Date(value);
+  clone.setHours(0, 0, 0, 0);
+  return clone;
+};
+
+const isSameCalendarDay = (left: Date, right: Date) => getStartOfDay(left).getTime() === getStartOfDay(right).getTime();
+
+const sanitizeHeadlineForStorage = (headline: FeedItem): FeedItem => ({
+  ...headline,
+  url: typeof headline.url === "string" ? headline.url.trim() : "#",
+  tweetUrl: typeof headline.tweetUrl === "string" ? headline.tweetUrl.trim() : headline.tweetUrl,
+});
+
+const isFallbackHeadline = (headline: FeedItem | null) => {
+  if (!headline) return true;
+  const url = typeof headline.url === "string" ? headline.url.trim() : "";
+  if (!url || url === "#") return true;
+  if (/^https?:\/\/bmss\.digital\/noticia\//i.test(url)) return true;
+  return false;
+};
 
 export default function HomeClient() {
   const { user, loading: authLoading } = useAuth();
@@ -74,11 +128,108 @@ export default function HomeClient() {
   const [lastUpdate, setLastUpdate] = useState<string>("");
   const previousStatsRef = useRef<DashboardStats | null>(null);
   const mountedRef = useRef(true);
+  const [dailyHeadline, setDailyHeadline] = useState<FeedItem | null>(null);
 
   const fallbackMode = useMemo(() => {
     const raw = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
     return Boolean(raw && raw.toLowerCase().includes("fallback"));
   }, []);
+
+  const fallbackHeadline = useMemo<FeedItem>(() => ({
+    ...createFallbackNews(),
+    title: "Bitcoin lidera buscas após ondas de volatilidade",
+    description:
+      "O ativo voltou ao topo das atenções com forte volume nas últimas horas. Analistas acompanham possíveis gatilhos macroeconômicos.",
+    source: "BMSS Insights",
+    sentiment: "positive",
+    score: 0.82,
+    url: "#",
+  }), []);
+
+  const loadStoredHighlight = useCallback((): FeedItem | null => {
+    if (typeof window === "undefined") return null;
+
+    try {
+      const raw = window.localStorage.getItem(DAILY_HIGHLIGHT_STORAGE_KEY);
+      if (!raw) return null;
+
+      const parsed = JSON.parse(raw) as StoredHeadlinePayload | null;
+      if (!parsed?.headline || !parsed.generatedAt) return null;
+
+      const generatedAt = new Date(parsed.generatedAt);
+      if (Number.isNaN(generatedAt.getTime())) {
+        window.localStorage.removeItem(DAILY_HIGHLIGHT_STORAGE_KEY);
+        return null;
+      }
+
+      if (!isSameCalendarDay(generatedAt, new Date())) {
+        window.localStorage.removeItem(DAILY_HIGHLIGHT_STORAGE_KEY);
+        return null;
+      }
+
+      return parsed.headline;
+    } catch (error) {
+      console.warn("Não foi possível carregar o destaque diário armazenado:", error);
+      return null;
+    }
+  }, []);
+
+  const persistHighlight = useCallback((headline: FeedItem) => {
+    if (typeof window === "undefined") return;
+    try {
+      const payload: StoredHeadlinePayload = {
+        generatedAt: new Date().toISOString(),
+        headline: sanitizeHeadlineForStorage(headline),
+      };
+      window.localStorage.setItem(DAILY_HIGHLIGHT_STORAGE_KEY, JSON.stringify(payload));
+    } catch (error) {
+      console.warn("Não foi possível salvar o destaque diário:", error);
+    }
+  }, []);
+
+  const clearStoredHighlight = useCallback(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.removeItem(DAILY_HIGHLIGHT_STORAGE_KEY);
+  }, []);
+
+  useEffect(() => {
+    const stored = loadStoredHighlight();
+    if (stored && !isFallbackHeadline(stored)) {
+      setDailyHeadline(stored);
+    }
+  }, [loadStoredHighlight]);
+
+  const pickDailyHighlight = useCallback(
+    (items: FeedItem[]): FeedItem => {
+      if (!items || items.length === 0) {
+        return fallbackHeadline;
+      }
+
+      const startOfToday = new Date();
+      startOfToday.setHours(0, 0, 0, 0);
+
+      const scoredItems = items.map((item) => {
+        const published = new Date(item.date ?? "");
+        const isToday = !Number.isNaN(published.getTime()) && published >= startOfToday;
+        const hoursAgo = Number.isNaN(published.getTime())
+          ? 48
+          : Math.max(0, (Date.now() - published.getTime()) / 36e5);
+        const freshness = Math.max(0, 1 - Math.min(hoursAgo, 48) / 48);
+        const baseScore = Number.isFinite(item.score) ? item.score : 0.4;
+        const sentimentBoost = item.sentiment === "positive" ? 0.08 : item.sentiment === "negative" ? 0.04 : 0.02;
+        const accessWeight = baseScore * 0.65 + freshness * 0.3 + sentimentBoost;
+
+        return {
+          item,
+          weight: accessWeight + (isToday ? 0.15 : 0),
+        };
+      });
+
+      scoredItems.sort((a, b) => b.weight - a.weight);
+      return scoredItems[0]?.item ?? fallbackHeadline;
+    },
+    [fallbackHeadline]
+  );
 
   // useCallback com dependências corretas
   const fetchStats = useCallback(async () => {
@@ -105,6 +256,13 @@ export default function HomeClient() {
         previousStatsRef.current = fallback;
         setStats(fallback);
         setLastUpdate(new Date().toLocaleTimeString("pt-BR"));
+        const storedHeadline = loadStoredHighlight();
+        if (storedHeadline && !isFallbackHeadline(storedHeadline)) {
+          setDailyHeadline(storedHeadline);
+        } else {
+          setDailyHeadline(fallbackHeadline);
+          clearStoredHighlight();
+        }
         return;
       }
 
@@ -113,17 +271,43 @@ export default function HomeClient() {
         fetch(buildApiUrl("noticias/tweets/ultimos?limit=50&q=bitcoin"), { signal: controller.signal }),
       ]);
 
-      const newsItems = newsRes.status === "fulfilled" && newsRes.value.ok
-        ? (await newsRes.value.json()).data || []
-        : generateFallbackNews();
+      let mappedNews: FeedItem[] = [];
+      if (newsRes.status === "fulfilled" && newsRes.value.ok) {
+        const body = await newsRes.value.json();
+        const data = Array.isArray(body?.data) ? body.data : [];
+        if (data.length > 0) {
+          mappedNews = data.map((item: unknown, index: number) =>
+            mapApiItemToFeedItem(item, {
+              ...createFallbackNews(),
+              title: `Notícia Bitcoin ${index + 1}`,
+            })
+          );
+        }
+      }
+      if (mappedNews.length === 0) {
+        mappedNews = generateFallbackNews();
+      }
 
-      const tweetItems = tweetsRes.status === "fulfilled" && tweetsRes.value.ok
-        ? (await tweetsRes.value.json()).data || []
-        : generateFallbackTweets();
+      let mappedTweets: FeedItem[] = [];
+      if (tweetsRes.status === "fulfilled" && tweetsRes.value.ok) {
+        const body = await tweetsRes.value.json();
+        const data = Array.isArray(body?.data) ? body.data : [];
+        if (data.length > 0) {
+          mappedTweets = data.map((item: unknown, index: number) =>
+            mapApiItemToFeedItem(item, {
+              ...createFallbackTweet(),
+              title: `Tweet Bitcoin ${index + 1}`,
+            })
+          );
+        }
+      }
+      if (mappedTweets.length === 0) {
+        mappedTweets = generateFallbackTweets();
+      }
 
-      const allItems = [...newsItems, ...tweetItems];
+      const allItems = [...mappedNews, ...mappedTweets];
       const sentimentCounts = allItems.reduce((acc, item) => {
-        const s = (item.sentimento || item.sentiment || "neutral").toLowerCase();
+        const s = (item.sentiment || "neutral").toLowerCase();
         if (s.includes("pos")) acc.positive++;
         else if (s.includes("neg")) acc.negative++;
         else acc.neutral++;
@@ -132,8 +316,8 @@ export default function HomeClient() {
 
       const total = allItems.length || 1;
       const newStats = {
-        totalNews: newsItems.length,
-        totalTweets: tweetItems.length,
+        totalNews: mappedNews.length,
+        totalTweets: mappedTweets.length,
         positiveSentiment: Math.round((sentimentCounts.positive / total) * 100),
         negativeSentiment: Math.round((sentimentCounts.negative / total) * 100),
         neutralSentiment: Math.round((sentimentCounts.neutral / total) * 100),
@@ -150,9 +334,23 @@ export default function HomeClient() {
       setStats(newStats);
       setLastUpdate(new Date().toLocaleTimeString("pt-BR"));
 
-    } catch (err: any) {
-      console.error("Erro:", err);
-      showToast("error", "Erro", getFetchErrorMessage(err));
+      const candidateHeadline = pickDailyHighlight(mappedNews);
+      const storedHeadline = loadStoredHighlight();
+
+      if (storedHeadline && !isFallbackHeadline(storedHeadline)) {
+        setDailyHeadline(storedHeadline);
+      } else {
+        setDailyHeadline(candidateHeadline);
+        if (!isFallbackHeadline(candidateHeadline)) {
+          persistHighlight(candidateHeadline);
+        } else {
+          clearStoredHighlight();
+        }
+      }
+
+    } catch (error) {
+      console.error("Erro:", error);
+      showToast("error", "Erro", getFetchErrorMessage(error));
       setStats({
         totalNews: 24,
         totalTweets: 156,
@@ -160,11 +358,25 @@ export default function HomeClient() {
         negativeSentiment: 25,
         neutralSentiment: 30,
       });
+      const storedHeadline = loadStoredHighlight();
+      if (storedHeadline && !isFallbackHeadline(storedHeadline)) {
+        setDailyHeadline(storedHeadline);
+      } else {
+        setDailyHeadline(fallbackHeadline);
+        clearStoredHighlight();
+      }
     } finally {
       clearTimeout(timeoutId);
       if (mountedRef.current) setIsLoading(false);
     }
-  }, [fallbackMode]);
+  }, [
+    fallbackMode,
+    fallbackHeadline,
+    pickDailyHighlight,
+    loadStoredHighlight,
+    persistHighlight,
+    clearStoredHighlight,
+  ]);
 
   // useEffect com cleanup
   useEffect(() => {
@@ -265,6 +477,8 @@ export default function HomeClient() {
             <span className="text-gray-400 text-sm whitespace-nowrap">Sentimento Geral:</span>
             {sentimentBadges}
           </div>
+
+          {dailyHeadline && <DailyHighlightCard headline={dailyHeadline} />}
 
           <Suspense fallback={<div className="h-32 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}>
             <BitcoinPriceClient />
