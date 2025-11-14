@@ -129,10 +129,10 @@ export default function LoginPage() {
             </div>
 
             <a
-              href="/"
+              href="/cadastrar"
               className="inline-flex items-center gap-2 rounded-full border border-yellow-300/30 bg-yellow-300/20 px-4 py-2 text-xs font-semibold uppercase tracking-[0.35em] text-yellow-200 transition hover:border-yellow-200/60 hover:bg-yellow-200/20"
             >
-              Ver tendências recentes <ArrowRight size={14} />
+              Criar minha conta <ArrowRight size={14} />
             </a>
           </div>
         </section>
