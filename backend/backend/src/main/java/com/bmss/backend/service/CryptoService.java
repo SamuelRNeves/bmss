@@ -41,9 +41,14 @@ public class CryptoService {
             "https://data-api.binance.vision"
     );
     private static final DateTimeFormatter ISO_FORMATTER = DateTimeFormatter.ISO_INSTANT;
+    private static final long USD_BRL_CACHE_DURATION_MS = TimeUnit.MINUTES.toMillis(10);
+    private static final double USD_BRL_FALLBACK_RATE = 5.0d;
 
     private final RestTemplate restTemplate;
     private final Map<String, CacheEntry> cache = new ConcurrentHashMap<>();
+
+    private volatile Double cachedUsdToBrlRate;
+    private volatile long cachedUsdToBrlTimestamp;
 
     public CryptoService(RestTemplateBuilder restTemplateBuilder) {
         this.restTemplate = restTemplateBuilder
@@ -165,8 +170,8 @@ public class CryptoService {
         double changePercent = toDouble(ticker24h.get("priceChangePercent"));
         long closeTime = toLong(ticker24h.get("closeTime"));
 
-        Double usdToBrl = tryFetchUsdToBrl();
-        Double priceBrl = usdToBrl != null ? lastPrice * usdToBrl : null;
+        double usdToBrl = resolveUsdToBrlRate();
+        double priceBrl = roundTwoDecimals(lastPrice * usdToBrl);
 
         Map<String, Object> data = new HashMap<>();
         data.put("price", lastPrice);
@@ -176,7 +181,7 @@ public class CryptoService {
         data.put("lastUpdated", ISO_FORMATTER.format(Instant.ofEpochMilli(closeTime)));
         data.put("currency", "USD");
         data.put("priceFormatted", formatCurrency(lastPrice, "USD"));
-        data.put("priceFormattedBRL", priceBrl != null ? formatCurrency(priceBrl, "BRL") : null);
+        data.put("priceFormattedBRL", formatCurrency(priceBrl, "BRL"));
         data.put("source", "Binance");
         data.put("isFallback", false);
         return data;
@@ -192,7 +197,7 @@ public class CryptoService {
         double lastPrice = toDouble(ticker.get("lastPrice"));
         double changePercent = toDouble(ticker.get("priceChangePercent"));
         long closeTime = toLong(ticker.get("closeTime"));
-        Double usdToBrl = tryFetchUsdToBrl();
+        double usdToBrl = resolveUsdToBrlRate();
 
         List<Map<String, Object>> prices = new ArrayList<>();
         for (int i = 0; i < klines.size(); i++) {
@@ -215,7 +220,7 @@ public class CryptoService {
         Map<String, Object> data = new HashMap<>();
         data.put("prices", prices);
         data.put("currentPriceUSD", roundTwoDecimals(lastPrice));
-        data.put("currentPriceBRL", usdToBrl != null ? roundTwoDecimals(lastPrice * usdToBrl) : null);
+        data.put("currentPriceBRL", roundTwoDecimals(lastPrice * usdToBrl));
         data.put("change24h", String.format(Locale.US, "%.2f", changePercent));
         data.put("source", "Binance");
         data.put("isFallback", false);
@@ -369,6 +374,29 @@ public class CryptoService {
             log.warn("⚠️ Falha ao buscar taxa USD/BRL: {}", ex.getMessage());
             return null;
         }
+    }
+
+    private double resolveUsdToBrlRate() {
+        long now = System.currentTimeMillis();
+        Double cachedRate = this.cachedUsdToBrlRate;
+        if (cachedRate != null && now - this.cachedUsdToBrlTimestamp <= USD_BRL_CACHE_DURATION_MS) {
+            return cachedRate;
+        }
+
+        Double freshRate = tryFetchUsdToBrl();
+        if (freshRate != null) {
+            this.cachedUsdToBrlRate = freshRate;
+            this.cachedUsdToBrlTimestamp = now;
+            return freshRate;
+        }
+
+        if (cachedRate != null) {
+            log.warn("⚠️ Falha ao atualizar taxa USD/BRL. Usando valor em cache: {}", cachedRate);
+            return cachedRate;
+        }
+
+        log.warn("⚠️ Falha ao obter taxa USD/BRL. Usando valor padrão: {}", USD_BRL_FALLBACK_RATE);
+        return USD_BRL_FALLBACK_RATE;
     }
 
     private List<List<Object>> fetchKlines(String interval, int limit, Long startTime, Long endTime) {
