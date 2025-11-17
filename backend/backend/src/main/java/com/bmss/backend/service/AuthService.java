@@ -89,47 +89,28 @@ public class AuthService {
                 passwordCandidates.add(user.getLegacyPassword());
             }
 
-            if (jdbcTemplate != null) {
+            PasswordMatchResult matchResult = tryMatchCandidates(rawPassword, passwordCandidates);
+
+            boolean shouldAttemptLegacyRecovery = !matchResult.isMatched()
+                    && jdbcTemplate != null
+                    && !PasswordHashUtils.isLikelyUsablePassword(user.getPasswordHash());
+
+            if (shouldAttemptLegacyRecovery) {
                 String recoveredLegacy = fetchLegacyPassword(user.getId());
                 if (PasswordHashUtils.isLikelyUsablePassword(recoveredLegacy)) {
                     user.setLegacyPassword(recoveredLegacy);
-                    passwordCandidates.add(recoveredLegacy);
                     logger.info("Senha legada recuperada para usuário {}", sanitizedEmail);
+                    matchResult = tryMatchCandidates(rawPassword, List.of(recoveredLegacy));
                 }
             }
 
-            if (passwordCandidates.isEmpty()) {
+            if (!matchResult.isMatched()) {
                 throw new BadCredentialsException("Credenciais inválidas");
             }
 
-            boolean passwordMatches = false;
-            String matchedOriginal = null;
-            String matchedNormalized = null;
-            PasswordHashType matchedType = PasswordHashType.EMPTY;
-
-            for (String candidate : passwordCandidates) {
-                if (!PasswordHashUtils.isLikelyUsablePassword(candidate)) {
-                    continue;
-                }
-
-                String normalized = PasswordHashUtils.normalizeLegacyHash(candidate);
-                if (normalized == null || normalized.isBlank()) {
-                    continue;
-                }
-
-                String trimmedOriginal = candidate.trim();
-                if (matchesAgainstKnownHashes(rawPassword, normalized, trimmedOriginal)) {
-                    passwordMatches = true;
-                    matchedOriginal = trimmedOriginal;
-                    matchedNormalized = normalized;
-                    matchedType = PasswordHashUtils.detectHashType(normalized);
-                    break;
-                }
-            }
-
-            if (!passwordMatches || matchedNormalized == null) {
-                throw new BadCredentialsException("Credenciais inválidas");
-            }
+            String matchedOriginal = matchResult.matchedOriginal();
+            String matchedNormalized = matchResult.matchedNormalized();
+            PasswordHashType matchedType = matchResult.matchedType();
 
             boolean hasDelegatingPrefix = PasswordHashUtils.hasDelegatingPrefix(matchedNormalized);
             boolean upgradedHash = passwordEncoder.upgradeEncoding(matchedNormalized)
@@ -194,6 +175,31 @@ public class AuthService {
         }
     }
 
+    private PasswordMatchResult tryMatchCandidates(String rawPassword, List<String> candidates) {
+        if (candidates == null || candidates.isEmpty()) {
+            return PasswordMatchResult.noMatch();
+        }
+
+        for (String candidate : candidates) {
+            if (!PasswordHashUtils.isLikelyUsablePassword(candidate)) {
+                continue;
+            }
+
+            String normalized = PasswordHashUtils.normalizeLegacyHash(candidate);
+            if (normalized == null || normalized.isBlank()) {
+                continue;
+            }
+
+            String trimmedOriginal = candidate.trim();
+            if (matchesAgainstKnownHashes(rawPassword, normalized, trimmedOriginal)) {
+                PasswordHashType matchedType = PasswordHashUtils.detectHashType(normalized);
+                return PasswordMatchResult.matched(trimmedOriginal, normalized, matchedType);
+            }
+        }
+
+        return PasswordMatchResult.noMatch();
+    }
+
     private boolean matchesAgainstKnownHashes(String rawPassword, String normalizedHash, String originalHash) {
         try {
             boolean matches = passwordEncoder.matches(rawPassword, normalizedHash);
@@ -204,6 +210,46 @@ public class AuthService {
         } catch (IllegalArgumentException encoderError) {
             logger.warn("Falha ao validar hash legado: {}", encoderError.getMessage());
             return false;
+        }
+    }
+
+    private static final class PasswordMatchResult {
+        private final boolean matched;
+        private final String matchedOriginal;
+        private final String matchedNormalized;
+        private final PasswordHashType matchedType;
+
+        private PasswordMatchResult(boolean matched, String matchedOriginal, String matchedNormalized,
+                                    PasswordHashType matchedType) {
+            this.matched = matched;
+            this.matchedOriginal = matchedOriginal;
+            this.matchedNormalized = matchedNormalized;
+            this.matchedType = matchedType;
+        }
+
+        static PasswordMatchResult matched(String matchedOriginal, String matchedNormalized,
+                                           PasswordHashType matchedType) {
+            return new PasswordMatchResult(true, matchedOriginal, matchedNormalized, matchedType);
+        }
+
+        static PasswordMatchResult noMatch() {
+            return new PasswordMatchResult(false, null, null, PasswordHashType.EMPTY);
+        }
+
+        boolean isMatched() {
+            return matched;
+        }
+
+        String matchedOriginal() {
+            return matchedOriginal;
+        }
+
+        String matchedNormalized() {
+            return matchedNormalized;
+        }
+
+        PasswordHashType matchedType() {
+            return matchedType;
         }
     }
 
