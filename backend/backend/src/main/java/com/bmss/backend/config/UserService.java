@@ -7,15 +7,20 @@ import com.bmss.backend.model.User;
 import com.bmss.backend.repository.RoleRepository;
 import com.bmss.backend.repository.UserRepository;
 import com.bmss.backend.security.JwtService;
+import com.bmss.backend.service.EmailDeliveryResult;
+import com.bmss.backend.service.EmailService;
 import com.bmss.backend.service.ProfileImageStorageService;
 import com.bmss.backend.util.UserSanitizer;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 
 @Service
+@Slf4j
 public class UserService {
 
     private final UserRepository userRepository;
@@ -23,17 +28,20 @@ public class UserService {
     private final JwtService jwtService; // Usa JwtService, não JwtUtil
     private final RoleRepository roleRepository;
     private final ProfileImageStorageService profileImageStorageService;
+    private final EmailService emailService;
 
     public UserService(UserRepository userRepository,
                        PasswordEncoder passwordEncoder,
                        JwtService jwtService,
                        RoleRepository roleRepository,
-                       ProfileImageStorageService profileImageStorageService) {
+                       ProfileImageStorageService profileImageStorageService,
+                       EmailService emailService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.roleRepository = roleRepository;
         this.profileImageStorageService = profileImageStorageService;
+        this.emailService = emailService;
     }
 
     public List<User> findAll() {
@@ -140,9 +148,46 @@ public class UserService {
             }
         }
 
+        User finalSavedUser = saved;
+        CompletableFuture.runAsync(() -> enviarEmailBoasVindas(finalSavedUser));
+
         // Usa JwtService para gerar token
         String token = jwtService.generateToken(saved.getEmail());
 
         return new AuthResponse(token, null, "Cadastro realizado com sucesso! Força da senha: " + strength.getLabel());
+    }
+
+    private void enviarEmailBoasVindas(User usuario) {
+        if (usuario == null) {
+            return;
+        }
+
+        try {
+            String perfil = usuario.getInvestorProfile() != null
+                    ? usuario.getInvestorProfile().name()
+                    : User.InvestorProfile.MODERADO.name();
+
+            EmailDeliveryResult result = emailService.enviarEmailBoasVindas(
+                    usuario.getEmail(),
+                    usuario.getName(),
+                    perfil,
+                    usuario.getNotificationPreference()
+            );
+
+            if (result.sent()) {
+                log.info("✅ Email de boas-vindas enviado para: {} (ID: {})",
+                        usuario.getEmail(),
+                        result.providerMessageId());
+            } else {
+                log.warn("📭 Email de boas-vindas não enviado para {}: {}",
+                        usuario.getEmail(),
+                        result.failureReason());
+            }
+        } catch (Exception e) {
+            log.error("❌ Erro ao enviar email de boas-vindas para {}: {}",
+                    usuario.getEmail(),
+                    e.getMessage(),
+                    e);
+        }
     }
 }

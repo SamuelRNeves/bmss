@@ -4,11 +4,14 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -17,6 +20,8 @@ import java.io.IOException;
 
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
+
+    private static final Logger logger = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
 
     @Autowired
     private JwtService jwtService;
@@ -59,20 +64,25 @@ protected void doFilterInternal(HttpServletRequest request,
         }
 
     } catch (io.jsonwebtoken.ExpiredJwtException e) {
-        System.out.println("⚠️ Token expirado: " + e.getMessage());
+        logger.warn("⚠️ Token expirado: {}", e.getMessage());
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         response.getWriter().write("{\"error\": \"Token expirado\"}");
         return;
 
     } catch (io.jsonwebtoken.JwtException e) {
-        System.out.println("❌ Token inválido: " + e.getMessage());
+        logger.warn("❌ Token inválido: {}", e.getMessage());
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         response.getWriter().write("{\"error\": \"Token inválido\"}");
         return;
 
+    } catch (UsernameNotFoundException e) {
+        logger.warn("⚠️ Usuário não encontrado para o token recebido: {}", e.getMessage());
+        SecurityContextHolder.clearContext();
+        filterChain.doFilter(request, response);
+        return;
+
     } catch (Exception e) {
-        System.out.println("💥 Erro inesperado no filtro JWT: " + e.getMessage());
-        e.printStackTrace();
+        logger.error("💥 Erro inesperado no filtro JWT", e);
         response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
         response.getWriter().write("{\"error\": \"Erro interno no filtro JWT\"}");
         return;
