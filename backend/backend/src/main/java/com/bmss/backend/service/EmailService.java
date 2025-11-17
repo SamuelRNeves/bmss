@@ -4,6 +4,8 @@ import com.bmss.backend.config.EmailProperties;
 import com.resend.Resend;
 import com.resend.services.emails.model.SendEmailRequest;
 import com.resend.services.emails.model.SendEmailResponse;
+
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -14,6 +16,11 @@ import java.util.concurrent.atomic.AtomicReference;
 @Service
 @Slf4j
 public class EmailService {
+    @PostConstruct
+public void debugEmailConfig() {
+    log.info("📧 RESEND FROM = '{}'", fromAddress);
+}
+
 
     private final Resend resend;
 
@@ -140,4 +147,6 @@ public class EmailService {
 
     private record Preferencia(String descricao) {
     }
+
+    
 }
