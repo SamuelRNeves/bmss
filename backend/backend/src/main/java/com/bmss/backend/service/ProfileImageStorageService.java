@@ -26,17 +26,22 @@ public class ProfileImageStorageService {
 
     private final Path storageRoot;
     private final String publicPrefix;
+    private final boolean inlineStorageEnabled;
 
     public ProfileImageStorageService(@Value("${bmss.profile-image.upload-dir:uploads/profile-images}") String uploadDir,
-                                      @Value("${bmss.profile-image.public-prefix:/uploads/profile-images}") String publicPrefix) {
+                                      @Value("${bmss.profile-image.public-prefix:/uploads/profile-images}") String publicPrefix,
+                                      @Value("${bmss.profile-image.inline-storage:true}") boolean inlineStorageEnabled) {
         this.storageRoot = Paths.get(uploadDir).toAbsolutePath().normalize();
         this.publicPrefix = publicPrefix.endsWith("/")
                 ? publicPrefix.substring(0, publicPrefix.length() - 1)
                 : publicPrefix;
-        try {
-            Files.createDirectories(this.storageRoot);
-        } catch (IOException e) {
-            throw new IllegalStateException("Não foi possível preparar o diretório de uploads.", e);
+        this.inlineStorageEnabled = inlineStorageEnabled;
+        if (!inlineStorageEnabled) {
+            try {
+                Files.createDirectories(this.storageRoot);
+            } catch (IOException e) {
+                throw new IllegalStateException("Não foi possível preparar o diretório de uploads.", e);
+            }
         }
     }
 
@@ -80,6 +85,10 @@ public class ProfileImageStorageService {
 
         if (data.length > MAX_IMAGE_BYTES) {
             throw new IllegalArgumentException("Imagem muito grande. Envie um arquivo de até 2.5 MB.");
+        }
+
+        if (inlineStorageEnabled) {
+            return buildDataUrl(mimeType, data);
         }
 
         String extension = resolveExtension(mimeType, trimmed);
@@ -153,5 +162,14 @@ public class ProfileImageStorageService {
                 }
                 return "png";
         }
+    }
+
+    private String buildDataUrl(String mimeType, byte[] data) {
+        String resolvedMime = (mimeType == null || mimeType.isBlank())
+                ? "image/png"
+                : mimeType.toLowerCase(Locale.ROOT);
+
+        String base64Payload = Base64.getEncoder().encodeToString(data);
+        return "data:" + resolvedMime + ";base64," + base64Payload;
     }
 }
