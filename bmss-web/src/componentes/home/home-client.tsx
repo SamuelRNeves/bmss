@@ -1,13 +1,18 @@
 "use client";
-
-import React, { Suspense, useCallback, useEffect, useMemo, useState, useRef } from "react";
+import React, {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useRef,
+} from "react";
 import { StatsCard } from "@/componentes/dashboard/stats-cards";
 import { StatusBar } from "@/componentes/status/status-bar";
 import { ToastNotifier, showToast } from "@/componentes/notifications/toast-notifier";
 import { SentimentBadge } from "@/componentes/status/sentiment-badge";
 import LegendaSentimentos from "@/componentes/status/LegendaSentimentos";
 import Header from "@/componentes/layout/Header";
-
 import {
   Newspaper,
   TrendingUp,
@@ -16,11 +21,9 @@ import {
   BarChart3,
   RefreshCw,
 } from "lucide-react";
-
 import { buildApiUrl, getFetchErrorMessage, getTendencias } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
 import BitcoinPriceClient from "../BitcoinPriceClient";
-import { ErrorBoundary } from "next/dist/client/components/error-boundary";
 import { SentimentDistribution } from "@/componentes/charts/sentiment-distribution";
 import DailyHighlightCard from "@/componentes/home/DailyHighlightCard";
 import {
@@ -115,8 +118,8 @@ const normalizeTrendPercentages = (positive: number, negative: number, neutral: 
   let p = Math.round(positive);
   let n = Math.round(negative);
   let z = Math.round(neutral);
-
   let total = p + n + z;
+
   if (total !== 100) {
     if (total > 100) {
       let diff = total - 100;
@@ -170,7 +173,6 @@ const normalizeTrendPercentages = (positive: number, negative: number, neutral: 
         { key: "negative", value: n },
         { key: "neutral", value: z },
       ].sort((a, b) => b.value - a.value);
-
       for (const entry of order) {
         if (diff <= 0) break;
         if (entry.value <= 0) continue;
@@ -191,7 +193,6 @@ const buildSentimentTrend = (
   options: { buckets?: number; defaultRatios?: TrendSlice } = {}
 ): SentimentTrendPoint[] => {
   const bucketCount = options.buckets ?? 7;
-
   const defaults = options.defaultRatios ?? { positive: 34, negative: 33, neutral: 33 };
   const defaultsTotal = defaults.positive + defaults.negative + defaults.neutral;
   const baseline = defaultsTotal
@@ -207,8 +208,6 @@ const buildSentimentTrend = (
     .filter((date) => !Number.isNaN(date.getTime()))
     .sort((a, b) => a.getTime() - b.getTime());
 
-  // Usa o dado mais recente como âncora para evitar que todos os buckets fiquem vazios
-  // quando as fontes só possuem publicações antigas (cenário comum em produção).
   const anchorSource = validDates.length > 0 ? validDates[validDates.length - 1] : new Date();
   const anchor = new Date(anchorSource);
   anchor.setMinutes(0, 0, 0);
@@ -231,7 +230,6 @@ const buildSentimentTrend = (
     if (Number.isNaN(published.getTime())) return;
     const bucket = buckets.find(({ start, end }) => published >= start && published < end);
     if (!bucket) return;
-
     const normalized = (item.sentiment || "neutral").toLowerCase();
     if (normalized.includes("pos")) bucket.counts.positive += 1;
     else if (normalized.includes("neg")) bucket.counts.negative += 1;
@@ -239,10 +237,8 @@ const buildSentimentTrend = (
   });
 
   let lastKnown: TrendSlice | null = null;
-
   return buckets.map(({ label, counts }) => {
     const total = counts.positive + counts.negative + counts.neutral;
-
     if (total === 0) {
       const fallback = lastKnown ?? baseline;
       const point: SentimentTrendPoint = {
@@ -254,20 +250,17 @@ const buildSentimentTrend = (
       lastKnown = fallback;
       return point;
     }
-
     const normalized = normalizeTrendPercentages(
       (counts.positive / total) * 100,
       (counts.negative / total) * 100,
       (counts.neutral / total) * 100
     );
-
     const point: SentimentTrendPoint = {
       label,
       positive: normalized.positive,
       negative: normalized.negative,
       neutral: normalized.neutral,
     };
-
     lastKnown = normalized;
     return point;
   });
@@ -298,7 +291,6 @@ const mapBackendTrendToPoints = (
     : normalizeTrendPercentages(34, 33, 33);
 
   let lastKnown: TrendSlice | null = null;
-
   return entries.slice(-7).map((entry, index) => {
     const rawPositive = typeof entry.positive === "number" ? entry.positive * 100 : 0;
     const rawNegative = typeof entry.negative === "number" ? entry.negative * 100 : 0;
@@ -319,7 +311,6 @@ const mapBackendTrendToPoints = (
 
     const normalized = normalizeTrendPercentages(rawPositive, rawNegative, rawNeutral);
     lastKnown = normalized;
-
     return {
       label,
       positive: normalized.positive,
@@ -347,7 +338,8 @@ const getStartOfDay = (value: Date) => {
   return clone;
 };
 
-const isSameCalendarDay = (left: Date, right: Date) => getStartOfDay(left).getTime() === getStartOfDay(right).getTime();
+const isSameCalendarDay = (left: Date, right: Date) =>
+  getStartOfDay(left).getTime() === getStartOfDay(right).getTime();
 
 const sanitizeHeadlineForStorage = (headline: FeedItem): FeedItem => ({
   ...headline,
@@ -373,10 +365,12 @@ export default function HomeClient() {
   const previousStatsRef = useRef<DashboardStats | null>(null);
   const mountedRef = useRef(true);
   const [dailyHeadline, setDailyHeadline] = useState<FeedItem | null>(null);
+
   const fallbackTrend = useMemo(
     () => buildSentimentTrend([...generateFallbackNews(), ...generateFallbackTweets()]),
     []
   );
+
   const [sentimentTrend, setSentimentTrend] = useState<SentimentTrendPoint[]>(fallbackTrend);
   const [recommendationSnapshot, setRecommendationSnapshot] = useState<SentimentSnapshot>(
     () => createDefaultSnapshot()
@@ -387,16 +381,19 @@ export default function HomeClient() {
     return Boolean(raw && raw.toLowerCase().includes("fallback"));
   }, []);
 
-  const fallbackHeadline = useMemo<FeedItem>(() => ({
-    ...createFallbackNews(),
-    title: "Bitcoin lidera buscas após ondas de volatilidade",
-    description:
-      "O ativo voltou ao topo das atenções com forte volume nas últimas horas. Analistas acompanham possíveis gatilhos macroeconômicos.",
-    source: "BMSS Insights",
-    sentiment: "positive",
-    score: 0.82,
-    url: "#",
-  }), []);
+  const fallbackHeadline = useMemo<FeedItem>(
+    () => ({
+      ... TourcreateFallbackNews(),
+      title: "Bitcoin lidera buscas após ondas de volatilidade",
+      description:
+        "O ativo voltou ao topo das atenções com forte volume nas últimas horas. Analistas acompanham possíveis gatilhos macroeconômicos.",
+      source: "BMSS Insights",
+      sentiment: "positive",
+      score: 0.82,
+      url: "#",
+    }),
+    []
+  );
 
   const fetchBackendTrends = useCallback(async (defaultRatios?: TrendSlice) => {
     try {
@@ -404,11 +401,9 @@ export default function HomeClient() {
       if (!response || !Array.isArray(response.data) || response.isFallback) {
         return;
       }
-
       const normalized = mapBackendTrendToPoints(response.data as BackendTrendEntry[], {
         defaultRatios,
       });
-
       if (normalized.length > 0) {
         setSentimentTrend(normalized);
       }
@@ -417,27 +412,22 @@ export default function HomeClient() {
     }
   }, []);
 
-const loadStoredHighlight = useCallback((): FeedItem | null => {
-  if (typeof window === "undefined") return null;
-
+  const loadStoredHighlight = useCallback((): FeedItem | null => {
+    if (typeof window === "undefined") return null;
     try {
       const raw = window.localStorage.getItem(DAILY_HIGHLIGHT_STORAGE_KEY);
       if (!raw) return null;
-
       const parsed = JSON.parse(raw) as StoredHeadlinePayload | null;
       if (!parsed?.headline || !parsed.generatedAt) return null;
-
       const generatedAt = new Date(parsed.generatedAt);
       if (Number.isNaN(generatedAt.getTime())) {
         window.localStorage.removeItem(DAILY_HIGHLIGHT_STORAGE_KEY);
         return null;
       }
-
       if (!isSameCalendarDay(generatedAt, new Date())) {
         window.localStorage.removeItem(DAILY_HIGHLIGHT_STORAGE_KEY);
         return null;
       }
-
       return parsed.headline;
     } catch (error) {
       console.warn("Não foi possível carregar o destaque diário armazenado:", error);
@@ -475,7 +465,6 @@ const loadStoredHighlight = useCallback((): FeedItem | null => {
       if (!items || items.length === 0) {
         return fallbackHeadline;
       }
-
       const startOfToday = new Date();
       startOfToday.setHours(0, 0, 0, 0);
 
@@ -489,7 +478,6 @@ const loadStoredHighlight = useCallback((): FeedItem | null => {
         const baseScore = Number.isFinite(item.score) ? item.score : 0.4;
         const sentimentBoost = item.sentiment === "positive" ? 0.08 : item.sentiment === "negative" ? 0.04 : 0.02;
         const accessWeight = baseScore * 0.65 + freshness * 0.3 + sentimentBoost;
-
         return {
           item,
           weight: accessWeight + (isToday ? 0.15 : 0),
@@ -502,10 +490,8 @@ const loadStoredHighlight = useCallback((): FeedItem | null => {
     [fallbackHeadline]
   );
 
-  // useCallback com dependências corretas
   const fetchStats = useCallback(async () => {
     if (!mountedRef.current) return;
-
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
 
@@ -526,6 +512,7 @@ const loadStoredHighlight = useCallback((): FeedItem | null => {
           (sentimentCounts.negative / fallbackTotal) * 100,
           (sentimentCounts.neutral / fallbackTotal) * 100
         );
+
         const fallbackStats = {
           totalNews: fallbackNews.length,
           totalTweets: fallbackTweets.length,
@@ -546,6 +533,7 @@ const loadStoredHighlight = useCallback((): FeedItem | null => {
             },
           })
         );
+
         if (!fallbackMode) {
           fetchBackendTrends({
             positive: fallbackStats.positiveSentiment,
@@ -553,6 +541,7 @@ const loadStoredHighlight = useCallback((): FeedItem | null => {
             neutral: fallbackStats.neutralSentiment,
           });
         }
+
         const storedHeadline = loadStoredHighlight();
         if (storedHeadline && !isFallbackHeadline(storedHeadline)) {
           setDailyHeadline(storedHeadline);
@@ -581,9 +570,7 @@ const loadStoredHighlight = useCallback((): FeedItem | null => {
           );
         }
       }
-      if (mappedNews.length === 0) {
-        mappedNews = generateFallbackNews();
-      }
+      if (mappedNews.length === 0) mappedNews = generateFallbackNews();
 
       let mappedTweets: FeedItem[] = [];
       if (tweetsRes.status === "fulfilled" && tweetsRes.value.ok) {
@@ -598,9 +585,7 @@ const loadStoredHighlight = useCallback((): FeedItem | null => {
           );
         }
       }
-      if (mappedTweets.length === 0) {
-        mappedTweets = generateFallbackTweets();
-      }
+      if (mappedTweets.length === 0) mappedTweets = generateFallbackTweets();
 
       const allItems = [...mappedNews, ...mappedTweets];
       const sentimentCounts = aggregateSentimentCounts(allItems);
@@ -617,15 +602,18 @@ const loadStoredHighlight = useCallback((): FeedItem | null => {
         (sentimentCounts.negative / total) * 100,
         (sentimentCounts.neutral / total) * 100
       );
+
       const averageScore =
         scoreValues.length > 0
           ? scoreValues.reduce((acc, curr) => acc + curr, 0) / scoreValues.length
           : 0;
+
       const snapshotDistribution = {
         positivo: normalizedPercentages.positive,
         negativo: normalizedPercentages.negative,
         neutro: normalizedPercentages.neutral,
       };
+
       const newStats = {
         totalNews: mappedNews.length,
         totalTweets: mappedTweets.length,
@@ -660,6 +648,7 @@ const loadStoredHighlight = useCallback((): FeedItem | null => {
           },
         })
       );
+
       fetchBackendTrends({
         positive: newStats.positiveSentiment,
         negative: newStats.negativeSentiment,
@@ -668,7 +657,6 @@ const loadStoredHighlight = useCallback((): FeedItem | null => {
 
       const candidateHeadline = pickDailyHighlight(mappedNews);
       const storedHeadline = loadStoredHighlight();
-
       if (storedHeadline && !isFallbackHeadline(storedHeadline)) {
         setDailyHeadline(storedHeadline);
       } else {
@@ -679,10 +667,10 @@ const loadStoredHighlight = useCallback((): FeedItem | null => {
           clearStoredHighlight();
         }
       }
-
     } catch (error) {
       console.error("Erro:", error);
       showToast("error", "Erro", getFetchErrorMessage(error));
+
       const fallbackNews = generateFallbackNews();
       const fallbackTweets = generateFallbackTweets();
       const fallbackItems = [...fallbackNews, ...fallbackTweets];
@@ -694,15 +682,18 @@ const loadStoredHighlight = useCallback((): FeedItem | null => {
           return Number.isFinite(value) ? value : null;
         })
         .filter((value): value is number => value !== null);
+
       const fallbackPercentages = normalizeTrendPercentages(
         (sentimentCounts.positive / fallbackTotal) * 100,
         (sentimentCounts.negative / fallbackTotal) * 100,
         (sentimentCounts.neutral / fallbackTotal) * 100
       );
+
       const fallbackAverageScore =
         fallbackScoreValues.length > 0
           ? fallbackScoreValues.reduce((acc, curr) => acc + curr, 0) / fallbackScoreValues.length
           : 0;
+
       const fallbackStats = {
         totalNews: fallbackNews.length,
         totalTweets: fallbackTweets.length,
@@ -710,6 +701,7 @@ const loadStoredHighlight = useCallback((): FeedItem | null => {
         negativeSentiment: fallbackPercentages.negative,
         neutralSentiment: fallbackPercentages.neutral,
       };
+
       previousStatsRef.current = fallbackStats;
       setStats(fallbackStats);
       setRecommendationSnapshot(
@@ -723,6 +715,7 @@ const loadStoredHighlight = useCallback((): FeedItem | null => {
           totalItens: fallbackItems.length,
         })
       );
+
       setSentimentTrend(
         buildSentimentTrend(fallbackItems, {
           defaultRatios: {
@@ -732,11 +725,13 @@ const loadStoredHighlight = useCallback((): FeedItem | null => {
           },
         })
       );
+
       fetchBackendTrends({
         positive: fallbackStats.positiveSentiment,
         negative: fallbackStats.negativeSentiment,
         neutral: fallbackStats.neutralSentiment,
       });
+
       const storedHeadline = loadStoredHighlight();
       if (storedHeadline && !isFallbackHeadline(storedHeadline)) {
         setDailyHeadline(storedHeadline);
@@ -758,7 +753,6 @@ const loadStoredHighlight = useCallback((): FeedItem | null => {
     clearStoredHighlight,
   ]);
 
-  // useEffect com cleanup
   useEffect(() => {
     mountedRef.current = true;
     fetchStats();
@@ -774,15 +768,17 @@ const loadStoredHighlight = useCallback((): FeedItem | null => {
     showToast("info", "Atualizando", "Buscando dados...", 2000);
   }, [fetchStats]);
 
-  const sentimentBadges = useMemo(() => (
-    <div className="flex flex-wrap items-center gap-3">
-      <SentimentBadge sentiment="positive" score={stats.positiveSentiment / 100} count={stats.positiveSentiment} showTrend />
-      <SentimentBadge sentiment="negative" score={stats.negativeSentiment / 100} count={stats.negativeSentiment} showTrend />
-      <SentimentBadge sentiment="neutral" score={stats.neutralSentiment / 100} count={stats.neutralSentiment} />
-    </div>
-  ), [stats]);
+  const sentimentBadges = useMemo(
+    () => (
+      <div className="flex flex-wrap items-center gap-3">
+        <SentimentBadge sentiment="positive" score={stats.positiveSentiment / 100} count={stats.positiveSentiment} showTrend />
+        <SentimentBadge sentiment="negative" score={stats.negativeSentiment / 100} count={stats.negativeSentiment} showTrend />
+        <SentimentBadge sentiment="neutral" score={stats.neutralSentiment / 100} count={stats.neutralSentiment} />
+      </div>
+    ),
+    [stats]
+  );
 
-  // RENDER CONDICIONAL SÓ DEPOIS DE TODOS OS HOOKS
   if (authLoading) {
     return (
       <div className="min-h-screen bg-neutral-950 flex items-center justify-center">
@@ -799,164 +795,144 @@ const loadStoredHighlight = useCallback((): FeedItem | null => {
   }
 
   return (
-    <ErrorBoundary
-      errorComponent={() => (
-        <div className="min-h-screen bg-neutral-950 flex items-center justify-center p-8">
-          <div className="bg-neutral-900 border border-red-500/50 rounded-2xl p-10 text-center max-w-lg shadow-2xl">
-            <div className="mb-6">
-              <div className="w-20 h-20 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg className="w-12 h-12 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-              </div>
-              <h2 className="text-3xl font-bold text-red-400 mb-2">Erro no Dashboard</h2>
-              <p className="text-gray-300 text-lg">
-                Ocorreu um problema ao carregar o painel. Vamos resolver isso agora!
+    <div className="min-h-screen bg-neutral-950 text-white">
+      <Header />
+      <StatusBar />
+      <ToastNotifier />
+
+      <div className="px-4 py-6 sm:px-6 lg:px-8">
+        <div className="mx-auto w-full max-w-7xl">
+          {/* Cabeçalho */}
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-6 sm:mb-8 gap-4">
+            <div className="space-y-2">
+              <h1 className="text-2xl sm:text-3xl font-bold text-white">Dashboard Bitcoin</h1>
+              <p className="text-sm sm:text-base text-gray-400">
+                Análise de sentimento em tempo real
+                {lastUpdate && (
+                  <span className="block sm:inline text-gray-500 text-xs sm:text-sm sm:ml-2">
+                    • Atualizado: {lastUpdate}
+                  </span>
+                )}
               </p>
             </div>
-            <div className="space-y-4">
-              <button
-                onClick={() => window.location.reload()}
-                className="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-bold py-4 px-8 rounded-xl transition transform hover:scale-105 shadow-lg"
-              >
-                Recarregar Página
-              </button>
-              <p className="text-gray-500 text-sm">
-                Ou tente novamente em alguns segundos...
-              </p>
-            </div>
+            <button
+              onClick={handleManualRefresh}
+              disabled={isLoading}
+              className="inline-flex items-center justify-center gap-2 bg-yellow-500 text-black px-4 py-2 rounded-lg hover:bg-yellow-400 disabled:opacity-70 transition font-medium w-full sm:w-auto"
+            >
+              <RefreshCw size={16} className={isLoading ? "animate-spin" : ""} />
+              {isLoading ? "Atualizando..." : "Atualizar"}
+            </button>
           </div>
-        </div>
-      )}
-    >
-      <div className="min-h-screen bg-neutral-950 text-white">
-        <Header />
-        <StatusBar />
-        <ToastNotifier />
 
-        <div className="px-4 py-6 sm:px-6 lg:px-8">
-          <div className="mx-auto w-full max-w-7xl">
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-6 sm:mb-8 gap-4">
-              <div className="space-y-2">
-                <h1 className="text-2xl sm:text-3xl font-bold text-white">Dashboard Bitcoin</h1>
-                <p className="text-sm sm:text-base text-gray-400">
-                  Análise de sentimento em tempo real
-                  {lastUpdate && <span className="block sm:inline text-gray-500 text-xs sm:text-sm sm:ml-2">• Atualizado: {lastUpdate}</span>}
-                </p>
+          {/* Badges de sentimento */}
+          <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-3 sm:gap-4 mb-8 p-4 bg-neutral-900 rounded-lg border border-neutral-800">
+            <span className="text-gray-400 text-xs sm:text-sm">Sentimento Geral:</span>
+            <div className="w-full sm:w-auto flex flex-wrap gap-3">{sentimentBadges}</div>
+          </div>
+
+          {dailyHeadline && <DailyHighlightCard headline={dailyHeadline} />}
+
+          <Suspense fallback={<div className="h-32 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}>
+            <BitcoinPriceClient />
+          </Suspense>
+
+          {/* Stats Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 my-8">
+            <StatsCard title="Notícias" value={isLoading ? "..." : stats.totalNews.toString()} change={8.2} icon={<Newspaper size={24} />} sentiment="positive" />
+            <StatsCard title="Tweets" value={isLoading ? "..." : stats.totalTweets.toString()} change={15.7} icon={<Twitter size={24} />} sentiment="positive" />
+            <StatsCard title="Positivo" value={isLoading ? "..." : `${stats.positiveSentiment}%`} change={2.5} icon={<TrendingUp size={24} />} sentiment="positive" />
+            <StatsCard title="Negativo" value={isLoading ? "..." : `${stats.negativeSentiment}%`} change={-1.2} icon={<TrendingDown size={24} />} sentiment="negative" />
+          </div>
+
+          <Suspense fallback={<div className="h-48 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}>
+            <Recomendacoes snapshot={recommendationSnapshot} isLoading={isLoading} />
+          </Suspense>
+
+          {/* Análise de Sentimento */}
+          <div className="my-10 sm:my-12">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+              <div className="flex items-center gap-2">
+                <BarChart3 className="text-yellow-400" size={24} />
+                <h2 className="text-xl sm:text-2xl font-bold">Análise de Sentimento</h2>
               </div>
-              <button
-                onClick={handleManualRefresh}
-                disabled={isLoading}
-                className="inline-flex items-center justify-center gap-2 bg-yellow-500 text-black px-4 py-2 rounded-lg hover:bg-yellow-400 disabled:opacity-70 transition font-medium w-full sm:w-auto"
-              >
-                <RefreshCw size={16} className={isLoading ? "animate-spin" : ""} />
-                {isLoading ? "Atualizando..." : "Atualizar"}
-              </button>
             </div>
 
-            <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-3 sm:gap-4 mb-8 p-4 bg-neutral-900 rounded-lg border border-neutral-800">
-              <span className="text-gray-400 text-xs sm:text-sm">Sentimento Geral:</span>
-              <div className="w-full sm:w-auto flex flex-wrap gap-3">{sentimentBadges}</div>
-            </div>
-
-            {dailyHeadline && <DailyHighlightCard headline={dailyHeadline} />}
-
-            <Suspense fallback={<div className="h-32 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}>
-              <BitcoinPriceClient />
-            </Suspense>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 my-8">
-              <StatsCard title="Notícias" value={isLoading ? "..." : stats.totalNews.toString()} change={8.2} icon={<Newspaper size={24} />} sentiment="positive" />
-              <StatsCard title="Tweets" value={isLoading ? "..." : stats.totalTweets.toString()} change={15.7} icon={<Twitter size={24} />} sentiment="positive" />
-              <StatsCard title="Positivo" value={isLoading ? "..." : `${stats.positiveSentiment}%`} change={2.5} icon={<TrendingUp size={24} />} sentiment="positive" />
-              <StatsCard title="Negativo" value={isLoading ? "..." : `${stats.negativeSentiment}%`} change={-1.2} icon={<TrendingDown size={24} />} sentiment="negative" />
-            </div>
-
-            <Suspense fallback={<div className="h-48 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}>
-              <Recomendacoes snapshot={recommendationSnapshot} isLoading={isLoading} />
-            </Suspense>
-
-            <div className="my-10 sm:my-12">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-                <div className="flex items-center gap-2">
-                  <BarChart3 className="text-yellow-400" size={24} />
-                  <h2 className="text-xl sm:text-2xl font-bold">Análise de Sentimento</h2>
-                </div>
-                <p className="text-xs text-gray-500 sm:hidden">
-                  Explore os gráficos deslizando para ver todos os dados.
-                </p>
-              </div>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
-                <Suspense fallback={<div className="h-72 sm:h-80 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}>
-                  <SentimentSignalsPanel
-                    trend={sentimentTrend}
-                    distribution={{
-                      positive: stats.positiveSentiment,
-                      negative: stats.negativeSentiment,
-                      neutral: stats.neutralSentiment,
-                    }}
-                  />
-                </Suspense>
-                <Suspense fallback={<div className="h-72 sm:h-80 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}> 
-                  <SentimentDistribution distribution={{
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
+              <Suspense fallback={<div className="h-72 sm:h-80 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}>
+                <SentimentSignalsPanel
+                  trend={sentimentTrend}
+                  distribution={{
                     positive: stats.positiveSentiment,
                     negative: stats.negativeSentiment,
                     neutral: stats.neutralSentiment,
-                  }} />
-                </Suspense>
-              </div>
-            </div>
-
-            <div className="my-10 sm:my-12">
-              <Suspense fallback={<div className="h-80 sm:h-96 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}>
-                <PriceChartSafe />
+                  }}
+                />
               </Suspense>
-            </div>
 
-            <div className="my-10 sm:my-12">
-              <Suspense fallback={<div className="h-80 sm:h-96 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}>
-                <BitcoinCompletoWrapper />
-              </Suspense>
-            </div>
-
-            <div className="my-10 sm:my-12">
-              <Suspense fallback={<div className="h-80 sm:h-96 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}>
-                <BitcoinChartWrapper />
-              </Suspense>
-            </div>
-
-            <div className="my-8">
-              <Suspense fallback={<div className="h-24 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}>
-                <LegendaSentimentos />
-              </Suspense>
-            </div>
-
-            <div className="my-10 sm:my-12">
-              <Suspense fallback={
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-                  {[1,2,3,4,5,6].map(i => (
-                    <div key={i} className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 sm:p-6 h-40 sm:h-48 animate-pulse" />
-                  ))}
-                </div>
-              }>
-                <NewsFeed />
-              </Suspense>
-            </div>
-
-            <div className="my-10 sm:my-12">
-              <Suspense fallback={
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-                  {[1,2,3,4,5,6].map(i => (
-                    <div key={i} className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 sm:p-6 h-40 sm:h-48 animate-pulse" />
-                  ))}
-                </div>
-              }>
-                <TweetsFeed />
+              <Suspense fallback={<div className="h-72 sm:h-80 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}>
+                <SentimentDistribution
+                  distribution={{
+                    positive: stats.positiveSentiment,
+                    negative: stats.negativeSentiment,
+                    neutral: stats.neutralSentiment,
+                  }}
+                />
               </Suspense>
             </div>
           </div>
+
+          {/* Gráficos de preço */}
+          <div className="my-10 sm:my-12">
+            <Suspense fallback={<div className="h-80 sm:h-96 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}>
+              <PriceChartSafe />
+            </Suspense>
+          </div>
+
+          <div className="my-10 sm:my-12">
+            <Suspense fallback={<div className="h-80 sm:h-96 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}>
+              <BitcoinCompletoWrapper />
+            </Suspense>
+          </div>
+
+          <div className="my-10 sm:my-12">
+            <Suspense fallback={<div className="h-80 sm:h-96 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}>
+              <BitcoinChartWrapper />
+            </Suspense>
+          </div>
+
+          <div className="my-8">
+            <Suspense fallback={<div className="h-24 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}>
+              <LegendaSentimentos />
+            </Suspense>
+          </div>
+
+          {/* Feeds */}
+          <div className="my-10 sm:my-12">
+            <Suspense fallback={
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                {[1,2,3,4,5,6].map(i => (
+                  <div key={i} className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 sm:p-6 h-40 sm:h-48 animate-pulse" />
+                ))}
+              </div>
+            }>
+              <NewsFeed />
+            </Suspense>
+          </div>
+
+          <div className="my-10 sm:my-12">
+            <Suspense fallback={
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                {[1,2,3,4,5,6].map(i => (
+                  <div key={i} className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 sm:p-6 h-40 sm:h-48 animate-pulse" />
+                ))}
+              </div>
+            }>
+              <TweetsFeed />
+            </Suspense>
+          </div>
         </div>
       </div>
-    </ErrorBoundary>
+    </div>
   );
 }
