@@ -197,8 +197,15 @@ const buildSentimentTrend = (
       )
     : normalizeTrendPercentages(34, 33, 33);
 
-  const now = new Date();
-  const anchor = new Date(now);
+  const validDates = items
+    .map((item) => new Date((item.date as string) ?? ""))
+    .filter((date) => !Number.isNaN(date.getTime()))
+    .sort((a, b) => a.getTime() - b.getTime());
+
+  // Usa o dado mais recente como âncora para evitar que todos os buckets fiquem vazios
+  // quando as fontes só possuem publicações antigas (cenário comum em produção).
+  const anchorSource = validDates.length > 0 ? validDates[validDates.length - 1] : new Date();
+  const anchor = new Date(anchorSource);
   anchor.setMinutes(0, 0, 0);
 
   const buckets = Array.from({ length: bucketCount }, (_, index) => {
