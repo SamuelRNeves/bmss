@@ -17,7 +17,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 
-import { buildApiUrl, getFetchErrorMessage } from "@/lib/api";
+import { buildApiUrl, getFetchErrorMessage, getTendencias } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
 import BitcoinPriceClient from "../BitcoinPriceClient";
 import { ErrorBoundary } from "next/dist/client/components/error-boundary";
@@ -32,7 +32,7 @@ import {
 
 // LAZY LOAD DE TODOS OS COMPONENTES PESADOS
 const Recomendacoes = React.lazy(() => import("@/componentes/Recomendacoes"));
-const SentimentChart = React.lazy(() => import("@/componentes/charts/sentiment-chart"));
+const SentimentSignalsPanel = React.lazy(() => import("@/componentes/charts/sentiment-signals-panel"));
 const PriceChartSafe = React.lazy(() => import("@/componentes/charts/PriceChartSafe"));
 const BitcoinCompletoWrapper = React.lazy(() => import("@/componentes/charts/BitcoinCompletoWrapper"));
 const BitcoinChartWrapper = React.lazy(() => import("@/componentes/charts/BitcoinChartWrapper"));
@@ -104,103 +104,108 @@ type SentimentTrendPoint = {
   neutral: number;
 };
 
+type TrendSlice = Pick<SentimentTrendPoint, "positive" | "negative" | "neutral">;
+
+const normalizeTrendPercentages = (positive: number, negative: number, neutral: number): TrendSlice => {
+  let p = Math.round(positive);
+  let n = Math.round(negative);
+  let z = Math.round(neutral);
+
+  let total = p + n + z;
+  if (total !== 100) {
+    if (total > 100) {
+      let diff = total - 100;
+      const adjustments: Array<{ key: keyof TrendSlice; value: number }> = [
+        { key: "positive", value: p },
+        { key: "negative", value: n },
+        { key: "neutral", value: z },
+      ].sort((a, b) => b.value - a.value);
+
+      for (const entry of adjustments) {
+        if (diff <= 0) break;
+        if (entry.value <= 0) continue;
+        const amount = Math.min(entry.value, diff);
+        diff -= amount;
+        if (entry.key === "positive") p -= amount;
+        else if (entry.key === "negative") n -= amount;
+        else z -= amount;
+      }
+    } else if (total < 100) {
+      let diff = 100 - total;
+      const adjustments: Array<{ key: keyof TrendSlice; value: number }> = [
+        { key: "positive", value: p },
+        { key: "negative", value: n },
+        { key: "neutral", value: z },
+      ].sort((a, b) => a.value - b.value);
+
+      for (const entry of adjustments) {
+        if (diff <= 0) break;
+        const capacity = 100 - entry.value;
+        if (capacity <= 0) continue;
+        const amount = Math.min(capacity, diff);
+        diff -= amount;
+        if (entry.key === "positive") p += amount;
+        else if (entry.key === "negative") n += amount;
+        else z += amount;
+      }
+    }
+  }
+
+  total = p + n + z;
+  if (total !== 100) {
+    const remainder = 100 - total;
+    if (remainder > 0) {
+      if (z <= p && z <= n) z += remainder;
+      else if (p <= n) p += remainder;
+      else n += remainder;
+    } else {
+      let diff = Math.abs(remainder);
+      const order: Array<{ key: keyof TrendSlice; value: number }> = [
+        { key: "positive", value: p },
+        { key: "negative", value: n },
+        { key: "neutral", value: z },
+      ].sort((a, b) => b.value - a.value);
+
+      for (const entry of order) {
+        if (diff <= 0) break;
+        if (entry.value <= 0) continue;
+        const amount = Math.min(entry.value, diff);
+        diff -= amount;
+        if (entry.key === "positive") p -= amount;
+        else if (entry.key === "negative") n -= amount;
+        else z -= amount;
+      }
+    }
+  }
+
+  return { positive: p, negative: n, neutral: z };
+};
+
 const buildSentimentTrend = (
   items: FeedItem[],
-  options: { buckets?: number; defaultRatios?: { positive: number; negative: number; neutral: number } } = {}
+  options: { buckets?: number; defaultRatios?: TrendSlice } = {}
 ): SentimentTrendPoint[] => {
   const bucketCount = options.buckets ?? 7;
-  type TrendSlice = Pick<SentimentTrendPoint, "positive" | "negative" | "neutral">;
-  
-  const normalizePercentages = (positive: number, negative: number, neutral: number): TrendSlice => {
-    let p = Math.round(positive);
-    let n = Math.round(negative);
-    let z = Math.round(neutral);
-
-    let total = p + n + z;
-    if (total !== 100) {
-      if (total > 100) {
-        let diff = total - 100;
-        // CORREÇÃO: Especificar explicitamente o tipo do array com 'as const'
-        const adjustments: Array<{ key: keyof TrendSlice; value: number }> = [
-          { key: "positive" as const, value: p },
-          { key: "negative" as const, value: n },
-          { key: "neutral" as const, value: z },
-        ].sort((a, b) => b.value - a.value);
-        
-        for (const entry of adjustments) {
-          if (diff <= 0) break;
-          if (entry.value <= 0) continue;
-          const amount = Math.min(entry.value, diff);
-          diff -= amount;
-          if (entry.key === "positive") p -= amount;
-          else if (entry.key === "negative") n -= amount;
-          else z -= amount;
-        }
-      } else if (total < 100) {
-        let diff = 100 - total;
-        // CORREÇÃO: Especificar explicitamente o tipo do array com 'as const'
-        const adjustments: Array<{ key: keyof TrendSlice; value: number }> = [
-          { key: "positive" as const, value: p },
-          { key: "negative" as const, value: n },
-          { key: "neutral" as const, value: z },
-        ].sort((a, b) => a.value - b.value);
-        
-        for (const entry of adjustments) {
-          if (diff <= 0) break;
-          const capacity = 100 - entry.value;
-          if (capacity <= 0) continue;
-          const amount = Math.min(capacity, diff);
-          diff -= amount;
-          if (entry.key === "positive") p += amount;
-          else if (entry.key === "negative") n += amount;
-          else z += amount;
-        }
-      }
-    }
-
-    total = p + n + z;
-    if (total !== 100) {
-      const remainder = 100 - total;
-      if (remainder > 0) {
-        if (z <= p && z <= n) z += remainder;
-        else if (p <= n) p += remainder;
-        else n += remainder;
-      } else {
-        let diff = Math.abs(remainder);
-        // CORREÇÃO: Especificar explicitamente o tipo do array com 'as const'
-        const order: Array<{ key: keyof TrendSlice; value: number }> = [
-          { key: "positive" as const, value: p },
-          { key: "negative" as const, value: n },
-          { key: "neutral" as const, value: z },
-        ].sort((a, b) => b.value - a.value);
-        
-        for (const entry of order) {
-          if (diff <= 0) break;
-          if (entry.value <= 0) continue;
-          const amount = Math.min(entry.value, diff);
-          diff -= amount;
-          if (entry.key === "positive") p -= amount;
-          else if (entry.key === "negative") n -= amount;
-          else z -= amount;
-        }
-      }
-    }
-
-    return { positive: p, negative: n, neutral: z };
-  };
 
   const defaults = options.defaultRatios ?? { positive: 34, negative: 33, neutral: 33 };
   const defaultsTotal = defaults.positive + defaults.negative + defaults.neutral;
   const baseline = defaultsTotal
-    ? normalizePercentages(
+    ? normalizeTrendPercentages(
         (defaults.positive / defaultsTotal) * 100,
         (defaults.negative / defaultsTotal) * 100,
         (defaults.neutral / defaultsTotal) * 100
       )
-    : normalizePercentages(34, 33, 33);
+    : normalizeTrendPercentages(34, 33, 33);
 
-  const now = new Date();
-  const anchor = new Date(now);
+  const validDates = items
+    .map((item) => new Date((item.date as string) ?? ""))
+    .filter((date) => !Number.isNaN(date.getTime()))
+    .sort((a, b) => a.getTime() - b.getTime());
+
+  // Usa o dado mais recente como âncora para evitar que todos os buckets fiquem vazios
+  // quando as fontes só possuem publicações antigas (cenário comum em produção).
+  const anchorSource = validDates.length > 0 ? validDates[validDates.length - 1] : new Date();
+  const anchor = new Date(anchorSource);
   anchor.setMinutes(0, 0, 0);
 
   const buckets = Array.from({ length: bucketCount }, (_, index) => {
@@ -245,7 +250,7 @@ const buildSentimentTrend = (
       return point;
     }
 
-    const normalized = normalizePercentages(
+    const normalized = normalizeTrendPercentages(
       (counts.positive / total) * 100,
       (counts.negative / total) * 100,
       (counts.neutral / total) * 100
@@ -260,6 +265,62 @@ const buildSentimentTrend = (
 
     lastKnown = normalized;
     return point;
+  });
+};
+
+type BackendTrendEntry = {
+  day?: string;
+  date?: string;
+  positive?: number;
+  negative?: number;
+  neutral?: number;
+};
+
+const mapBackendTrendToPoints = (
+  entries: BackendTrendEntry[],
+  options: { defaultRatios?: TrendSlice } = {}
+): SentimentTrendPoint[] => {
+  if (!Array.isArray(entries) || entries.length === 0) return [];
+
+  const defaults = options.defaultRatios ?? { positive: 34, negative: 33, neutral: 33 };
+  const defaultsTotal = defaults.positive + defaults.negative + defaults.neutral;
+  const baseline = defaultsTotal
+    ? normalizeTrendPercentages(
+        (defaults.positive / defaultsTotal) * 100,
+        (defaults.negative / defaultsTotal) * 100,
+        (defaults.neutral / defaultsTotal) * 100
+      )
+    : normalizeTrendPercentages(34, 33, 33);
+
+  let lastKnown: TrendSlice | null = null;
+
+  return entries.slice(-7).map((entry, index) => {
+    const rawPositive = typeof entry.positive === "number" ? entry.positive * 100 : 0;
+    const rawNegative = typeof entry.negative === "number" ? entry.negative * 100 : 0;
+    const rawNeutral = typeof entry.neutral === "number" ? entry.neutral * 100 : 0;
+    const label = entry.day?.trim() || entry.date?.toString() || `Dia ${index + 1}`;
+
+    const total = rawPositive + rawNegative + rawNeutral;
+    if (total <= 0) {
+      const fallback = lastKnown ?? baseline;
+      lastKnown = fallback;
+      return {
+        label,
+        positive: fallback.positive,
+        negative: fallback.negative,
+        neutral: fallback.neutral,
+      };
+    }
+
+    const normalized = normalizeTrendPercentages(rawPositive, rawNegative, rawNeutral);
+    lastKnown = normalized;
+
+    return {
+      label,
+      positive: normalized.positive,
+      negative: normalized.negative,
+      neutral: normalized.neutral,
+    };
   });
 };
 
@@ -329,8 +390,27 @@ export default function HomeClient() {
     url: "#",
   }), []);
 
-  const loadStoredHighlight = useCallback((): FeedItem | null => {
-    if (typeof window === "undefined") return null;
+  const fetchBackendTrends = useCallback(async (defaultRatios?: TrendSlice) => {
+    try {
+      const response = await getTendencias();
+      if (!response || !Array.isArray(response.data) || response.isFallback) {
+        return;
+      }
+
+      const normalized = mapBackendTrendToPoints(response.data as BackendTrendEntry[], {
+        defaultRatios,
+      });
+
+      if (normalized.length > 0) {
+        setSentimentTrend(normalized);
+      }
+    } catch (error) {
+      console.warn("Não foi possível carregar tendências do backend:", error);
+    }
+  }, []);
+
+const loadStoredHighlight = useCallback((): FeedItem | null => {
+  if (typeof window === "undefined") return null;
 
     try {
       const raw = window.localStorage.getItem(DAILY_HIGHLIGHT_STORAGE_KEY);
@@ -433,12 +513,17 @@ export default function HomeClient() {
         const fallbackItems = [...fallbackNews, ...fallbackTweets];
         const sentimentCounts = aggregateSentimentCounts(fallbackItems);
         const fallbackTotal = fallbackItems.length || 1;
+        const fallbackPercentages = normalizeTrendPercentages(
+          (sentimentCounts.positive / fallbackTotal) * 100,
+          (sentimentCounts.negative / fallbackTotal) * 100,
+          (sentimentCounts.neutral / fallbackTotal) * 100
+        );
         const fallbackStats = {
           totalNews: fallbackNews.length,
           totalTweets: fallbackTweets.length,
-          positiveSentiment: Math.round((sentimentCounts.positive / fallbackTotal) * 100),
-          negativeSentiment: Math.round((sentimentCounts.negative / fallbackTotal) * 100),
-          neutralSentiment: Math.round((sentimentCounts.neutral / fallbackTotal) * 100),
+          positiveSentiment: fallbackPercentages.positive,
+          negativeSentiment: fallbackPercentages.negative,
+          neutralSentiment: fallbackPercentages.neutral,
         };
 
         previousStatsRef.current = fallbackStats;
@@ -453,6 +538,13 @@ export default function HomeClient() {
             },
           })
         );
+        if (!fallbackMode) {
+          fetchBackendTrends({
+            positive: fallbackStats.positiveSentiment,
+            negative: fallbackStats.negativeSentiment,
+            neutral: fallbackStats.neutralSentiment,
+          });
+        }
         const storedHeadline = loadStoredHighlight();
         if (storedHeadline && !isFallbackHeadline(storedHeadline)) {
           setDailyHeadline(storedHeadline);
@@ -506,12 +598,17 @@ export default function HomeClient() {
       const sentimentCounts = aggregateSentimentCounts(allItems);
 
       const total = allItems.length || 1;
+      const normalizedPercentages = normalizeTrendPercentages(
+        (sentimentCounts.positive / total) * 100,
+        (sentimentCounts.negative / total) * 100,
+        (sentimentCounts.neutral / total) * 100
+      );
       const newStats = {
         totalNews: mappedNews.length,
         totalTweets: mappedTweets.length,
-        positiveSentiment: Math.round((sentimentCounts.positive / total) * 100),
-        negativeSentiment: Math.round((sentimentCounts.negative / total) * 100),
-        neutralSentiment: Math.round((sentimentCounts.neutral / total) * 100),
+        positiveSentiment: normalizedPercentages.positive,
+        negativeSentiment: normalizedPercentages.negative,
+        neutralSentiment: normalizedPercentages.neutral,
       };
 
       if (previousStatsRef.current) {
@@ -533,6 +630,11 @@ export default function HomeClient() {
           },
         })
       );
+      fetchBackendTrends({
+        positive: newStats.positiveSentiment,
+        negative: newStats.negativeSentiment,
+        neutral: newStats.neutralSentiment,
+      });
 
       const candidateHeadline = pickDailyHighlight(mappedNews);
       const storedHeadline = loadStoredHighlight();
@@ -556,12 +658,17 @@ export default function HomeClient() {
       const fallbackItems = [...fallbackNews, ...fallbackTweets];
       const sentimentCounts = aggregateSentimentCounts(fallbackItems);
       const fallbackTotal = fallbackItems.length || 1;
+      const fallbackPercentages = normalizeTrendPercentages(
+        (sentimentCounts.positive / fallbackTotal) * 100,
+        (sentimentCounts.negative / fallbackTotal) * 100,
+        (sentimentCounts.neutral / fallbackTotal) * 100
+      );
       const fallbackStats = {
         totalNews: fallbackNews.length,
         totalTweets: fallbackTweets.length,
-        positiveSentiment: Math.round((sentimentCounts.positive / fallbackTotal) * 100),
-        negativeSentiment: Math.round((sentimentCounts.negative / fallbackTotal) * 100),
-        neutralSentiment: Math.round((sentimentCounts.neutral / fallbackTotal) * 100),
+        positiveSentiment: fallbackPercentages.positive,
+        negativeSentiment: fallbackPercentages.negative,
+        neutralSentiment: fallbackPercentages.neutral,
       };
       previousStatsRef.current = fallbackStats;
       setStats(fallbackStats);
@@ -574,6 +681,11 @@ export default function HomeClient() {
           },
         })
       );
+      fetchBackendTrends({
+        positive: fallbackStats.positiveSentiment,
+        negative: fallbackStats.negativeSentiment,
+        neutral: fallbackStats.neutralSentiment,
+      });
       const storedHeadline = loadStoredHighlight();
       if (storedHeadline && !isFallbackHeadline(storedHeadline)) {
         setDailyHeadline(storedHeadline);
@@ -588,6 +700,7 @@ export default function HomeClient() {
   }, [
     fallbackMode,
     fallbackHeadline,
+    fetchBackendTrends,
     pickDailyHighlight,
     loadStoredHighlight,
     persistHighlight,
@@ -723,8 +836,15 @@ export default function HomeClient() {
                 </p>
               </div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
-                <Suspense fallback={<div className="h-72 sm:h-80 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}> 
-                  <SentimentChart trend={sentimentTrend} />
+                <Suspense fallback={<div className="h-72 sm:h-80 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}>
+                  <SentimentSignalsPanel
+                    trend={sentimentTrend}
+                    distribution={{
+                      positive: stats.positiveSentiment,
+                      negative: stats.negativeSentiment,
+                      neutral: stats.neutralSentiment,
+                    }}
+                  />
                 </Suspense>
                 <Suspense fallback={<div className="h-72 sm:h-80 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}> 
                   <SentimentDistribution distribution={{
