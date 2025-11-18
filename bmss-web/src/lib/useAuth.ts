@@ -126,7 +126,8 @@ export function useAuth() {
             name: (payload.name as string) ?? "",
             email: (payload.email as string) ?? "",
             investorProfile: (payload.investorProfile as string) ?? "MODERADO",
-            notificationPreference: payload.notificationPreference as string | undefined,
+            notificationPreference:
+              (payload.notificationPreference as string | undefined) ?? "resumo_diario",
             profileImageUrl: resolvedProfile ?? null,
           };
           setUser(normalizedUser);
@@ -250,8 +251,15 @@ export function useAuth() {
         requestPayload.investorProfile = patch.investorProfile;
       }
 
+      const shouldBootstrapPreference =
+        patch.notificationPreference === undefined &&
+        (patch.investorProfile !== undefined || patch.profileImageUrl !== undefined) &&
+        (user.notificationPreference === null || user.notificationPreference === undefined);
+
       if (patch.notificationPreference !== undefined) {
         requestPayload.notificationPreference = patch.notificationPreference;
+      } else if (shouldBootstrapPreference) {
+        requestPayload.notificationPreference = "resumo_diario";
       }
 
       if (patch.profileImageUrl !== undefined) {
@@ -296,10 +304,13 @@ export function useAuth() {
 
       if (
         patch.notificationPreference !== undefined ||
-        (payload && Object.prototype.hasOwnProperty.call(payload, "notificationPreference"))
+        (payload && Object.prototype.hasOwnProperty.call(payload, "notificationPreference")) ||
+        shouldBootstrapPreference
       ) {
         normalized.notificationPreference =
-          (payload?.notificationPreference as string | undefined) ?? patch.notificationPreference;
+          (payload?.notificationPreference as string | undefined) ??
+          patch.notificationPreference ??
+          (shouldBootstrapPreference ? "resumo_diario" : undefined);
       }
 
       const responseIncludesProfileImage = Boolean(
