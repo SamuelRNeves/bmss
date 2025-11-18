@@ -29,6 +29,11 @@ import {
   createFallbackTweet,
   mapApiItemToFeedItem,
 } from "@/componentes/news/feed-utils";
+import type { SentimentSnapshot } from "@/lib/sentiment-insights";
+import {
+  createDefaultSnapshot,
+  createSnapshotFromDistribution,
+} from "@/lib/sentiment-insights";
 
 // LAZY LOAD DE TODOS OS COMPONENTES PESADOS
 const Recomendacoes = React.lazy(() => import("@/componentes/Recomendacoes"));
@@ -373,6 +378,9 @@ export default function HomeClient() {
     []
   );
   const [sentimentTrend, setSentimentTrend] = useState<SentimentTrendPoint[]>(fallbackTrend);
+  const [recommendationSnapshot, setRecommendationSnapshot] = useState<SentimentSnapshot>(
+    () => createDefaultSnapshot()
+  );
 
   const fallbackMode = useMemo(() => {
     const raw = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
@@ -596,6 +604,12 @@ export default function HomeClient() {
 
       const allItems = [...mappedNews, ...mappedTweets];
       const sentimentCounts = aggregateSentimentCounts(allItems);
+      const scoreValues = allItems
+        .map((item) => {
+          const value = typeof item.score === "number" ? item.score : Number(item.score);
+          return Number.isFinite(value) ? value : null;
+        })
+        .filter((value): value is number => value !== null);
 
       const total = allItems.length || 1;
       const normalizedPercentages = normalizeTrendPercentages(
@@ -603,6 +617,15 @@ export default function HomeClient() {
         (sentimentCounts.negative / total) * 100,
         (sentimentCounts.neutral / total) * 100
       );
+      const averageScore =
+        scoreValues.length > 0
+          ? scoreValues.reduce((acc, curr) => acc + curr, 0) / scoreValues.length
+          : 0;
+      const snapshotDistribution = {
+        positivo: normalizedPercentages.positive,
+        negativo: normalizedPercentages.negative,
+        neutro: normalizedPercentages.neutral,
+      };
       const newStats = {
         totalNews: mappedNews.length,
         totalTweets: mappedTweets.length,
@@ -620,6 +643,13 @@ export default function HomeClient() {
 
       previousStatsRef.current = newStats;
       setStats(newStats);
+      setRecommendationSnapshot(
+        createSnapshotFromDistribution({
+          media: averageScore,
+          distribuicao: snapshotDistribution,
+          totalItens: allItems.length,
+        })
+      );
       setLastUpdate(new Date().toLocaleTimeString("pt-BR"));
       setSentimentTrend(
         buildSentimentTrend(allItems, {
@@ -658,11 +688,21 @@ export default function HomeClient() {
       const fallbackItems = [...fallbackNews, ...fallbackTweets];
       const sentimentCounts = aggregateSentimentCounts(fallbackItems);
       const fallbackTotal = fallbackItems.length || 1;
+      const fallbackScoreValues = fallbackItems
+        .map((item) => {
+          const value = typeof item.score === "number" ? item.score : Number(item.score);
+          return Number.isFinite(value) ? value : null;
+        })
+        .filter((value): value is number => value !== null);
       const fallbackPercentages = normalizeTrendPercentages(
         (sentimentCounts.positive / fallbackTotal) * 100,
         (sentimentCounts.negative / fallbackTotal) * 100,
         (sentimentCounts.neutral / fallbackTotal) * 100
       );
+      const fallbackAverageScore =
+        fallbackScoreValues.length > 0
+          ? fallbackScoreValues.reduce((acc, curr) => acc + curr, 0) / fallbackScoreValues.length
+          : 0;
       const fallbackStats = {
         totalNews: fallbackNews.length,
         totalTweets: fallbackTweets.length,
@@ -672,6 +712,17 @@ export default function HomeClient() {
       };
       previousStatsRef.current = fallbackStats;
       setStats(fallbackStats);
+      setRecommendationSnapshot(
+        createSnapshotFromDistribution({
+          media: fallbackAverageScore,
+          distribuicao: {
+            positivo: fallbackPercentages.positive,
+            negativo: fallbackPercentages.negative,
+            neutro: fallbackPercentages.neutral,
+          },
+          totalItens: fallbackItems.length,
+        })
+      );
       setSentimentTrend(
         buildSentimentTrend(fallbackItems, {
           defaultRatios: {
@@ -822,7 +873,7 @@ export default function HomeClient() {
             </div>
 
             <Suspense fallback={<div className="h-48 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}>
-              <Recomendacoes />
+              <Recomendacoes snapshot={recommendationSnapshot} isLoading={isLoading} />
             </Suspense>
 
             <div className="my-10 sm:my-12">

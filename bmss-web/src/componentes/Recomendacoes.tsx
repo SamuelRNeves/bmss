@@ -1,6 +1,6 @@
 "use client";
 
-import React, { JSX, useCallback, useEffect, useMemo, useState } from "react";
+import React, { JSX, useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Brain,
@@ -11,20 +11,19 @@ import {
   Flame,
   ShieldCheck,
   ShieldAlert,
+  RefreshCw,
 } from "lucide-react";
-import { getFeed } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
+import type { SentimentSnapshot, InvestorProfile } from "@/lib/sentiment-insights";
 import {
-  createFallbackNews,
-  mapApiItemToFeedItem,
-  type Sentiment,
-} from "./news/feed-utils";
+  clampRatio,
+  createDefaultSnapshot,
+} from "@/lib/sentiment-insights";
 
-type InvestorProfile = "CONSERVADOR" | "MODERADO" | "AGRESSIVO";
-type SentimentLabel = "positivo" | "negativo" | "neutro";
-type SentimentStrength = "forte" | "moderada" | "leve";
-
-type SentimentDistribution = Record<SentimentLabel, number>;
+interface RecomendacoesProps {
+  snapshot?: SentimentSnapshot;
+  isLoading?: boolean;
+}
 
 interface Recomendacao {
   titulo: string;
@@ -32,31 +31,6 @@ interface Recomendacao {
   icone: JSX.Element;
   cor: string;
 }
-
-interface SentimentSnapshot {
-  nivel: SentimentLabel;
-  intensidade: SentimentStrength;
-  media: number;
-  distribuicao: SentimentDistribution;
-  dominante: SentimentLabel;
-  proporcaoDominante: number;
-}
-
-const SENTIMENT_THRESHOLDS = {
-  positivo: 0.06,
-  negativo: -0.06,
-  intensidadeForte: 0.16,
-  intensidadeModerada: 0.09,
-};
-
-const createDefaultSnapshot = (): SentimentSnapshot => ({
-  nivel: "neutro",
-  intensidade: "leve",
-  media: 0,
-  distribuicao: { positivo: 0, negativo: 0, neutro: 0 },
-  dominante: "neutro",
-  proporcaoDominante: 0,
-});
 
 const formatScore = (score: number): string =>
   new Intl.NumberFormat("pt-BR", {
@@ -71,11 +45,6 @@ const formatPercent = (value: number): string =>
     maximumFractionDigits: 0,
   }).format(value);
 
-const clampRatio = (value: number): number => {
-  if (!Number.isFinite(value)) return 0;
-  return Math.min(1, Math.max(0, value));
-};
-
 const normalizeProfile = (value: unknown): InvestorProfile | null => {
   if (typeof value !== "string") return null;
   const normalized = value.trim().toUpperCase();
@@ -83,17 +52,6 @@ const normalizeProfile = (value: unknown): InvestorProfile | null => {
     return normalized;
   }
   return null;
-};
-
-const mapSentimentToLabel = (sentiment: Sentiment): SentimentLabel => {
-  switch (sentiment) {
-    case "positive":
-      return "positivo";
-    case "negative":
-      return "negativo";
-    default:
-      return "neutro";
-  }
 };
 
 const buildRecommendation = (
@@ -127,17 +85,7 @@ const buildRecommendation = (
     intensidade === "forte" ? "forte" : intensidade === "moderada" ? "moderada" : "leve";
   const scoreFormatado = formatScore(media);
 
-  const baseStats = `Distribuição atual: ${positivoTexto} positivas, ${neutroTexto} neutras e ${negativoTexto} negativas (${total} notícias).`;
-
-  const dominanceTone = (() => {
-    if (percentualDominante >= 0.65) {
-      return "predominância forte";
-    }
-    if (percentualDominante >= 0.5) {
-      return "vantagem consistente";
-    }
-    return "leve vantagem";
-  })();
+  const baseStats = `Distribuição atual: ${positivoTexto} positivas, ${neutroTexto} neutras e ${negativoTexto} negativas.`;
 
   if (percentualDominante < 0.45) {
     if (perfil === "AGRESSIVO") {
@@ -247,10 +195,12 @@ const buildRecommendation = (
   };
 };
 
-export default function Recomendacoes() {
+export default function Recomendacoes({
+  snapshot,
+  isLoading = false,
+}: RecomendacoesProps) {
   const { user, loading: isLoadingUser } = useAuth();
   const [perfil, setPerfil] = useState<InvestorProfile | null>(null);
-  const [snapshot, setSnapshot] = useState<SentimentSnapshot>(() => createDefaultSnapshot());
 
   useEffect(() => {
     const resolved = normalizeProfile(user?.investorProfile);
@@ -265,89 +215,12 @@ export default function Recomendacoes() {
     }
   }, [isLoadingUser, perfil]);
 
-  const calcularSentimento = useCallback(async () => {
-    try {
-      const { data } = await getFeed("news", 120, "bitcoin", false);
-      if (!Array.isArray(data) || data.length === 0) {
-        setSnapshot(createDefaultSnapshot());
-        return;
-      }
-
-      const itensNormalizados = data.map((item: unknown) =>
-        mapApiItemToFeedItem(item, createFallbackNews())
-      );
-
-      const scores = itensNormalizados
-        .map((item) => {
-          const value =
-            typeof item.score === "number" ? item.score : Number(item.score);
-          return Number.isFinite(value) ? value : null;
-        })
-        .filter((value): value is number => value !== null);
-
-      const distribuicao: SentimentDistribution = { positivo: 0, negativo: 0, neutro: 0 };
-      itensNormalizados.forEach((item) => {
-        const label = mapSentimentToLabel(item.sentiment);
-        distribuicao[label] += 1;
-      });
-
-      const total = distribuicao.positivo + distribuicao.negativo + distribuicao.neutro;
-
-      if (scores.length === 0 && total === 0) {
-        setSnapshot(createDefaultSnapshot());
-        return;
-      }
-
-      const media =
-        scores.length > 0
-          ? scores.reduce((acc, curr) => acc + curr, 0) / scores.length
-          : 0;
-
-      const nivel: SentimentLabel =
-        media > SENTIMENT_THRESHOLDS.positivo
-          ? "positivo"
-          : media < SENTIMENT_THRESHOLDS.negativo
-          ? "negativo"
-          : "neutro";
-
-      const intensidade: SentimentStrength =
-        Math.abs(media) >= SENTIMENT_THRESHOLDS.intensidadeForte
-          ? "forte"
-          : Math.abs(media) >= SENTIMENT_THRESHOLDS.intensidadeModerada
-          ? "moderada"
-          : "leve";
-
-      const dominante: SentimentLabel = total
-        ? (Object.entries(distribuicao)
-            .sort(([, a], [, b]) => Number(b) - Number(a))
-            .map(([key]) => key as SentimentLabel))[0]
-        : "neutro";
-
-      const proporcaoDominante = total ? distribuicao[dominante] / total : 0;
-
-      setSnapshot({
-        nivel,
-        intensidade,
-        media,
-        distribuicao,
-        dominante,
-        proporcaoDominante,
-      });
-    } catch (error) {
-      console.warn("⚠️ Erro ao calcular sentimento — usando valor anterior.", error);
-    }
-  }, []);
-
-  useEffect(() => {
-    calcularSentimento();
-    const interval = setInterval(calcularSentimento, 60000);
-    return () => clearInterval(interval);
-  }, [calcularSentimento]);
+  const snapshotAtual = snapshot ?? createDefaultSnapshot();
 
   const recomendacao = useMemo(() => {
     if (!perfil) return null;
-    return buildRecommendation(perfil, snapshot);
-  }, [perfil, snapshot]);
+    return buildRecommendation(perfil, snapshotAtual);
+  }, [perfil, snapshotAtual]);
 
   if (!recomendacao) {
     return (
@@ -358,95 +231,143 @@ export default function Recomendacoes() {
   }
 
   const perfilAtual = perfil ?? "MODERADO";
-  const totalNoticias =
-    snapshot.distribuicao.positivo +
-    snapshot.distribuicao.negativo +
-    snapshot.distribuicao.neutro;
+  const percentuais = {
+    positivo: Math.round(snapshotAtual.distribuicao.positivo),
+    neutro: Math.round(snapshotAtual.distribuicao.neutro),
+    negativo: Math.round(snapshotAtual.distribuicao.negativo),
+  };
 
-  const percent = (value: number) =>
-    totalNoticias === 0 ? 0 : Math.round((value / totalNoticias) * 100);
+  const formatSignals = (percentual: number) => {
+    if (!snapshotAtual.totalItens) return null;
+    const estimado = Math.round((snapshotAtual.totalItens * percentual) / 100);
+    return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 }).format(
+      estimado
+    );
+  };
 
   return (
     <AnimatePresence mode="wait">
       <motion.div
-        key={`${perfilAtual}-${snapshot.nivel}-${snapshot.intensidade}-${snapshot.dominante}`}
+        key={`${perfilAtual}-${snapshotAtual.nivel}-${snapshotAtual.intensidade}-${snapshotAtual.dominante}`}
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -15 }}
         transition={{ duration: 0.6, ease: "easeOut" }}
-        className={`border ${recomendacao.cor} bg-neutral-900 rounded-2xl p-6 flex flex-col gap-4 transition-all`}
+        className={`border ${recomendacao.cor} bg-neutral-900/80 backdrop-blur rounded-2xl p-6 flex flex-col gap-4 transition-all`}
       >
         <div className="flex items-start gap-4">
           <div className="flex-shrink-0">{recomendacao.icone}</div>
-          <div>
-            <h3 className="text-xl font-bold text-white mb-1">{recomendacao.titulo}</h3>
-            <p className="text-gray-400 text-sm leading-relaxed">{recomendacao.mensagem}</p>
-            <p className="mt-2 text-xs text-gray-500">
-              Score médio das notícias: {formatScore(snapshot.media)}
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-400">
+              <span className="px-2 py-0.5 rounded-full bg-neutral-800 text-gray-200">
+                Perfil {perfilAtual}
+              </span>
+              <span className="px-2 py-0.5 rounded-full bg-neutral-800/70 text-gray-300">
+                {snapshotAtual.nivel} • {snapshotAtual.intensidade}
+              </span>
+              {isLoading && (
+                <span className="flex items-center gap-1 text-amber-300">
+                  <RefreshCw size={12} className="animate-spin" /> Atualizando
+                </span>
+              )}
+            </div>
+            <h3 className="text-xl font-bold text-white">{recomendacao.titulo}</h3>
+            <p className="text-gray-400 text-sm leading-relaxed">
+              {recomendacao.mensagem}
             </p>
-            <p className="mt-1 text-xs text-gray-500">
-              <strong>Perfil:</strong> {perfilAtual} | <strong>Sentimento:</strong> {snapshot.nivel} ({
-                snapshot.intensidade
-              })
+            <p className="text-xs text-gray-500">
+              Score médio dos sinais: {formatScore(snapshotAtual.media)}
             </p>
           </div>
         </div>
 
-        <div className="mt-2 space-y-3 text-xs text-gray-400">
-          <div>
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-2 text-emerald-300">
-                <TrendingUp size={14} /> Positivas
-              </span>
-              <span>
-                {percent(snapshot.distribuicao.positivo)}% ({snapshot.distribuicao.positivo})
-              </span>
-            </div>
-            <div className="h-1.5 bg-neutral-800 rounded-full overflow-hidden mt-1">
-              <div
-                className="h-full bg-emerald-500"
-                style={{ width: `${percent(snapshot.distribuicao.positivo)}%` }}
-              />
-            </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs text-gray-400">
+          <div className="rounded-xl bg-neutral-950/40 border border-neutral-800/70 p-3">
+            <p className="text-[11px] uppercase tracking-widest text-gray-500 mb-1">
+              Liderança
+            </p>
+            <p className="text-sm text-white font-semibold capitalize">
+              {snapshotAtual.dominante}
+            </p>
+            <p className="text-[11px] text-gray-500 mt-1">
+              {formatPercent(snapshotAtual.proporcaoDominante)} do noticiário
+            </p>
           </div>
+          <div className="rounded-xl bg-neutral-950/40 border border-neutral-800/70 p-3">
+            <p className="text-[11px] uppercase tracking-widest text-gray-500 mb-1">
+              Intensidade
+            </p>
+            <p className="text-sm text-white font-semibold capitalize">
+              {snapshotAtual.intensidade}
+            </p>
+            <p className="text-[11px] text-gray-500 mt-1">Pulso alinhado aos gráficos</p>
+          </div>
+          <div className="rounded-xl bg-neutral-950/40 border border-neutral-800/70 p-3">
+            <p className="text-[11px] uppercase tracking-widest text-gray-500 mb-1">
+              Total monitorado
+            </p>
+            <p className="text-sm text-white font-semibold">
+              {snapshotAtual.totalItens > 0
+                ? new Intl.NumberFormat("pt-BR").format(snapshotAtual.totalItens)
+                : "Sincronizando"}
+            </p>
+            <p className="text-[11px] text-gray-500 mt-1">
+              Mesmas fontes dos gráficos
+            </p>
+          </div>
+        </div>
 
-          <div>
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-2 text-sky-300">
-                <Brain size={14} /> Neutras
-              </span>
-              <span>
-                {percent(snapshot.distribuicao.neutro)}% ({snapshot.distribuicao.neutro})
-              </span>
-            </div>
-            <div className="h-1.5 bg-neutral-800 rounded-full overflow-hidden mt-1">
-              <div
-                className="h-full bg-sky-500"
-                style={{ width: `${percent(snapshot.distribuicao.neutro)}%` }}
-              />
-            </div>
-          </div>
+        <div className="mt-2 space-y-4 text-xs text-gray-400">
+          {["positivo", "neutro", "negativo"].map((chave) => {
+            const value = percentuais[chave as keyof typeof percentuais];
+            const signalCount = formatSignals(value);
+            const config =
+              chave === "positivo"
+                ? {
+                    label: "Positivas",
+                    color: "bg-emerald-500",
+                    accent: "text-emerald-300",
+                    icon: <TrendingUp size={14} />,
+                  }
+                : chave === "negativo"
+                ? {
+                    label: "Negativas",
+                    color: "bg-red-500",
+                    accent: "text-red-300",
+                    icon: <AlertTriangle size={14} />,
+                  }
+                : {
+                    label: "Neutras",
+                    color: "bg-sky-500",
+                    accent: "text-sky-300",
+                    icon: <Brain size={14} />,
+                  };
 
-          <div>
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-2 text-red-300">
-                <AlertTriangle size={14} /> Negativas
-              </span>
-              <span>
-                {percent(snapshot.distribuicao.negativo)}% ({snapshot.distribuicao.negativo})
-              </span>
-            </div>
-            <div className="h-1.5 bg-neutral-800 rounded-full overflow-hidden mt-1">
-              <div
-                className="h-full bg-red-500"
-                style={{ width: `${percent(snapshot.distribuicao.negativo)}%` }}
-              />
-            </div>
-          </div>
+            return (
+              <div key={config.label}>
+                <div className="flex items-center justify-between">
+                  <span className={`flex items-center gap-2 ${config.accent}`}>
+                    {config.icon} {config.label}
+                  </span>
+                  <span className="text-gray-200">
+                    {value}%
+                    {signalCount && (
+                      <span className="text-[11px] text-gray-500 ml-2">
+                        ≈ {signalCount} sinais
+                      </span>
+                    )}
+                  </span>
+                </div>
+                <div className="h-1.5 bg-neutral-800 rounded-full overflow-hidden mt-1">
+                  <div className={`h-full ${config.color}`} style={{ width: `${value}%` }} />
+                </div>
+              </div>
+            );
+          })}
         </div>
 
         <p className="mt-1 text-[11px] text-gray-500">
-          Baseado em {totalNoticias} notícias analisadas nos últimos minutos.
+          Baseado em fontes analisadas nos últimos minutos — exatamente os mesmos números que alimentam o gráfico ao lado.
         </p>
       </motion.div>
     </AnimatePresence>
