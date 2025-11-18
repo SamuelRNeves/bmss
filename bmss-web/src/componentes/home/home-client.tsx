@@ -409,8 +409,8 @@ export default function HomeClient() {
     }
   }, []);
 
-const loadStoredHighlight = useCallback((): FeedItem | null => {
-  if (typeof window === "undefined") return null;
+  const loadStoredHighlight = useCallback((): FeedItem | null => {
+    if (typeof window === "undefined") return null;
 
     try {
       const raw = window.localStorage.getItem(DAILY_HIGHLIGHT_STORAGE_KEY);
