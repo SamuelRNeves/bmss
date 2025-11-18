@@ -32,7 +32,7 @@ import {
 
 // LAZY LOAD DE TODOS OS COMPONENTES PESADOS
 const Recomendacoes = React.lazy(() => import("@/componentes/Recomendacoes"));
-const SentimentChart = React.lazy(() => import("@/componentes/charts/sentiment-chart"));
+const SentimentSignalsPanel = React.lazy(() => import("@/componentes/charts/sentiment-signals-panel"));
 const PriceChartSafe = React.lazy(() => import("@/componentes/charts/PriceChartSafe"));
 const BitcoinCompletoWrapper = React.lazy(() => import("@/componentes/charts/BitcoinCompletoWrapper"));
 const BitcoinChartWrapper = React.lazy(() => import("@/componentes/charts/BitcoinChartWrapper"));
@@ -197,8 +197,15 @@ const buildSentimentTrend = (
       )
     : normalizeTrendPercentages(34, 33, 33);
 
-  const now = new Date();
-  const anchor = new Date(now);
+  const validDates = items
+    .map((item) => new Date((item.date as string) ?? ""))
+    .filter((date) => !Number.isNaN(date.getTime()))
+    .sort((a, b) => a.getTime() - b.getTime());
+
+  // Usa o dado mais recente como âncora para evitar que todos os buckets fiquem vazios
+  // quando as fontes só possuem publicações antigas (cenário comum em produção).
+  const anchorSource = validDates.length > 0 ? validDates[validDates.length - 1] : new Date();
+  const anchor = new Date(anchorSource);
   anchor.setMinutes(0, 0, 0);
 
   const buckets = Array.from({ length: bucketCount }, (_, index) => {
@@ -402,8 +409,8 @@ export default function HomeClient() {
     }
   }, []);
 
-const loadStoredHighlight = useCallback((): FeedItem | null => {
-  if (typeof window === "undefined") return null;
+  const loadStoredHighlight = useCallback((): FeedItem | null => {
+    if (typeof window === "undefined") return null;
 
     try {
       const raw = window.localStorage.getItem(DAILY_HIGHLIGHT_STORAGE_KEY);
@@ -506,12 +513,17 @@ const loadStoredHighlight = useCallback((): FeedItem | null => {
         const fallbackItems = [...fallbackNews, ...fallbackTweets];
         const sentimentCounts = aggregateSentimentCounts(fallbackItems);
         const fallbackTotal = fallbackItems.length || 1;
+        const fallbackPercentages = normalizeTrendPercentages(
+          (sentimentCounts.positive / fallbackTotal) * 100,
+          (sentimentCounts.negative / fallbackTotal) * 100,
+          (sentimentCounts.neutral / fallbackTotal) * 100
+        );
         const fallbackStats = {
           totalNews: fallbackNews.length,
           totalTweets: fallbackTweets.length,
-          positiveSentiment: Math.round((sentimentCounts.positive / fallbackTotal) * 100),
-          negativeSentiment: Math.round((sentimentCounts.negative / fallbackTotal) * 100),
-          neutralSentiment: Math.round((sentimentCounts.neutral / fallbackTotal) * 100),
+          positiveSentiment: fallbackPercentages.positive,
+          negativeSentiment: fallbackPercentages.negative,
+          neutralSentiment: fallbackPercentages.neutral,
         };
 
         previousStatsRef.current = fallbackStats;
@@ -586,12 +598,17 @@ const loadStoredHighlight = useCallback((): FeedItem | null => {
       const sentimentCounts = aggregateSentimentCounts(allItems);
 
       const total = allItems.length || 1;
+      const normalizedPercentages = normalizeTrendPercentages(
+        (sentimentCounts.positive / total) * 100,
+        (sentimentCounts.negative / total) * 100,
+        (sentimentCounts.neutral / total) * 100
+      );
       const newStats = {
         totalNews: mappedNews.length,
         totalTweets: mappedTweets.length,
-        positiveSentiment: Math.round((sentimentCounts.positive / total) * 100),
-        negativeSentiment: Math.round((sentimentCounts.negative / total) * 100),
-        neutralSentiment: Math.round((sentimentCounts.neutral / total) * 100),
+        positiveSentiment: normalizedPercentages.positive,
+        negativeSentiment: normalizedPercentages.negative,
+        neutralSentiment: normalizedPercentages.neutral,
       };
 
       if (previousStatsRef.current) {
@@ -641,12 +658,17 @@ const loadStoredHighlight = useCallback((): FeedItem | null => {
       const fallbackItems = [...fallbackNews, ...fallbackTweets];
       const sentimentCounts = aggregateSentimentCounts(fallbackItems);
       const fallbackTotal = fallbackItems.length || 1;
+      const fallbackPercentages = normalizeTrendPercentages(
+        (sentimentCounts.positive / fallbackTotal) * 100,
+        (sentimentCounts.negative / fallbackTotal) * 100,
+        (sentimentCounts.neutral / fallbackTotal) * 100
+      );
       const fallbackStats = {
         totalNews: fallbackNews.length,
         totalTweets: fallbackTweets.length,
-        positiveSentiment: Math.round((sentimentCounts.positive / fallbackTotal) * 100),
-        negativeSentiment: Math.round((sentimentCounts.negative / fallbackTotal) * 100),
-        neutralSentiment: Math.round((sentimentCounts.neutral / fallbackTotal) * 100),
+        positiveSentiment: fallbackPercentages.positive,
+        negativeSentiment: fallbackPercentages.negative,
+        neutralSentiment: fallbackPercentages.neutral,
       };
       previousStatsRef.current = fallbackStats;
       setStats(fallbackStats);
@@ -814,8 +836,15 @@ const loadStoredHighlight = useCallback((): FeedItem | null => {
                 </p>
               </div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
-                <Suspense fallback={<div className="h-72 sm:h-80 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}> 
-                  <SentimentChart trend={sentimentTrend} />
+                <Suspense fallback={<div className="h-72 sm:h-80 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}>
+                  <SentimentSignalsPanel
+                    trend={sentimentTrend}
+                    distribution={{
+                      positive: stats.positiveSentiment,
+                      negative: stats.negativeSentiment,
+                      neutral: stats.neutralSentiment,
+                    }}
+                  />
                 </Suspense>
                 <Suspense fallback={<div className="h-72 sm:h-80 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}> 
                   <SentimentDistribution distribution={{
