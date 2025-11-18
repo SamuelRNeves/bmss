@@ -32,7 +32,7 @@ import {
 
 // LAZY LOAD DE TODOS OS COMPONENTES PESADOS
 const Recomendacoes = React.lazy(() => import("@/componentes/Recomendacoes"));
-const SentimentChart = React.lazy(() => import("@/componentes/charts/sentiment-chart"));
+const SentimentSignalsPanel = React.lazy(() => import("@/componentes/charts/sentiment-signals-panel"));
 const PriceChartSafe = React.lazy(() => import("@/componentes/charts/PriceChartSafe"));
 const BitcoinCompletoWrapper = React.lazy(() => import("@/componentes/charts/BitcoinCompletoWrapper"));
 const BitcoinChartWrapper = React.lazy(() => import("@/componentes/charts/BitcoinChartWrapper"));
@@ -821,8 +821,8 @@ const loadStoredHighlight = useCallback((): FeedItem | null => {
                 </p>
               </div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
-                <Suspense fallback={<div className="h-72 sm:h-80 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}> 
-                  <SentimentChart trend={sentimentTrend} />
+                <Suspense fallback={<div className="h-72 sm:h-80 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}>
+                  <SentimentSignalsPanel trend={sentimentTrend} />
                 </Suspense>
                 <Suspense fallback={<div className="h-72 sm:h-80 bg-neutral-900 rounded-xl animate-pulse border border-neutral-800" />}> 
                   <SentimentDistribution distribution={{
