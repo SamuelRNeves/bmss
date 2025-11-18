@@ -133,44 +133,107 @@ const SentimentSignalsPanel: React.FC<SentimentSignalsPanelProps> = ({ trend, di
       ? "As opiniões estão mais divididas. Traders monitoram gatilhos macro e respostas institucionais."
       : "As menções estão bem distribuídas e indicam estabilidade no curto prazo.";
 
+  const averageShare =
+    metrics.reduce((sum, sentiment) => sum + sentiment.latest, 0) / Math.max(1, metrics.length);
+  const momentum = dominant ? Math.round(dominant.latest - averageShare) : 0;
+  const balanceScore = Math.max(0, 100 - polarizationScore);
+
+  const insightCards = [
+    {
+      label: "Polarização",
+      value: `${polarizationScore}%`,
+      hint: "Intensidade entre extremos",
+      gradient: "from-emerald-400/25 via-amber-300/20 to-rose-400/25",
+    },
+    {
+      label: "Consenso",
+      value: `${balanceScore}%`,
+      hint: "Probabilidade de estabilidade",
+      gradient: "from-sky-400/20 via-cyan-400/10 to-indigo-500/20",
+    },
+    {
+      label: "Momentum",
+      value: `${momentum > 0 ? "+" : momentum < 0 ? "" : "±"}${momentum} pts`,
+      hint: dominant ? `${dominant.label} vs média de 24h` : "Comparação com média",
+      gradient: "from-fuchsia-400/20 via-purple-500/10 to-blue-500/20",
+    },
+  ];
+
   return (
-    <div className="bg-gradient-to-b from-neutral-900/80 via-neutral-950 to-black border border-neutral-800/70 rounded-3xl p-5 sm:p-7 flex flex-col gap-6 shadow-2xl shadow-black/40">
-      <div className="space-y-3">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
+    <div className="relative overflow-hidden rounded-3xl border border-white/5 bg-gradient-to-b from-[#0B0F1A] via-[#05060a] to-black p-5 sm:p-7 flex flex-col gap-7 shadow-[0_20px_80px_rgba(0,0,0,0.5)]">
+      <div className="absolute inset-0 pointer-events-none opacity-70">
+        <div className="absolute -top-16 -right-20 w-72 h-72 bg-emerald-500/10 blur-3xl" />
+        <div className="absolute -bottom-20 -left-10 w-72 h-72 bg-fuchsia-500/10 blur-3xl" />
+      </div>
+
+      <div className="relative space-y-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <p className="text-sm text-gray-400">Pulso consolidado</p>
-            <h3 className="text-xl font-semibold text-white">{moodLabel}</h3>
+            <p className="text-xs uppercase tracking-[0.2em] text-gray-500">Pulso consolidado</p>
+            <h3 className="text-2xl font-semibold text-white">{moodLabel}</h3>
           </div>
           {dominant && (
-            <div className={`px-3 py-1.5 rounded-full text-sm font-medium ${dominant.badgeColor} border border-white/10 shadow-lg shadow-black/30`}>
-              {dominant.label} lidera ({Math.round(dominant.latest)}%)
+            <div className="flex items-center gap-4">
+              <div className="text-right">
+                <p className="text-xs text-gray-400">Agora liderando</p>
+                <p className="text-lg font-semibold text-white">
+                  {dominant.label} · {Math.round(dominant.latest)}%
+                </p>
+              </div>
+              <div className={`px-4 py-2 rounded-2xl text-sm font-medium ${dominant.badgeColor} border border-white/10 shadow-lg shadow-black/30`}>Top signal</div>
             </div>
           )}
         </div>
-        <p className="text-sm text-gray-400 leading-relaxed">{moodDescription}</p>
-        <div className="flex items-center gap-6 text-xs text-gray-400 flex-wrap">
-          <div className="flex items-center gap-2">
-            <span className="text-gray-300 text-sm font-semibold">Polarização</span>
-            <div className="h-1.5 w-24 rounded-full bg-neutral-800 overflow-hidden">
-              <div className="h-full rounded-full bg-gradient-to-r from-emerald-400 via-amber-300 to-rose-400" style={{ width: `${Math.min(100, polarizationScore)}%` }} />
+        <p className="text-sm text-gray-400 leading-relaxed max-w-3xl">{moodDescription}</p>
+
+        <div className="grid gap-3 sm:grid-cols-3">
+          {insightCards.map((insight) => (
+            <div
+              key={insight.label}
+              className={`relative overflow-hidden rounded-2xl border border-white/5 bg-white/5 backdrop-blur-xl p-4 text-white`}
+            >
+              <div className={`absolute inset-0 opacity-70 bg-gradient-to-r ${insight.gradient}`} />
+              <div className="relative space-y-1">
+                <p className="text-xs uppercase tracking-wide text-gray-200/80">{insight.label}</p>
+                <p className="text-2xl font-semibold">{insight.value}</p>
+                <p className="text-xs text-gray-200/80">{insight.hint}</p>
+              </div>
             </div>
-            <span className="text-white text-sm font-semibold">{polarizationScore}%</span>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap gap-5 text-sm text-gray-300">
+          <div className="flex items-center gap-2">
+            <span className="text-gray-400">Polarização</span>
+            <div className="h-2 w-32 rounded-full bg-white/5 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-emerald-300 via-amber-300 to-rose-400"
+                style={{ width: `${Math.min(100, polarizationScore)}%` }}
+              />
+            </div>
           </div>
           {dominant && (
-            <div className="text-sm text-gray-400">
-              <span className="text-gray-300 font-semibold">Tendência dominante:</span> {dominant.change > 0 ? "acima da média" : dominant.change < 0 ? "em retração" : "estável"}
+            <div>
+              <span className="text-gray-400">Tendência dominante:</span>{" "}
+              <span className="text-white font-medium">
+                {dominant.change > 0 ? "acima da média" : dominant.change < 0 ? "em retração" : "estável"}
+              </span>
             </div>
           )}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="relative grid grid-cols-1 sm:grid-cols-3 gap-4">
         {metrics.map((item) => {
           const TrendIcon = item.change > 0.8 ? TrendingUp : item.change < -0.8 ? TrendingDown : Minus;
           const trendLabel = item.change > 0.8 ? "Acelerando" : item.change < -0.8 ? "Perdendo força" : "Estável";
+          const closingX = item.sparkline.split(" ").pop()?.split(",")[0] ?? "100";
           return (
-            <div key={item.key} className="relative overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950/70 p-4 flex flex-col gap-4 shadow-inner shadow-black/30">
-              <div className={`absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r ${item.accent}`} />
+            <div
+              key={item.key}
+              className="relative overflow-hidden rounded-2xl border border-white/5 bg-gradient-to-b from-white/5 to-white/0 backdrop-blur-xl p-4 flex flex-col gap-4 shadow-inner shadow-black/40"
+            >
+              <div className={`absolute inset-x-6 top-0 h-1 bg-gradient-to-r ${item.accent}`} />
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <p className="text-xs uppercase tracking-wide text-gray-500">{item.description}</p>
@@ -190,7 +253,7 @@ const SentimentSignalsPanel: React.FC<SentimentSignalsPanelProps> = ({ trend, di
                 <span className="text-white font-semibold">{item.volatility}%</span>
               </div>
 
-              <div className="h-20">
+              <div className="h-20 relative">
                 <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full">
                   <polyline
                     fill="none"
@@ -200,7 +263,18 @@ const SentimentSignalsPanel: React.FC<SentimentSignalsPanelProps> = ({ trend, di
                     className={item.lineColor}
                     points={item.sparkline}
                   />
+                  <linearGradient id={`spark-${item.key}`} x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" stopColor="white" stopOpacity="0.12" />
+                    <stop offset="100%" stopColor="white" stopOpacity="0" />
+                  </linearGradient>
+                  <polyline
+                    fill={`url(#spark-${item.key})`}
+                    stroke="none"
+                    points={`${item.sparkline} ${closingX},100 0,100`}
+                    opacity={0.4}
+                  />
                 </svg>
+                <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent pointer-events-none" />
               </div>
 
               <div className="flex items-center justify-between text-sm">
