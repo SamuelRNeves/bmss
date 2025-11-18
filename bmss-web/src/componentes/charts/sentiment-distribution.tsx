@@ -68,6 +68,39 @@ export function SentimentDistribution({ distribution }: SentimentDistributionPro
 
   const dominant = useMemo(() => segments.reduce((prev, current) => (current.value > prev.value ? current : prev), segments[0]), [segments]);
 
+  const legendInsights = useMemo(() => {
+    if (!segments.length) return [];
+    const ordered = [...segments].sort((a, b) => b.value - a.value);
+    const [leader, runnerUp, trailer] = ordered;
+    const spread = leader.value - (trailer?.value ?? 0);
+    const midShare = runnerUp ? runnerUp.value : leader.value;
+
+    return [
+      {
+        id: 'leader',
+        accent: leader.color,
+        title: `${leader.label} no comando`,
+        description: `${leader.label} concentra ${leader.value.toFixed(1)}% das conversas agora, sinalizando onde o humor está mais forte.`
+      },
+      {
+        id: 'spread',
+        accent: runnerUp?.color ?? '#6b7280',
+        title: 'Equilíbrio x disputa',
+        description: spread < 10
+          ? 'Os blocos caminham praticamente juntos — uma janela boa para narrativas equilibradas.'
+          : `${leader.label} abre ${spread.toFixed(1)} pts sobre ${trailer?.label ?? runnerUp?.label}, indicando disputa aberta entre os polos.`
+      },
+      {
+        id: 'radar',
+        accent: trailer?.color ?? '#9ca3af',
+        title: 'Ponto de atenção',
+        description: trailer
+          ? `${trailer.label} aparece com ${trailer.value.toFixed(1)}%, mas oscila perto de ${midShare.toFixed(1)}% — um salto pequeno pode mudar a liderança.`
+          : 'Monitoramos oscilações rápidas para capturar viradas súbitas no sentimento.'
+      }
+    ];
+  }, [segments]);
+
   const data = {
     labels: ['Positivo', 'Negativo', 'Neutro'],
     datasets: [
@@ -146,6 +179,25 @@ export function SentimentDistribution({ distribution }: SentimentDistributionPro
               </div>
             </div>
           ))}
+        </div>
+
+        <div className="mt-6 space-y-3">
+          <div className="text-xs uppercase tracking-[0.2em] text-gray-500">Como ler esse retrato</div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {legendInsights.map((note) => (
+              <div
+                key={note.id}
+                className="relative rounded-2xl border border-white/5 bg-white/5 backdrop-blur-sm p-4 text-sm text-gray-300"
+              >
+                <span className="absolute inset-x-4 top-0 h-px" style={{ background: `linear-gradient(90deg, transparent, ${note.accent}, transparent)` }} />
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: note.accent }} />
+                  <span className="font-semibold text-white text-xs uppercase tracking-wide">{note.title}</span>
+                </div>
+                <p className="text-gray-400 leading-relaxed text-xs sm:text-sm">{note.description}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>
