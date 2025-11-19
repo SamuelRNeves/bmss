@@ -2,6 +2,7 @@ package com.bmss.backend.service;
 
 import com.bmss.backend.config.EmailProperties;
 import com.resend.Resend;
+import com.resend.core.exception.ResendException;
 import com.resend.services.emails.model.SendEmailRequest;
 import com.resend.services.emails.model.SendEmailResponse;
 import jakarta.annotation.PreDestroy;
@@ -217,7 +218,11 @@ public class EmailService {
                 .html(htmlContent)
                 .build();
         log.debug("📨 Payload Resend preparado. FROM='{}' TO='{}' SUBJECT='{}'", remetente, destinatario, subject);
-        return resend.emails().send(request);
+        try {
+            return resend.emails().send(request);
+        } catch (ResendException e) {
+            throw new CompletionException(e);
+        }
     }
 
     private ThreadFactory newEmailThreadFactory() {
