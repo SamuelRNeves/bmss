@@ -4,19 +4,27 @@ import com.bmss.backend.config.EmailProperties;
 import com.resend.Resend;
 import com.resend.services.emails.model.SendEmailRequest;
 import com.resend.services.emails.model.SendEmailResponse;
+import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 
 @Service
 @Slf4j
 public class EmailService {
 
     private static final String FALLBACK_FROM_ADDRESS = "BMSS Alerts <onboarding@resend.dev>";
+    private static final AtomicInteger EXECUTOR_THREAD_COUNTER = new AtomicInteger(0);
 
     private final Resend resend;
 
@@ -27,6 +35,8 @@ public class EmailService {
     private final String disabledReason;
 
     private final AtomicReference<EmailDeliveryResult> lastDeliveryResult = new AtomicReference<>();
+
+    private final ExecutorService emailExecutor;
 
     public EmailService(EmailProperties emailProperties) {
         this.fromAddress = emailProperties.resolveFromEmail();
@@ -40,6 +50,13 @@ public class EmailService {
             this.disabledReason = emailProperties.getDisabledReason()
                     .orElse("Serviço de email desabilitado");
         }
+
+        this.emailExecutor = Executors.newCachedThreadPool(newEmailThreadFactory());
+    }
+
+    @PreDestroy
+    void shutdownExecutor() {
+        emailExecutor.shutdown();
     }
 
     public EmailDeliveryResult enviarEmailBoasVindas(String email, String nome, String perfilInvestidor, String notificacao) {
@@ -55,24 +72,24 @@ public class EmailService {
 
         log.info("📧 Preparando email de boas-vindas. FROM='{}' TO='{}'", fromAddress, email);
 
-            Preferencia preferenciaNormalizada = normalizarPreferencia(notificacao);
-            String perfilFormatado = formatarPerfilInvestidor(perfilInvestidor);
+        Preferencia preferenciaNormalizada = normalizarPreferencia(notificacao);
+        String perfilFormatado = formatarPerfilInvestidor(perfilInvestidor);
 
-            String htmlContent = """
-                    <h2>Olá, %s! 👋</h2>
-                    <p>Você agora está inscrito para receber análises inteligentes do sentimento do mercado Bitcoin.</p>
-                    <br/>
-                    <p><strong>Suas preferências:</strong></p>
-                    <ul>
-                        <li>📊 Perfil de investidor: %s</li>
-                        <li>🔔 Notificações: %s</li>
-                    </ul>
-                    <br/>
-                    <p>Você pode alterar essa configuração a qualquer momento em seu painel de usuário.</p>
-                    <br/>
-                    <p>Atenciosamente,</p>
-                    <p><strong>Equipe BMSS</strong></p>
-                """.formatted(nome, perfilFormatado, preferenciaNormalizada.descricao());
+        String htmlContent = """
+                <h2>Olá, %s! 👋</h2>
+                <p>Você agora está inscrito para receber análises inteligentes do sentimento do mercado Bitcoin.</p>
+                <br/>
+                <p><strong>Suas preferências:</strong></p>
+                <ul>
+                    <li>📊 Perfil de investidor: %s</li>
+                    <li>🔔 Notificações: %s</li>
+                </ul>
+                <br/>
+                <p>Você pode alterar essa configuração a qualquer momento em seu painel de usuário.</p>
+                <br/>
+                <p>Atenciosamente,</p>
+                <p><strong>Equipe BMSS</strong></p>
+            """.formatted(nome, perfilFormatado, preferenciaNormalizada.descricao());
 
         EmailDeliveryResult result = tentarEnvioComFallback(email, subject, attemptAt, htmlContent);
         lastDeliveryResult.set(result);
@@ -125,35 +142,71 @@ public class EmailService {
     }
 
     private EmailDeliveryResult tentarEnvioComFallback(String destinatario, String subject, Instant attemptAt, String htmlContent) {
-        try {
-            SendEmailResponse response = enviarComRemetente(fromAddress, destinatario, subject, htmlContent);
-            log.info("✅ Email enviado pelo Resend. FROM='{}' TO='{}'. Response: {}", fromAddress, destinatario, response);
-            return EmailDeliveryResult.success(destinatario, subject, attemptAt, response.getId());
-        } catch (Exception primaryError) {
-            int statusCode = extrairStatusCode(primaryError);
-            log.error("❌ Falha ao enviar email. FROM='{}' TO='{}'. HTTP Status: {}. Detalhes: {}", fromAddress, destinatario, statusCode == -1 ? "desconhecido" : statusCode, primaryError.getMessage(), unwrap(primaryError));
-
-            if (deveUsarFallback(statusCode)) {
-                log.warn("🔄 Reenviando com fallback de remetente devido a possível rejeição por DNS/SPF/DKIM. Novo FROM='{}'", FALLBACK_FROM_ADDRESS);
-                try {
-                    SendEmailResponse response = enviarComRemetente(FALLBACK_FROM_ADDRESS, destinatario, subject, htmlContent);
-                    log.info("✅ Email enviado com fallback. FROM='{}' TO='{}'. Response: {}", FALLBACK_FROM_ADDRESS, destinatario, response);
-                    return EmailDeliveryResult.success(destinatario, subject, attemptAt, response.getId());
-                } catch (Exception fallbackError) {
-                    int fallbackStatus = extrairStatusCode(fallbackError);
-                    String failureReason = "Falha após fallback: " + Optional.ofNullable(fallbackError.getMessage()).orElse("Erro desconhecido");
-                    log.error("❌ Fallback também falhou. FROM='{}' TO='{}'. HTTP Status: {}. Detalhes: {}", FALLBACK_FROM_ADDRESS, destinatario, fallbackStatus == -1 ? "desconhecido" : fallbackStatus, fallbackError.getMessage(), unwrap(fallbackError));
-                    return EmailDeliveryResult.failure(destinatario, subject, attemptAt, formatFailureMessage(fallbackStatus, failureReason));
-                }
-            }
-
-            String failureReason = Optional.ofNullable(primaryError.getMessage()).orElse("Erro desconhecido ao enviar email");
-            return EmailDeliveryResult.failure(destinatario, subject, attemptAt, formatFailureMessage(statusCode, failureReason));
-        }
+        return enviarComRemetenteAsync(fromAddress, destinatario, subject, htmlContent)
+                .handleAsync((response, throwable) -> {
+                    if (throwable == null) {
+                        log.info("✅ Email enviado pelo Resend. FROM='{}' TO='{}'. Response: {}", fromAddress, destinatario, response);
+                        return CompletableFuture.completedFuture(EmailDeliveryResult.success(destinatario, subject, attemptAt, response.getId()));
+                    }
+                    return tratarFalhaComPossivelFallback(destinatario, subject, attemptAt, htmlContent, throwable);
+                }, emailExecutor)
+                .thenCompose(Function.identity())
+                .join();
     }
 
     private boolean deveUsarFallback(int statusCode) {
         return statusCode == 400 || statusCode == 422;
+    }
+
+    private CompletableFuture<EmailDeliveryResult> tratarFalhaComPossivelFallback(String destinatario,
+                                                                                 String subject,
+                                                                                 Instant attemptAt,
+                                                                                 String htmlContent,
+                                                                                 Throwable primaryError) {
+        Throwable rootCause = unwrap(primaryError);
+        int statusCode = extrairStatusCode(rootCause);
+        log.error("❌ Falha ao enviar email. FROM='{}' TO='{}'. HTTP Status: {}. Detalhes: {}",
+                fromAddress,
+                destinatario,
+                statusCode == -1 ? "desconhecido" : statusCode,
+                rootCause.getMessage(),
+                rootCause);
+
+        if (deveUsarFallback(statusCode)) {
+            log.warn("🔄 Reenviando com fallback de remetente devido a possível rejeição por DNS/SPF/DKIM. Novo FROM='{}'",
+                    FALLBACK_FROM_ADDRESS);
+            return enviarComRemetenteAsync(FALLBACK_FROM_ADDRESS, destinatario, subject, htmlContent)
+                    .handleAsync((fallbackResponse, fallbackThrowable) -> {
+                        if (fallbackThrowable == null) {
+                            log.info("✅ Email enviado com fallback. FROM='{}' TO='{}'. Response: {}",
+                                    FALLBACK_FROM_ADDRESS,
+                                    destinatario,
+                                    fallbackResponse);
+                            return EmailDeliveryResult.success(destinatario, subject, attemptAt, fallbackResponse.getId());
+                        }
+
+                        Throwable fallbackRoot = unwrap(fallbackThrowable);
+                        int fallbackStatus = extrairStatusCode(fallbackRoot);
+                        String failureReason = "Falha após fallback: " + Optional.ofNullable(fallbackRoot.getMessage()).orElse("Erro desconhecido");
+                        log.error("❌ Fallback também falhou. FROM='{}' TO='{}'. HTTP Status: {}. Detalhes: {}",
+                                FALLBACK_FROM_ADDRESS,
+                                destinatario,
+                                fallbackStatus == -1 ? "desconhecido" : fallbackStatus,
+                                fallbackRoot.getMessage(),
+                                fallbackRoot);
+                        return EmailDeliveryResult.failure(destinatario, subject, attemptAt, formatFailureMessage(fallbackStatus, failureReason));
+                    }, emailExecutor);
+        }
+
+        String failureReason = Optional.ofNullable(rootCause.getMessage()).orElse("Erro desconhecido ao enviar email");
+        return CompletableFuture.completedFuture(EmailDeliveryResult.failure(destinatario, subject, attemptAt, formatFailureMessage(statusCode, failureReason)));
+    }
+
+    private CompletableFuture<SendEmailResponse> enviarComRemetenteAsync(String remetente,
+                                                                         String destinatario,
+                                                                         String subject,
+                                                                         String htmlContent) {
+        return CompletableFuture.supplyAsync(() -> enviarComRemetente(remetente, destinatario, subject, htmlContent), emailExecutor);
     }
 
     private SendEmailResponse enviarComRemetente(String remetente, String destinatario, String subject, String htmlContent) {
@@ -167,14 +220,23 @@ public class EmailService {
         return resend.emails().send(request);
     }
 
-    private int extrairStatusCode(Exception exception) {
-        Throwable throwable = unwrap(exception);
-        while (throwable != null) {
-            Integer code = invocarMetodoInteger(throwable, "getStatusCode");
+    private ThreadFactory newEmailThreadFactory() {
+        return runnable -> {
+            Thread thread = new Thread(runnable);
+            thread.setName("resend-email-worker-" + EXECUTOR_THREAD_COUNTER.incrementAndGet());
+            thread.setDaemon(true);
+            return thread;
+        };
+    }
+
+    private int extrairStatusCode(Throwable throwable) {
+        Throwable current = unwrap(throwable);
+        while (current != null) {
+            Integer code = invocarMetodoInteger(current, "getStatusCode");
             if (code != null) {
                 return code;
             }
-            throwable = throwable.getCause();
+            current = current.getCause();
         }
         return -1;
     }
