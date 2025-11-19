@@ -383,7 +383,7 @@ export default function HomeClient() {
 
   const fallbackHeadline = useMemo<FeedItem>(
     () => ({
-      ... TourcreateFallbackNews(),
+      ...createFallbackNews(),
       title: "Bitcoin lidera buscas após ondas de volatilidade",
       description:
         "O ativo voltou ao topo das atenções com forte volume nas últimas horas. Analistas acompanham possíveis gatilhos macroeconômicos.",
