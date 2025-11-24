@@ -27,8 +27,13 @@ type UserPatch = Partial<
   Pick<UserData, "investorProfile" | "notificationPreference" | "profileImageUrl">
 >;
 
-const PROFILE_IMAGE_MAX_BYTES = 2_500_000;
-const DATA_URL_PREFIX = /^data:image\/[-+\w.]+;base64,/i;
+const PROFILE_IMAGE_MAX_BYTES = 2500000;
+
+// SOLUÇÃO ALTERNATIVA: Remover completamente a regex problemática
+// e usar métodos de string em vez disso
+const isDataURL = (value: string): boolean => {
+  return value.startsWith('data:image') && value.includes(';base64,');
+};
 
 const normalizeProfileImageValue = (
   value: string | null | undefined
@@ -49,8 +54,11 @@ const normalizeProfileImageValue = (
 };
 
 const estimateBase64Size = (value: string): number => {
-  const payload = value.replace(DATA_URL_PREFIX, "");
-  return Math.ceil((payload.length * 3) / 4);
+  if (isDataURL(value)) {
+    const base64Data = value.split(',')[1] || '';
+    return Math.ceil((base64Data.length * 3) / 4);
+  }
+  return Math.ceil((value.length * 3) / 4);
 };
 
 const enforceProfileImageLimit = (
