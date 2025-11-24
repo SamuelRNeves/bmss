@@ -3,6 +3,7 @@
 
 import {
   createContext,
+  createElement,
   useCallback,
   useContext,
   useEffect,
@@ -492,7 +493,7 @@ function useProvideAuth(): AuthContextValue {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useProvideAuth();
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return createElement(AuthContext.Provider, { value }, children);
 }
 
 export function useAuth(): AuthContextValue {
