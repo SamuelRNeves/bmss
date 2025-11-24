@@ -1,8 +1,9 @@
-// useAuth.tsx
+// useAuth.ts
 "use client";
 
 import {
   createContext,
+  createElement,
   useCallback,
   useContext,
   useEffect,
@@ -10,7 +11,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import api, { API_BASE_URL } from "./lib/api";
+import api, { API_BASE_URL } from "@/lib/api";
 
 interface UserData {
   id?: number;
@@ -27,11 +28,13 @@ type UserPatch = Partial<
   Pick<UserData, "investorProfile" | "notificationPreference" | "profileImageUrl">
 >;
 
-const PROFILE_IMAGE_MAX_BYTES = 2_500_000;
-const DATA_URL_PREFIX = /^data:image\/[-+\w.]+;base64,/i;
+const PROFILE_IMAGE_MAX_BYTES = 2500000;
 
-// SOLUÇÃO: Manter a implementação atual usando regex para DATA_URL_PREFIX
-// e remover a função isDataURL baseada em métodos de string
+// SOLUÇÃO ALTERNATIVA: Remover completamente a regex problemática
+// e usar métodos de string em vez disso
+const isDataURL = (value: string): boolean => {
+  return value.startsWith('data:image') && value.includes(';base64,');
+};
 
 const normalizeProfileImageValue = (
   value: string | null | undefined
@@ -52,8 +55,11 @@ const normalizeProfileImageValue = (
 };
 
 const estimateBase64Size = (value: string): number => {
-  const payload = value.replace(DATA_URL_PREFIX, "");
-  return Math.ceil((payload.length * 3) / 4);
+  if (isDataURL(value)) {
+    const base64Data = value.split(',')[1] || '';
+    return Math.ceil((base64Data.length * 3) / 4);
+  }
+  return Math.ceil((value.length * 3) / 4);
 };
 
 const enforceProfileImageLimit = (
@@ -495,7 +501,7 @@ function useProvideAuth(): AuthContextValue {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useProvideAuth();
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return createElement(AuthContext.Provider, { value }, children);
 }
 
 export function useAuth(): AuthContextValue {
