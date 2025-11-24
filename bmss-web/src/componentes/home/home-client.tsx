@@ -105,14 +105,10 @@ interface StoredHeadlinePayload {
   headline: FeedItem;
 }
 
-type SentimentTrendPoint = {
-  label: string;
-  positive: number;
-  negative: number;
-  neutral: number;
-};
+type SentimentKey = "positive" | "negative" | "neutral";
+type SentimentTrendPoint = { label: string } & Record<SentimentKey, number>;
 
-type TrendSlice = Pick<SentimentTrendPoint, "positive" | "negative" | "neutral">;
+type TrendSlice = Record<SentimentKey, number>;
 
 const normalizeTrendPercentages = (positive: number, negative: number, neutral: number): TrendSlice => {
   let p = Math.round(positive);
@@ -123,11 +119,13 @@ const normalizeTrendPercentages = (positive: number, negative: number, neutral: 
   if (total !== 100) {
     if (total > 100) {
       let diff = total - 100;
-      const adjustments: Array<{ key: keyof TrendSlice; value: number }> = [
+      const adjustments = [
         { key: "positive", value: p },
         { key: "negative", value: n },
         { key: "neutral", value: z },
-      ].sort((a, b) => b.value - a.value);
+      ] satisfies Array<{ key: SentimentKey; value: number }>;
+
+      adjustments.sort((a, b) => b.value - a.value);
 
       for (const entry of adjustments) {
         if (diff <= 0) break;
@@ -140,11 +138,13 @@ const normalizeTrendPercentages = (positive: number, negative: number, neutral: 
       }
     } else if (total < 100) {
       let diff = 100 - total;
-      const adjustments: Array<{ key: keyof TrendSlice; value: number }> = [
+      const adjustments = [
         { key: "positive", value: p },
         { key: "negative", value: n },
         { key: "neutral", value: z },
-      ].sort((a, b) => a.value - b.value);
+      ] satisfies Array<{ key: SentimentKey; value: number }>;
+
+      adjustments.sort((a, b) => a.value - b.value);
 
       for (const entry of adjustments) {
         if (diff <= 0) break;
@@ -168,11 +168,13 @@ const normalizeTrendPercentages = (positive: number, negative: number, neutral: 
       else n += remainder;
     } else {
       let diff = Math.abs(remainder);
-      const order: Array<{ key: keyof TrendSlice; value: number }> = [
+      const order = [
         { key: "positive", value: p },
         { key: "negative", value: n },
         { key: "neutral", value: z },
-      ].sort((a, b) => b.value - a.value);
+      ] satisfies Array<{ key: SentimentKey; value: number }>;
+
+      order.sort((a, b) => b.value - a.value);
       for (const entry of order) {
         if (diff <= 0) break;
         if (entry.value <= 0) continue;
@@ -383,7 +385,7 @@ export default function HomeClient() {
 
   const fallbackHeadline = useMemo<FeedItem>(
     () => ({
-      ... TourcreateFallbackNews(),
+      ...createFallbackNews(),
       title: "Bitcoin lidera buscas após ondas de volatilidade",
       description:
         "O ativo voltou ao topo das atenções com forte volume nas últimas horas. Analistas acompanham possíveis gatilhos macroeconômicos.",

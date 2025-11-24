@@ -1,6 +1,15 @@
-// useAuth.ts
+// useAuth.tsx
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import api, { API_BASE_URL } from "@/lib/api";
 
 interface UserData {
@@ -99,15 +108,120 @@ const resolveApiBase = (): string => {
   return API_BASE_URL.replace(/\/+$/, "");
 };
 
-export function useAuth() {
-  const [user, setUser] = useState<UserData | null>(null);
+export const INVESTOR_PROFILE_STORAGE_KEY = "bmss:last-investor-profile";
+const USER_CACHE_STORAGE_KEY = "bmss:cached-user:v1";
+
+type CachedUserPayload = {
+  id?: number;
+  name?: string;
+  email?: string;
+  investorProfile?: string;
+  notificationPreference?: string;
+  profileImageUrl?: string | null;
+};
+
+const loadCachedUser = (): UserData | null => {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(USER_CACHE_STORAGE_KEY);
+    if (!raw) {
+      const storedProfile = window.localStorage.getItem(INVESTOR_PROFILE_STORAGE_KEY);
+      if (!storedProfile) {
+        return null;
+      }
+      return {
+        name: "",
+        email: "",
+        investorProfile: storedProfile,
+        notificationPreference: "resumo_diario",
+        profileImageUrl: null,
+      };
+    }
+
+    const parsed = JSON.parse(raw) as CachedUserPayload | null;
+    if (!parsed) {
+      return null;
+    }
+
+    return {
+      id: typeof parsed.id === "number" ? parsed.id : undefined,
+      name: typeof parsed.name === "string" ? parsed.name : "",
+      email: typeof parsed.email === "string" ? parsed.email : "",
+      investorProfile:
+        typeof parsed.investorProfile === "string" ? parsed.investorProfile : "MODERADO",
+      notificationPreference:
+        typeof parsed.notificationPreference === "string"
+          ? parsed.notificationPreference
+          : "resumo_diario",
+      profileImageUrl:
+        typeof parsed.profileImageUrl === "string" ? parsed.profileImageUrl : null,
+    };
+  } catch {
+    return null;
+  }
+};
+
+const persistCachedUser = (value: UserData | null) => {
+  if (typeof window === "undefined") return;
+  if (!value) {
+    window.localStorage.removeItem(USER_CACHE_STORAGE_KEY);
+    window.localStorage.removeItem(INVESTOR_PROFILE_STORAGE_KEY);
+    return;
+  }
+
+  const payload: CachedUserPayload = {
+    id: value.id,
+    name: value.name,
+    email: value.email,
+    investorProfile: value.investorProfile,
+    notificationPreference: value.notificationPreference,
+    profileImageUrl: value.profileImageUrl ?? null,
+  };
+
+  try {
+    window.localStorage.setItem(USER_CACHE_STORAGE_KEY, JSON.stringify(payload));
+    if (value.investorProfile) {
+      window.localStorage.setItem(INVESTOR_PROFILE_STORAGE_KEY, value.investorProfile);
+    }
+  } catch (error) {
+    console.warn("Não foi possível salvar o usuário em cache:", error);
+  }
+};
+
+interface AuthContextValue {
+  user: UserData | null;
+  loading: boolean;
+  logout: () => void;
+  updateInvestorProfile: (nextProfile: InvestorProfile) => Promise<void>;
+  updateUserSettings: (patch: UserPatch) => Promise<UserPatch>;
+}
+
+const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+
+function useProvideAuth(): AuthContextValue {
+  const [user, setUserState] = useState<UserData | null>(() => loadCachedUser());
   const [loading, setLoading] = useState(true);
 
   const apiBase = useMemo(() => resolveApiBase(), []);
 
+  const setUser = useCallback(
+    (updater: UserData | null | ((prev: UserData | null) => UserData | null)) => {
+      setUserState((prev) => {
+        const next =
+          typeof updater === "function"
+            ? (updater as (value: UserData | null) => UserData | null)(prev)
+            : updater;
+        persistCachedUser(next ?? null);
+        return next ?? null;
+      });
+    },
+    []
+  );
+
   useEffect(() => {
-    const token = localStorage.getItem("jwtToken");
+    const token = typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
     if (!token) {
+      setUser(null);
       setLoading(false);
       return;
     }
@@ -138,7 +252,9 @@ export function useAuth() {
       .catch((error) => {
         if (error.response?.status === 401) {
           console.warn("🔒 Token expirado ou inválido, removendo...");
-          localStorage.removeItem("jwtToken");
+          if (typeof window !== "undefined") {
+            localStorage.removeItem("jwtToken");
+          }
           if (!isMounted) return;
           setUser(null);
         } else {
@@ -154,7 +270,7 @@ export function useAuth() {
     return () => {
       isMounted = false;
     };
-  }, [apiBase]);
+  }, [apiBase, setUser]);
 
   useEffect(() => {
     const handler: EventListener = (event) => {
@@ -175,7 +291,7 @@ export function useAuth() {
     return () => {
       window.removeEventListener("bmss:profile-updated", handler);
     };
-  }, []);
+  }, [setUser]);
 
   const persistUserUpdate = useCallback(
     async (patch: UserPatch): Promise<UserPatch> => {
@@ -240,7 +356,7 @@ export function useAuth() {
         return applyLocalUpdate(patch);
       }
 
-      const token = localStorage.getItem("jwtToken");
+      const token = typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
       if (!token) {
         throw new Error("Usuário não autenticado");
       }
@@ -330,7 +446,7 @@ export function useAuth() {
 
       return applyLocalUpdate(normalized);
     },
-    [apiBase, user]
+    [apiBase, setUser, user]
   );
 
   const updateInvestorProfile = useCallback(
@@ -361,11 +477,28 @@ export function useAuth() {
     [persistUserUpdate]
   );
 
-  const logout = () => {
-    localStorage.removeItem("jwtToken");
+  const logout = useCallback(() => {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("jwtToken");
+    }
     setUser(null);
-    window.location.href = "/login";
-  };
+    if (typeof window !== "undefined") {
+      window.location.href = "/login";
+    }
+  }, [setUser]);
 
   return { user, loading, logout, updateInvestorProfile, updateUserSettings };
+}
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const value = useProvideAuth();
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+export function useAuth(): AuthContextValue {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error("useAuth deve ser usado dentro de um AuthProvider");
+  }
+  return context;
 }
