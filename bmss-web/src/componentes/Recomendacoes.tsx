@@ -13,7 +13,7 @@ import {
   ShieldAlert,
   RefreshCw,
 } from "lucide-react";
-import { useAuth } from "@/lib/useAuth";
+import { useAuth, INVESTOR_PROFILE_STORAGE_KEY } from "@/lib/useAuth";
 import type { SentimentSnapshot, InvestorProfile } from "@/lib/sentiment-insights";
 import {
   clampRatio,
@@ -30,6 +30,13 @@ interface Recomendacao {
   mensagem: string;
   icone: JSX.Element;
   cor: string;
+}
+
+interface TacticalInsight {
+  titulo: string;
+  detalhe: string;
+  destaque: "risco" | "oportunidade" | "neutro";
+  icone: JSX.Element;
 }
 
 const formatScore = (score: number): string =>
@@ -52,6 +59,122 @@ const normalizeProfile = (value: unknown): InvestorProfile | null => {
     return normalized;
   }
   return null;
+};
+
+const loadPersistedProfile = (): InvestorProfile | null => {
+  if (typeof window === "undefined") return null;
+  const raw = window.localStorage.getItem(INVESTOR_PROFILE_STORAGE_KEY);
+  return normalizeProfile(raw);
+};
+
+const computeConvictionScore = (snapshot: SentimentSnapshot): number => {
+  const coverageScore = clampRatio(snapshot.totalItens / 240);
+  const dominanceScore = clampRatio(snapshot.proporcaoDominante);
+  const intensityScore = snapshot.intensidade === "forte" ? 1 : snapshot.intensidade === "moderada" ? 0.65 : 0.35;
+  const directionalScore = clampRatio(Math.abs(snapshot.media) / 0.18);
+  const combined = coverageScore * 0.3 + dominanceScore * 0.3 + intensityScore * 0.2 + directionalScore * 0.2;
+  return Number(combined.toFixed(2));
+};
+
+const resolveConfidenceLabel = (score: number): "alta" | "moderada" | "baixa" => {
+  if (score >= 0.7) return "alta";
+  if (score >= 0.45) return "moderada";
+  return "baixa";
+};
+
+const buildTacticalInsights = (
+  perfil: InvestorProfile,
+  snapshot: SentimentSnapshot
+): TacticalInsight[] => {
+  const insights: TacticalInsight[] = [];
+  const conviction = computeConvictionScore(snapshot);
+  const dominancePercent = Math.round(clampRatio(snapshot.proporcaoDominante) * 100);
+  const biasLabel = snapshot.dominante;
+  const isPositive = biasLabel === "positivo";
+  const isNegative = biasLabel === "negativo";
+
+  if (snapshot.totalItens < 60) {
+    insights.push({
+      titulo: "Confirmação limitada",
+      detalhe:
+        "Volume de notícias ainda baixo. Use tamanhos reduzidos e aguarde mais sinais para validar o cenário.",
+      destaque: "risco",
+      icone: <Brain size={14} className="text-amber-300" />,
+    });
+  }
+
+  if (isPositive) {
+    if (perfil === "AGRESSIVO") {
+      insights.push({
+        titulo: "Romper com stops móveis",
+        detalhe: `Otimismo domina ${dominancePercent}% das fontes. Trabalhe pivôs rápidos e atualize stops conforme o fluxo acelera.`,
+        destaque: "oportunidade",
+        icone: <Flame size={14} className="text-emerald-300" />,
+      });
+    } else if (perfil === "MODERADO") {
+      insights.push({
+        titulo: "Aportes graduais",
+        detalhe: `Use compras parceladas e realize lucros parciais conforme o sentimento positivo (${dominancePercent}%) se mantém.`,
+        destaque: "neutro",
+        icone: <TrendingUp size={14} className="text-lime-300" />,
+      });
+    } else {
+      insights.push({
+        titulo: "Proteções ativas",
+        detalhe: "Prefira produtos com hedge embutido e limite a exposição direta para capturar o humor positivo sem descuidar da defesa.",
+        destaque: "neutro",
+        icone: <ShieldCheck size={14} className="text-yellow-200" />,
+      });
+    }
+  } else if (isNegative) {
+    if (perfil === "AGRESSIVO") {
+      insights.push({
+        titulo: "Operar reversões curtas",
+        detalhe: `Noticiário negativo (${dominancePercent}%) favorece entradas escalonadas em suportes e saídas rápidas se o fluxo virar.`,
+        destaque: "risco",
+        icone: <AlertTriangle size={14} className="text-red-300" />,
+      });
+    } else if (perfil === "MODERADO") {
+      insights.push({
+        titulo: "Reduzir beta da carteira",
+        detalhe: "Priorize ativos defensivos, alongue stops e mantenha liquidez para recomprar quando os sinais melhorarem.",
+        destaque: "risco",
+        icone: <ShieldAlert size={14} className="text-orange-300" />,
+      });
+    } else {
+      insights.push({
+        titulo: "Coberturas obrigatórias",
+        detalhe: "Trave parte das posições com derivativos ou stablecoins enquanto o fluxo permanece negativo.",
+        destaque: "risco",
+        icone: <ShieldCheck size={14} className="text-rose-200" />,
+      });
+    }
+  } else {
+    insights.push({
+      titulo: "Mercado lateral",
+      detalhe: "Mapeie gatilhos técnicos e espere confirmação antes de aumentar o risco, pois o sentimento segue neutro.",
+      destaque: "neutro",
+      icone: <Brain size={14} className="text-sky-300" />,
+    });
+  }
+
+  if (conviction < 0.45) {
+    insights.push({
+      titulo: "Confiança limitada",
+      detalhe: "Sinais divergentes. Use posições piloto e deixe que novos dados confirmem a direção.",
+      destaque: "risco",
+      icone: <RefreshCw size={14} className="text-amber-200" />,
+    });
+  } else if (conviction >= 0.7) {
+    insights.push({
+      titulo: "Convicção elevada",
+      detalhe: "Fluxo consistente: mantenha o plano atual, mas proteja lucros com ajustes periódicos.",
+      destaque: "oportunidade",
+      icone: <ShieldCheck size={14} className="text-emerald-200" />,
+    });
+  }
+
+  return insights.slice(0, 3);
 };
 
 const buildRecommendation = (
@@ -200,7 +323,7 @@ export default function Recomendacoes({
   isLoading = false,
 }: RecomendacoesProps) {
   const { user, loading: isLoadingUser } = useAuth();
-  const [perfil, setPerfil] = useState<InvestorProfile | null>(null);
+  const [perfil, setPerfil] = useState<InvestorProfile | null>(() => loadPersistedProfile());
 
   useEffect(() => {
     const resolved = normalizeProfile(user?.investorProfile);
@@ -211,11 +334,29 @@ export default function Recomendacoes({
 
   useEffect(() => {
     if (!isLoadingUser && perfil === null) {
+      const stored = loadPersistedProfile();
+      if (stored) {
+        setPerfil(stored);
+        return;
+      }
       setPerfil("MODERADO");
     }
   }, [isLoadingUser, perfil]);
 
+  useEffect(() => {
+    if (!perfil || typeof window === "undefined") {
+      return;
+    }
+    window.localStorage.setItem(INVESTOR_PROFILE_STORAGE_KEY, perfil);
+  }, [perfil]);
+
   const snapshotAtual = snapshot ?? createDefaultSnapshot();
+  const convictionScore = useMemo(() => computeConvictionScore(snapshotAtual), [snapshotAtual]);
+  const convictionLabel = resolveConfidenceLabel(convictionScore);
+  const tacticalInsights = useMemo(() => {
+    if (!perfil) return [];
+    return buildTacticalInsights(perfil, snapshotAtual);
+  }, [perfil, snapshotAtual]);
 
   const recomendacao = useMemo(() => {
     if (!perfil) return null;
@@ -264,6 +405,9 @@ export default function Recomendacoes({
               </span>
               <span className="px-2 py-0.5 rounded-full bg-neutral-800/70 text-gray-300">
                 {snapshotAtual.nivel} • {snapshotAtual.intensidade}
+              </span>
+              <span className="px-2 py-0.5 rounded-full bg-neutral-800/70 text-gray-300">
+                Confiança {convictionLabel} • {Math.round(convictionScore * 100)}%
               </span>
               {isLoading && (
                 <span className="flex items-center gap-1 text-amber-300">
@@ -365,6 +509,35 @@ export default function Recomendacoes({
             );
           })}
         </div>
+
+        {tacticalInsights.length > 0 && (
+          <div className="mt-4 rounded-2xl bg-neutral-950/40 border border-neutral-800/80 p-4">
+            <p className="text-[11px] uppercase tracking-widest text-gray-500 mb-2">
+              Plano tático personalizado
+            </p>
+            <div className="space-y-3">
+              {tacticalInsights.map((insight) => (
+                <div key={insight.titulo} className="flex items-start gap-3">
+                  <span
+                    className={`mt-0.5 ${
+                      insight.destaque === "oportunidade"
+                        ? "text-emerald-300"
+                        : insight.destaque === "risco"
+                        ? "text-amber-300"
+                        : "text-sky-300"
+                    }`}
+                  >
+                    {insight.icone}
+                  </span>
+                  <div>
+                    <p className="text-sm font-semibold text-white">{insight.titulo}</p>
+                    <p className="text-[11px] text-gray-400 leading-snug">{insight.detalhe}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <p className="mt-1 text-[11px] text-gray-500">
           Baseado em fontes analisadas nos últimos minutos — exatamente os mesmos números que alimentam o gráfico ao lado.

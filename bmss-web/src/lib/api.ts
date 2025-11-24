@@ -12,14 +12,27 @@ const normalizedConfiguredBase = configuredApiBase
   ? configuredApiBase.replace(/\/+$/, "")
   : undefined;
 
-export const API_BASE_URL =
-  normalizedConfiguredBase ||
-  (process.env.NODE_ENV === "development"
+const computeApiBaseUrl = (): string => {
+  if (normalizedConfiguredBase) {
+    return normalizedConfiguredBase;
+  }
+
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    if (host && host !== "localhost" && host !== "127.0.0.1") {
+      return `${window.location.origin.replace(/\/+$/, "")}/api/v1`;
+    }
+  }
+
+  return process.env.NODE_ENV === "development"
     ? DEV_API_BASE
-    : PROD_DEFAULT_API_BASE);
+    : PROD_DEFAULT_API_BASE;
+};
+
+export const API_BASE_URL = computeApiBaseUrl();
 
 export function getRequiredApiBaseUrl(): string {
-  return API_BASE_URL;
+  return computeApiBaseUrl();
 }
 
 export function buildApiUrl(path: string): string {
