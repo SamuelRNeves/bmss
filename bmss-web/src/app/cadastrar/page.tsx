@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { cadastrarUsuario } from "@/lib/api";
+import { AUTH_TOKEN_CHANGED_EVENT } from "@/lib/useAuth";
 import {
   Sparkles,
   ArrowRight,
@@ -152,6 +153,7 @@ export default function CadastrarPage() {
 
       if (resultado.success && resultado.data?.token) {
         localStorage.setItem("jwtToken", resultado.data.token);
+        window.dispatchEvent(new Event(AUTH_TOKEN_CHANGED_EVENT));
         setMensagem({
           tipo: "sucesso",
           texto: "Cadastro concluído! Redirecionando para o painel...",

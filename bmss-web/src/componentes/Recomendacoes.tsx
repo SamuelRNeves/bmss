@@ -39,6 +39,12 @@ interface TacticalInsight {
   icone: JSX.Element;
 }
 
+interface PurchaseGuidance {
+  status: "comprar" | "observar" | "evitar";
+  titulo: string;
+  detalhe: string;
+}
+
 const formatScore = (score: number): string =>
   new Intl.NumberFormat("pt-BR", {
     minimumFractionDigits: 2,
@@ -80,6 +86,118 @@ const resolveConfidenceLabel = (score: number): "alta" | "moderada" | "baixa" =>
   if (score >= 0.7) return "alta";
   if (score >= 0.45) return "moderada";
   return "baixa";
+};
+
+const buildPurchaseGuidance = (
+  perfil: InvestorProfile,
+  percentualPositivo: number,
+  percentualNeutro: number,
+  percentualNegativo: number
+): PurchaseGuidance => {
+  const viesLiquidez = percentualNeutro >= 0.2;
+  const margemPositiva = percentualPositivo - percentualNegativo;
+  const choqueVendedor = percentualNegativo >= 0.65;
+  const vantagemNegativa = percentualNegativo - percentualPositivo;
+  const neutroAmortecedor = percentualNeutro >= 0.55;
+
+  if (perfil === "AGRESSIVO") {
+    if (choqueVendedor && percentualPositivo < 0.08) {
+      return {
+        status: "evitar",
+        titulo: "Pressão vendedora dominante",
+        detalhe:
+          "Mesmo tolerando ruído, o perfil agressivo preserva munição quando o negativo passa de 65% e o positivo não reage. Foque em trades curtos ou espere alívio.",
+      };
+    }
+
+    if (percentualPositivo >= 0.03 && (viesLiquidez || margemPositiva > -0.15)) {
+      return {
+        status: "comprar",
+        titulo: "Janela tática aberta",
+        detalhe:
+          "Com 3%+ de sinais positivos e pelo menos 20% neutros, há espaço para entradas rápidas com stops curtos. O agressivo prioriza velocidade e aceita drawdown de curto prazo.",
+      };
+    }
+
+    if (vantagemNegativa > 0.12 && !neutroAmortecedor) {
+      return {
+        status: "observar",
+        titulo: "Venda ainda fala mais alto",
+        detalhe:
+          "Negativo supera o positivo e o neutro não está amortecendo bem. O agressivo pode operar contrarian em prazos curtos, mas sem travar capital em posições longas.",
+      };
+    }
+
+    return {
+      status: "observar",
+      titulo: "Paciência estratégica",
+      detalhe:
+        "Espere o neutro subir para perto de 30% ou o positivo reagir antes de alavancar. Preserve liquidez para capturar rompimentos com stops curtos.",
+    };
+  }
+
+  if (perfil === "MODERADO") {
+    if (
+      percentualPositivo >= 0.15 &&
+      percentualNegativo <= 0.4 &&
+      (percentualPositivo >= percentualNegativo || neutroAmortecedor)
+    ) {
+      return {
+        status: "comprar",
+        titulo: "Compras graduais liberadas",
+        detalhe:
+          "Balanceado entre prudência e oportunidade: com 15%+ positivos, venda contida e neutro amortecendo, o moderado pode comprar em parcelas, mantendo stops mais folgados.",
+      };
+    }
+
+    if (percentualNegativo >= 0.6 || margemPositiva <= -0.2) {
+      return {
+        status: "evitar",
+        titulo: "Cenário frágil para novas posições",
+        detalhe: "Sentimento negativo muito alto ou vantagem vendedora relevante. Preservar capital e aguardar que o neutro volte a amortecer o risco.",
+      };
+    }
+
+    if (vantagemNegativa >= 0.08 && !neutroAmortecedor) {
+      return {
+        status: "observar",
+        titulo: "Aguardar reequilíbrio",
+        detalhe:
+          "O negativo ainda supera o positivo. Espere o neutro segurar melhor a volatilidade ou o positivo virar a liderança antes de novas compras.",
+      };
+    }
+
+    return {
+      status: "observar",
+      titulo: "Aguardando confirmação",
+      detalhe:
+        "Priorize equilíbrio: monte posições pequenas quando houver neutro acima de 20% e espere o positivo superar o negativo antes de acelerar compras.",
+    };
+  }
+
+  if (percentualPositivo >= 0.2 && percentualNegativo <= 0.3 && percentualNeutro >= 0.2) {
+    return {
+      status: "comprar",
+      titulo: "Entrada seletiva permitida",
+      detalhe:
+        "O conservador teme quedas de curto prazo; por isso exige 20%+ de sinais positivos, neutro robusto e venda contida para iniciar posições protegidas e menores.",
+    };
+  }
+
+  if (percentualNegativo >= 0.45 || margemPositiva < -0.1) {
+    return {
+      status: "evitar",
+      titulo: "Preservar capital",
+      detalhe: "Ambiente defensivo para o conservador. Fique em caixa ou ativos estáveis até que a pressão vendedora recue e o neutro volte a amortecer a volatilidade.",
+    };
+  }
+
+  return {
+    status: "observar",
+    titulo: "Monitorando sinais",
+    detalhe:
+      "Mantenha postura cautelosa; o conservador espera que o positivo fique mais encorpado e que o negativo permaneça abaixo de 30% antes de alocar novo capital.",
+  };
 };
 
 const buildTacticalInsights = (
@@ -363,6 +481,18 @@ export default function Recomendacoes({
     return buildRecommendation(perfil, snapshotAtual);
   }, [perfil, snapshotAtual]);
 
+  const purchaseGuidance = useMemo(() => {
+    if (!perfil) return null;
+    const { distribuicao } = snapshotAtual;
+    const totalDistribuicao =
+      distribuicao.positivo + distribuicao.negativo + distribuicao.neutro;
+    const positivo = clampRatio(distribuicao.positivo / (totalDistribuicao || 1));
+    const neutro = clampRatio(distribuicao.neutro / (totalDistribuicao || 1));
+    const negativo = clampRatio(distribuicao.negativo / (totalDistribuicao || 1));
+
+    return buildPurchaseGuidance(perfil, positivo, neutro, negativo);
+  }, [perfil, snapshotAtual]);
+
   if (!recomendacao) {
     return (
       <div className="text-gray-400 text-center">
@@ -377,6 +507,13 @@ export default function Recomendacoes({
     neutro: Math.round(snapshotAtual.distribuicao.neutro),
     negativo: Math.round(snapshotAtual.distribuicao.negativo),
   };
+
+  const legendaSugestoes = [
+    "Agressivo prioriza velocidade e upside; aceita perdas de curto prazo e pode comprar com respingos positivos mínimos, mas pausa se o negativo dominar sem neutro para amortecer.",
+    "Moderado busca equilíbrio: prefere neutro amortecendo volatilidade e só acelera quando o positivo lidera ou o neutro passa de ~55% para blindar quedas rápidas.",
+    "Conservador protege capital: teme quedas no curto prazo, só entra com positivo robusto (20%+), neutro forte e negativo controlado.",
+    "Se o negativo superar o positivo sem colchão neutro, o sistema reduz compras para moderado/conservador e sugere observar. Neutro alto funciona como colchão; negativo alto trava compras.",
+  ];
 
   const formatSignals = (percentual: number) => {
     if (!snapshotAtual.totalItens) return null;
@@ -424,6 +561,43 @@ export default function Recomendacoes({
             </p>
           </div>
         </div>
+
+        {purchaseGuidance && (
+          <div className="rounded-2xl bg-neutral-950/50 border border-neutral-800/70 p-4">
+            <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-400 mb-1">
+              <span className="px-2 py-0.5 rounded-full bg-neutral-800 text-gray-200">
+                Sugestão de compra
+              </span>
+              <span
+                className={`px-2 py-0.5 rounded-full border text-xs ${
+                  purchaseGuidance.status === "comprar"
+                    ? "border-emerald-500 text-emerald-300 bg-emerald-500/10"
+                    : purchaseGuidance.status === "evitar"
+                    ? "border-red-500 text-red-300 bg-red-500/10"
+                    : "border-amber-500 text-amber-300 bg-amber-500/10"
+                }`}
+              >
+                {purchaseGuidance.status === "comprar"
+                  ? "Compra liberada"
+                  : purchaseGuidance.status === "evitar"
+                  ? "Aguardando sinal seguro"
+                  : "Observar antes de entrar"}
+              </span>
+            </div>
+            <p className="text-sm font-semibold text-white">{purchaseGuidance.titulo}</p>
+            <p className="text-xs text-gray-400 leading-relaxed">
+              {purchaseGuidance.detalhe}
+            </p>
+            <div className="mt-3 text-[11px] text-gray-500 space-y-1">
+              <p className="font-medium text-gray-300">Legenda do sistema:</p>
+              <ul className="list-disc list-inside space-y-1">
+                {legendaSugestoes.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs text-gray-400">
           <div className="rounded-xl bg-neutral-950/40 border border-neutral-800/70 p-3">

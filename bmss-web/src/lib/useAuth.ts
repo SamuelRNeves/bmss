@@ -102,6 +102,8 @@ const resolveApiBase = (): string => {
 
 // Chaves de storage
 export const INVESTOR_PROFILE_STORAGE_KEY = "bmss:last-investor-profile";
+export const AUTH_TOKEN_STORAGE_KEY = "jwtToken";
+export const AUTH_TOKEN_CHANGED_EVENT = "bmss:auth-token-changed";
 const USER_CACHE_STORAGE_KEY = "bmss:cached-user:v1";
 
 type CachedUserPayload = {
@@ -191,8 +193,18 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 function useProvideAuth(): AuthContextValue {
   const [user, setUserState] = useState<UserData | null>(() => loadCachedUser());
   const [loading, setLoading] = useState(true);
+  const [tokenVersion, setTokenVersion] = useState(0);
 
   const apiBase = useMemo(() => resolveApiBase(), []);
+
+  const notifyAuthTokenChange = useCallback(() => {
+    if (typeof window === "undefined") return;
+    window.dispatchEvent(new Event(AUTH_TOKEN_CHANGED_EVENT));
+  }, []);
+
+  const bumpTokenVersion = useCallback(() => {
+    setTokenVersion((prev) => prev + 1);
+  }, []);
 
   const setUser = useCallback(
     (updater: UserData | null | ((prev: UserData | null) => UserData | null)) => {
@@ -206,13 +218,15 @@ function useProvideAuth(): AuthContextValue {
   );
 
   useEffect(() => {
-    const token = typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) : null;
     if (!token) {
       setUser(null);
       setLoading(false);
       return;
     }
 
+    setLoading(true);
     let isMounted = true;
 
     api
@@ -239,8 +253,9 @@ function useProvideAuth(): AuthContextValue {
         if (error.response?.status === 401) {
           console.warn("🔒 Token expirado ou inválido, removendo...");
           if (typeof window !== "undefined") {
-            localStorage.removeItem("jwtToken");
+            localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
           }
+          notifyAuthTokenChange();
           if (!isMounted) return;
           setUser(null);
         } else {
@@ -256,7 +271,24 @@ function useProvideAuth(): AuthContextValue {
     return () => {
       isMounted = false;
     };
-  }, [apiBase, setUser]);
+  }, [apiBase, notifyAuthTokenChange, setUser, tokenVersion]);
+
+  useEffect(() => {
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key && event.key !== AUTH_TOKEN_STORAGE_KEY) return;
+      bumpTokenVersion();
+    };
+
+    const handleAuthChange = () => bumpTokenVersion();
+
+    window.addEventListener("storage", handleStorage);
+    window.addEventListener(AUTH_TOKEN_CHANGED_EVENT, handleAuthChange);
+
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+      window.removeEventListener(AUTH_TOKEN_CHANGED_EVENT, handleAuthChange);
+    };
+  }, [bumpTokenVersion]);
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -331,7 +363,8 @@ function useProvideAuth(): AuthContextValue {
         return applyLocalUpdate(patch);
       }
 
-      const token = typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+      const token =
+        typeof window !== "undefined" ? localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) : null;
       if (!token) {
         throw new Error("Usuário não autenticado");
       }
@@ -380,7 +413,8 @@ function useProvideAuth(): AuthContextValue {
       }
 
       if (payload && typeof payload.token === "string" && payload.token.trim()) {
-        localStorage.setItem("jwtToken", payload.token.trim());
+        localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, payload.token.trim());
+        notifyAuthTokenChange();
       }
 
       const normalized: UserPatch = {};
@@ -443,7 +477,8 @@ function useProvideAuth(): AuthContextValue {
 
   const logout = useCallback(() => {
     if (typeof window !== "undefined") {
-      localStorage.removeItem("jwtToken");
+      localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+      notifyAuthTokenChange();
     }
     setUser(null);
     if (typeof window !== "undefined") {
