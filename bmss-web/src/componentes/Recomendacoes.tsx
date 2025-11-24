@@ -39,6 +39,12 @@ interface TacticalInsight {
   icone: JSX.Element;
 }
 
+interface PurchaseGuidance {
+  status: "comprar" | "observar" | "evitar";
+  titulo: string;
+  detalhe: string;
+}
+
 const formatScore = (score: number): string =>
   new Intl.NumberFormat("pt-BR", {
     minimumFractionDigits: 2,
@@ -80,6 +86,87 @@ const resolveConfidenceLabel = (score: number): "alta" | "moderada" | "baixa" =>
   if (score >= 0.7) return "alta";
   if (score >= 0.45) return "moderada";
   return "baixa";
+};
+
+const buildPurchaseGuidance = (
+  perfil: InvestorProfile,
+  percentualPositivo: number,
+  percentualNeutro: number,
+  percentualNegativo: number
+): PurchaseGuidance => {
+  const janelaAgressiva = percentualPositivo >= 0.01 && percentualNeutro >= 0.15;
+  const compraAgressivaSegura = percentualPositivo >= 0.05 && percentualNegativo <= 0.65;
+
+  if (perfil === "AGRESSIVO") {
+    if (compraAgressivaSegura || janelaAgressiva) {
+      return {
+        status: "comprar",
+        titulo: "Janela tática aberta",
+        detalhe:
+          "Mesmo com pouco volume positivo (0 a 5%) e neutro perto de 15%, o perfil agressivo pode montar posição com stops curtos, assumindo ruído de curto prazo.",
+      };
+    }
+
+    if (percentualNegativo >= 0.7) {
+      return {
+        status: "evitar",
+        titulo: "Pressão vendedora pesada",
+        detalhe: "Venda dominante. Priorize defesa ou operações de curtíssima duração até o fluxo aliviar.",
+      };
+    }
+
+    return {
+      status: "observar",
+      titulo: "Aguarde o fluxo definir",
+      detalhe: "Sinais mistos. Mantenha tamanho reduzido e entre apenas quando o noticiário mostrar direção consistente.",
+    };
+  }
+
+  if (perfil === "MODERADO") {
+    if (percentualPositivo >= 0.1 && percentualNegativo <= 0.5) {
+      return {
+        status: "comprar",
+        titulo: "Compras graduais liberadas",
+        detalhe: "Com pelo menos 10% de sinais positivos e pressão vendedora moderada, use aportes fracionados e stops folgados.",
+      };
+    }
+
+    if (percentualNegativo >= 0.55) {
+      return {
+        status: "evitar",
+        titulo: "Risco alto para novas posições",
+        detalhe: "Noticiário negativo acima de 55%. Espere reversão ou reforço do neutro antes de recomprar.",
+      };
+    }
+
+    return {
+      status: "observar",
+      titulo: "Aguardando confirmação",
+      detalhe: "Use tempo para rebalancear e só aumente exposição quando o positivo ultrapassar 10% ou o neutro absorver parte da pressão.",
+    };
+  }
+
+  if (percentualPositivo >= 0.18 && percentualNegativo <= 0.35 && percentualNeutro >= 0.15) {
+    return {
+      status: "comprar",
+      titulo: "Entrada seletiva permitida",
+      detalhe: "Com pelo menos 18% de sinais positivos, neutro sólido e venda limitada, dá para iniciar posições pequenas e protegidas.",
+    };
+  }
+
+  if (percentualNegativo >= 0.45) {
+    return {
+      status: "evitar",
+      titulo: "Preservar capital",
+      detalhe: "Ambiente defensivo. Priorize caixa e renda fixa até o positivo ganhar tração consistente.",
+    };
+  }
+
+  return {
+    status: "observar",
+    titulo: "Monitorando sinais",
+    detalhe: "Mantenha postura conservadora; só compre quando a fatia positiva ficar mais robusta e o negativo cair abaixo de 35%.",
+  };
 };
 
 const buildTacticalInsights = (
@@ -363,6 +450,18 @@ export default function Recomendacoes({
     return buildRecommendation(perfil, snapshotAtual);
   }, [perfil, snapshotAtual]);
 
+  const purchaseGuidance = useMemo(() => {
+    if (!perfil) return null;
+    const { distribuicao } = snapshotAtual;
+    const totalDistribuicao =
+      distribuicao.positivo + distribuicao.negativo + distribuicao.neutro;
+    const positivo = clampRatio(distribuicao.positivo / (totalDistribuicao || 1));
+    const neutro = clampRatio(distribuicao.neutro / (totalDistribuicao || 1));
+    const negativo = clampRatio(distribuicao.negativo / (totalDistribuicao || 1));
+
+    return buildPurchaseGuidance(perfil, positivo, neutro, negativo);
+  }, [perfil, snapshotAtual]);
+
   if (!recomendacao) {
     return (
       <div className="text-gray-400 text-center">
@@ -377,6 +476,12 @@ export default function Recomendacoes({
     neutro: Math.round(snapshotAtual.distribuicao.neutro),
     negativo: Math.round(snapshotAtual.distribuicao.negativo),
   };
+
+  const legendaSugestoes = [
+    "Agressivo: compra liberada mesmo com 0 a 5% de sinais positivos se houver pelo menos 15% neutro, assumindo stops curtos e reavaliação rápida.",
+    "Moderado: só compra quando o positivo passa de 10% e o negativo fica até 50%; fora disso, espera confirmação ou monta posição fracionada.",
+    "Conservador: prioriza segurança; compra apenas com ~18% ou mais de sinais positivos, neutro acima de 15% e negativo abaixo de 35%.",
+  ];
 
   const formatSignals = (percentual: number) => {
     if (!snapshotAtual.totalItens) return null;
@@ -424,6 +529,43 @@ export default function Recomendacoes({
             </p>
           </div>
         </div>
+
+        {purchaseGuidance && (
+          <div className="rounded-2xl bg-neutral-950/50 border border-neutral-800/70 p-4">
+            <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-400 mb-1">
+              <span className="px-2 py-0.5 rounded-full bg-neutral-800 text-gray-200">
+                Sugestão de compra
+              </span>
+              <span
+                className={`px-2 py-0.5 rounded-full border text-xs ${
+                  purchaseGuidance.status === "comprar"
+                    ? "border-emerald-500 text-emerald-300 bg-emerald-500/10"
+                    : purchaseGuidance.status === "evitar"
+                    ? "border-red-500 text-red-300 bg-red-500/10"
+                    : "border-amber-500 text-amber-300 bg-amber-500/10"
+                }`}
+              >
+                {purchaseGuidance.status === "comprar"
+                  ? "Compra liberada"
+                  : purchaseGuidance.status === "evitar"
+                  ? "Aguardando sinal seguro"
+                  : "Observar antes de entrar"}
+              </span>
+            </div>
+            <p className="text-sm font-semibold text-white">{purchaseGuidance.titulo}</p>
+            <p className="text-xs text-gray-400 leading-relaxed">
+              {purchaseGuidance.detalhe}
+            </p>
+            <div className="mt-3 text-[11px] text-gray-500 space-y-1">
+              <p className="font-medium text-gray-300">Legenda do sistema:</p>
+              <ul className="list-disc list-inside space-y-1">
+                {legendaSugestoes.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs text-gray-400">
           <div className="rounded-xl bg-neutral-950/40 border border-neutral-800/70 p-3">
