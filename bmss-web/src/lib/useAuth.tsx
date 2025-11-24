@@ -3,7 +3,6 @@
 
 import {
   createContext,
-  createElement,
   useCallback,
   useContext,
   useEffect,
@@ -28,13 +27,8 @@ type UserPatch = Partial<
   Pick<UserData, "investorProfile" | "notificationPreference" | "profileImageUrl">
 >;
 
-const PROFILE_IMAGE_MAX_BYTES = 2500000;
-
-// SOLUÇÃO ALTERNATIVA: Remover completamente a regex problemática
-// e usar métodos de string em vez disso
-const isDataURL = (value: string): boolean => {
-  return value.startsWith('data:image') && value.includes(';base64,');
-};
+const PROFILE_IMAGE_MAX_BYTES = 2_500_000;
+const DATA_URL_PREFIX = /^data:image\/[-+\w.]+;base64,/i;
 
 const normalizeProfileImageValue = (
   value: string | null | undefined
@@ -55,11 +49,8 @@ const normalizeProfileImageValue = (
 };
 
 const estimateBase64Size = (value: string): number => {
-  if (isDataURL(value)) {
-    const base64Data = value.split(',')[1] || '';
-    return Math.ceil((base64Data.length * 3) / 4);
-  }
-  return Math.ceil((value.length * 3) / 4);
+  const payload = value.replace(DATA_URL_PREFIX, "");
+  return Math.ceil((payload.length * 3) / 4);
 };
 
 const enforceProfileImageLimit = (
@@ -501,7 +492,7 @@ function useProvideAuth(): AuthContextValue {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useProvideAuth();
-  return createElement(AuthContext.Provider, { value }, children);
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth(): AuthContextValue {
