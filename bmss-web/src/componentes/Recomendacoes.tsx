@@ -39,6 +39,12 @@ interface TacticalInsight {
   icone: JSX.Element;
 }
 
+interface PurchaseGuidance {
+  status: "comprar" | "observar" | "evitar";
+  titulo: string;
+  detalhe: string;
+}
+
 const formatScore = (score: number): string =>
   new Intl.NumberFormat("pt-BR", {
     minimumFractionDigits: 2,
@@ -80,6 +86,188 @@ const resolveConfidenceLabel = (score: number): "alta" | "moderada" | "baixa" =>
   if (score >= 0.7) return "alta";
   if (score >= 0.45) return "moderada";
   return "baixa";
+};
+
+const buildPurchaseGuidance = (
+  perfil: InvestorProfile,
+  percentualPositivo: number,
+  percentualNeutro: number,
+  percentualNegativo: number,
+  momentum: number,
+  consenso: number,
+  polarizacao: number,
+  volume: number
+): PurchaseGuidance => {
+  const margemPositiva = percentualPositivo - percentualNegativo;
+
+  if (perfil === "CONSERVADOR") {
+    if (
+      percentualPositivo >= 0.35 &&
+      percentualNegativo <= 0.2 &&
+      momentum >= 10 &&
+      consenso >= 85 &&
+      polarizacao <= 20 &&
+      volume >= 40
+    ) {
+      return {
+        status: "comprar",
+        titulo: "Compra liberada (proteção máxima)",
+        detalhe:
+          "Ambiente estável, tendência positiva clara e baixa dispersão. Entradas cheias liberadas com stops largos e hedge ativo para blindar quedas.",
+      };
+    }
+
+    if (
+      percentualPositivo >= 0.28 &&
+      percentualNeutro >= 0.4 &&
+      momentum >= 4 &&
+      momentum <= 10 &&
+      polarizacao <= 30
+    ) {
+      return {
+        status: "comprar",
+        titulo: "Compra seletiva (entrada reduzida)",
+        detalhe:
+          "Positivo relevante com neutro amortecendo. Faça posições menores, priorize setores defensivos e adicione somente após novas confirmações.",
+      };
+    }
+
+    if (
+      percentualNeutro >= 0.45 &&
+      momentum >= -4 &&
+      momentum <= 4 &&
+      polarizacao <= 35
+    ) {
+      return {
+        status: "observar",
+        titulo: "Aguardar / manter posição",
+        detalhe:
+          "Neutro dominante sugere mercado lateral. Mantenha proteções, rebalanceie ganhos e evite aumentar risco até surgir direção clara.",
+      };
+    }
+
+    if (percentualNegativo >= 0.3 && momentum <= -6 && polarizacao >= 40) {
+      return {
+        status: "evitar",
+        titulo: "Venda / reduzir exposição",
+        detalhe:
+          "Pressão vendedora relevante, polarização alta e momentum negativo. Reduza beta, aumente caixa e priorize ativos protegidos.",
+      };
+    }
+
+    return {
+      status: "observar",
+      titulo: "Defesa ativada",
+      detalhe:
+        "Sem alinhamento completo dos filtros conservadores. Continue protegendo capital, faça entradas mínimas apenas com stops curtos e hedge.",
+    };
+  }
+
+  if (perfil === "MODERADO") {
+    if (
+      percentualPositivo >= 0.3 &&
+      percentualNegativo <= 0.25 &&
+      momentum >= 6 &&
+      consenso >= 75 &&
+      volume >= 25
+    ) {
+      return {
+        status: "comprar",
+        titulo: "Compra liberada (equilíbrio)",
+        detalhe:
+          "Ambiente começando a acelerar com venda contida. Entradas graduais permitidas, mantendo parte em caixa para aproveitar correções.",
+      };
+    }
+
+    if (percentualPositivo >= 0.25 && percentualNeutro >= 0.4 && momentum >= 2) {
+      return {
+        status: "comprar",
+        titulo: "Compra seletiva",
+        detalhe:
+          "Positivo e neutro sustentam o cenário. Prefira aportes fatiados, stops intermediários e revisão rápida se o fluxo virar.",
+      };
+    }
+
+    if (polarizacao >= 35 || consenso <= 60) {
+      return {
+        status: "observar",
+        titulo: "Aguardar confirmação",
+        detalhe:
+          "Leitura dividida ou consenso fraco. Mantenha posição, rebalanceie ganhos e espere o sentimento alinhar antes de aumentar risco.",
+      };
+    }
+
+    if (percentualNegativo >= 0.35 && momentum <= -5) {
+      return {
+        status: "evitar",
+        titulo: "Reduzir posição",
+        detalhe:
+          "Negativo ganhou tração e momentum piorou. Enxugue exposição cíclica, proteja lucros e aguarde sinal de retomada.",
+      };
+    }
+
+    return {
+      status: "observar",
+      titulo: "Gestão ativa, sem pressa",
+      detalhe:
+        "Cenário misto. Preserve liquidez, use tamanhos moderados e só acelere quando o positivo se firmar ou a polarização ceder.",
+    };
+  }
+
+  // Perfil agressivo
+  if (
+    percentualPositivo >= 0.25 &&
+    momentum >= 2 &&
+    polarizacao <= 45 &&
+    volume >= 15
+  ) {
+    return {
+      status: "comprar",
+      titulo: "Compra liberada (agressiva)",
+      detalhe:
+        "Fluxo já puxa para cima e a dispersão é aceitável. O agressivo pode entrar cedo, usando stops móveis e gestão ativa de alavancagem.",
+    };
+  }
+
+  if (
+    percentualNegativo <= 0.4 &&
+    percentualNeutro >= 0.35 &&
+    momentum >= 0 &&
+    momentum <= 2 &&
+    polarizacao <= 55
+  ) {
+    return {
+      status: "comprar",
+      titulo: "Compra especulativa (alta volatilidade)",
+      detalhe:
+        "Ambiente instável, mas com colchão neutro. Entradas táticas em prazos curtos buscando antecipar reversões; stops curtos são obrigatórios.",
+    };
+  }
+
+  if (consenso < 50 || polarizacao > 60) {
+    return {
+      status: "observar",
+      titulo: "Aguardar leitura clara",
+      detalhe:
+        "Mercado sem consenso ou dispersão extrema. O agressivo monitora gatilhos técnicos enquanto preserva caixa para o rompimento verdadeiro.",
+    };
+  }
+
+  if (percentualNegativo >= 0.45 && momentum <= -10) {
+    return {
+      status: "evitar",
+      titulo: "Venda / reduzir exposição",
+      detalhe:
+        "Pressão vendedora dominante e momentum piorando. Melhor reduzir alavancagem, operar apenas reversões rápidas ou ficar líquido.",
+    };
+  }
+
+  return {
+    status: "observar",
+    titulo: "Observação ativa",
+    detalhe:
+      "Sem gatilho forte. Priorize setups curtos, proteja capital e espere melhoria no momentum ou queda da polarização para acelerar.",
+  };
 };
 
 const buildTacticalInsights = (
@@ -363,6 +551,34 @@ export default function Recomendacoes({
     return buildRecommendation(perfil, snapshotAtual);
   }, [perfil, snapshotAtual]);
 
+  const purchaseGuidance = useMemo(() => {
+    if (!perfil) return null;
+    const { distribuicao } = snapshotAtual;
+    const totalDistribuicao =
+      distribuicao.positivo + distribuicao.negativo + distribuicao.neutro;
+    const positivo = clampRatio(distribuicao.positivo / (totalDistribuicao || 1));
+    const neutro = clampRatio(distribuicao.neutro / (totalDistribuicao || 1));
+    const negativo = clampRatio(distribuicao.negativo / (totalDistribuicao || 1));
+
+    const momentum = Math.round(snapshotAtual.media * 100);
+    const consenso = Math.round(clampRatio(snapshotAtual.proporcaoDominante) * 100);
+    const polarizacao = Math.round(
+      (1 - clampRatio(Math.max(positivo, negativo, neutro))) * 100
+    );
+    const volume = snapshotAtual.totalItens;
+
+    return buildPurchaseGuidance(
+      perfil,
+      positivo,
+      neutro,
+      negativo,
+      momentum,
+      consenso,
+      polarizacao,
+      volume
+    );
+  }, [perfil, snapshotAtual]);
+
   if (!recomendacao) {
     return (
       <div className="text-gray-400 text-center">
@@ -377,6 +593,13 @@ export default function Recomendacoes({
     neutro: Math.round(snapshotAtual.distribuicao.neutro),
     negativo: Math.round(snapshotAtual.distribuicao.negativo),
   };
+
+  const legendaSugestoes = [
+    "Conservador prioriza proteção máxima: só libera compra cheia com positivo ≥ 35%, negativo ≤ 20%, momentum ≥ +10, consenso ≥ 85%, polarização ≤ 20% e volume ≥ 40 sinais.",
+    "Moderado equilibra risco: compra liberada com positivo ≥ 30%, negativo ≤ 25%, momentum ≥ +6, consenso ≥ 75% e volume ≥ 25. Polarização alta ou consenso fraco obriga aguardar.",
+    "Agressivo busca oportunidade mesmo no ruído: compra cedo com positivo ≥ 25%, momentum ≥ +2, polarização ≤ 45% e volume ≥ 15. Pode especular com neutro alto mesmo com negativo moderado.",
+    "Polarização mede dispersão (quanto menor, melhor); consenso é a liderança do viés dominante. Momentum deriva do score médio; volume é o total de sinais que alimentam o gráfico.",
+  ];
 
   const formatSignals = (percentual: number) => {
     if (!snapshotAtual.totalItens) return null;
@@ -424,6 +647,43 @@ export default function Recomendacoes({
             </p>
           </div>
         </div>
+
+        {purchaseGuidance && (
+          <div className="rounded-2xl bg-neutral-950/50 border border-neutral-800/70 p-4">
+            <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-400 mb-1">
+              <span className="px-2 py-0.5 rounded-full bg-neutral-800 text-gray-200">
+                Sugestão de compra
+              </span>
+              <span
+                className={`px-2 py-0.5 rounded-full border text-xs ${
+                  purchaseGuidance.status === "comprar"
+                    ? "border-emerald-500 text-emerald-300 bg-emerald-500/10"
+                    : purchaseGuidance.status === "evitar"
+                    ? "border-red-500 text-red-300 bg-red-500/10"
+                    : "border-amber-500 text-amber-300 bg-amber-500/10"
+                }`}
+              >
+                {purchaseGuidance.status === "comprar"
+                  ? "Compra liberada"
+                  : purchaseGuidance.status === "evitar"
+                  ? "Aguardando sinal seguro"
+                  : "Observar antes de entrar"}
+              </span>
+            </div>
+            <p className="text-sm font-semibold text-white">{purchaseGuidance.titulo}</p>
+            <p className="text-xs text-gray-400 leading-relaxed">
+              {purchaseGuidance.detalhe}
+            </p>
+            <div className="mt-3 text-[11px] text-gray-500 space-y-1">
+              <p className="font-medium text-gray-300">Legenda do sistema:</p>
+              <ul className="list-disc list-inside space-y-1">
+                {legendaSugestoes.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs text-gray-400">
           <div className="rounded-xl bg-neutral-950/40 border border-neutral-800/70 p-3">

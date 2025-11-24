@@ -14,6 +14,7 @@ import com.bmss.backend.util.UserSanitizer;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
@@ -90,10 +91,16 @@ public class UserService {
     }
 
     // ================== REGISTRO COM AUTO-LOGIN ==================
+    @Transactional(rollbackFor = Exception.class)
     public AuthResponse registerWithAutoLogin(RegisterRequest request) {
         PasswordStrength strength = evaluatePassword(request.getPassword());
         if (strength == PasswordStrength.WEAK) {
             throw new IllegalArgumentException("Senha muito fraca. Mínimo: 8 caracteres com maiúscula, minúscula e número.");
+        }
+
+        String sanitizedName = request.getName() == null ? "" : request.getName().trim();
+        if (sanitizedName.isBlank()) {
+            throw new IllegalArgumentException("Nome é obrigatório.");
         }
 
         String sanitizedEmail = UserSanitizer.normalizeEmail(request.getEmail());
@@ -109,7 +116,7 @@ public class UserService {
         }
 
         User user = new User();
-        user.setName(request.getName());
+        user.setName(sanitizedName);
         user.setEmail(sanitizedEmail);
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         user.setNotificationPreference(UserSanitizer.normalizeNotificationPreference(request.getNotificationPreference()));
