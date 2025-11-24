@@ -1,4 +1,4 @@
-// useAuth.ts
+// useAuth.tsx
 "use client";
 
 import {
@@ -10,7 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import api, { API_BASE_URL } from "@/lib/api";
+import api, { API_BASE_URL } from "./lib/api";
 
 interface UserData {
   id?: number;
@@ -29,6 +29,9 @@ type UserPatch = Partial<
 
 const PROFILE_IMAGE_MAX_BYTES = 2_500_000;
 const DATA_URL_PREFIX = /^data:image\/[-+\w.]+;base64,/i;
+
+// SOLUÇÃO: Manter a implementação atual usando regex para DATA_URL_PREFIX
+// e remover a função isDataURL baseada em métodos de string
 
 const normalizeProfileImageValue = (
   value: string | null | undefined
