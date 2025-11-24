@@ -51,7 +51,6 @@ const buildSparklinePoints = (values: number[]) => {
     const single = clampPercent(values[0] ?? 0);
     return `0,${100 - single} 100,${100 - single}`;
   }
-
   return values
     .map((value, index) => {
       const x = (index / (values.length - 1)) * 100;
@@ -75,7 +74,6 @@ const normalizeDistribution = (slice: { positive: number; negative: number; neut
 
 const SentimentSignalsPanel: React.FC<SentimentSignalsPanelProps> = ({ trend, distribution }) => {
   const recentSlices = useMemo(() => trend.slice(-10), [trend]);
-
   const lastKnownTrend = useMemo(() => trend[trend.length - 1], [trend]);
 
   const referenceDistribution = useMemo(() => {
@@ -125,7 +123,9 @@ const SentimentSignalsPanel: React.FC<SentimentSignalsPanelProps> = ({ trend, di
     return Math.round((spread + avgVolatility) / 2);
   }, [metrics]);
 
-  const moodLabel = polarizationScore > 25 ? "Mercado polarizado" : polarizationScore > 15 ? "Humor atento" : "Sentimento equilibrado";
+  const moodLabel =
+    polarizationScore > 25 ? "Mercado polarizado" : polarizationScore > 15 ? "Humor atento" : "Sentimento equilibrado";
+
   const moodDescription =
     polarizationScore > 25
       ? "Os polos positivo e negativo estão disputando o noticiário — ótimo momento para identificar gatilhos de reversão."
@@ -133,8 +133,7 @@ const SentimentSignalsPanel: React.FC<SentimentSignalsPanelProps> = ({ trend, di
       ? "As opiniões estão mais divididas. Traders monitoram gatilhos macro e respostas institucionais."
       : "As menções estão bem distribuídas e indicam estabilidade no curto prazo.";
 
-  const averageShare =
-    metrics.reduce((sum, sentiment) => sum + sentiment.latest, 0) / Math.max(1, metrics.length);
+  const averageShare = metrics.reduce((sum, sentiment) => sum + sentiment.latest, 0) / Math.max(1, metrics.length);
   const momentum = dominant ? Math.round(dominant.latest - averageShare) : 0;
   const balanceScore = Math.max(0, 100 - polarizationScore);
 
@@ -161,17 +160,20 @@ const SentimentSignalsPanel: React.FC<SentimentSignalsPanelProps> = ({ trend, di
 
   return (
     <div className="relative overflow-hidden rounded-3xl border border-white/5 bg-gradient-to-b from-[#0B0F1A] via-[#05060a] to-black p-5 sm:p-7 flex flex-col gap-7 shadow-[0_20px_80px_rgba(0,0,0,0.5)]">
+      {/* Background blobs */}
       <div className="absolute inset-0 pointer-events-none opacity-70">
         <div className="absolute -top-16 -right-20 w-72 h-72 bg-emerald-500/10 blur-3xl" />
         <div className="absolute -bottom-20 -left-10 w-72 h-72 bg-fuchsia-500/10 blur-3xl" />
       </div>
 
+      {/* Header + Insights */}
       <div className="relative space-y-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-xs uppercase tracking-[0.2em] text-gray-500">Pulso consolidado</p>
             <h3 className="text-2xl font-semibold text-white">{moodLabel}</h3>
           </div>
+
           {dominant && (
             <div className="flex items-center gap-4">
               <div className="text-right">
@@ -180,17 +182,23 @@ const SentimentSignalsPanel: React.FC<SentimentSignalsPanelProps> = ({ trend, di
                   {dominant.label} · {Math.round(dominant.latest)}%
                 </p>
               </div>
-              <div className={`px-4 py-2 rounded-2xl text-sm font-medium ${dominant.badgeColor} border border-white/10 shadow-lg shadow-black/30`}>Top signal</div>
+              <div
+                className={`px-4 py-2 rounded-2xl text-sm font-medium ${dominant.badgeColor} border border-white/10 shadow-lg shadow-black/30`}
+              >
+                Top signal
+              </div>
             </div>
           )}
         </div>
+
         <p className="text-sm text-gray-400 leading-relaxed max-w-3xl">{moodDescription}</p>
 
+        {/* Insight Cards */}
         <div className="grid gap-3 sm:grid-cols-3">
           {insightCards.map((insight) => (
             <div
               key={insight.label}
-              className={`relative overflow-hidden rounded-2xl border border-white/5 bg-white/5 backdrop-blur-xl p-4 text-white`}
+              className="relative overflow-hidden rounded-2xl border border-white/5 bg-white/5 backdrop-blur-xl p-4 text-white"
             >
               <div className={`absolute inset-0 opacity-70 bg-gradient-to-r ${insight.gradient}`} />
               <div className="relative space-y-1">
@@ -202,6 +210,7 @@ const SentimentSignalsPanel: React.FC<SentimentSignalsPanelProps> = ({ trend, di
           ))}
         </div>
 
+        {/* Polarization bar + dominant trend text */}
         <div className="flex flex-wrap gap-5 text-sm text-gray-300">
           <div className="flex items-center gap-2">
             <span className="text-gray-400">Polarização</span>
@@ -212,6 +221,7 @@ const SentimentSignalsPanel: React.FC<SentimentSignalsPanelProps> = ({ trend, di
               />
             </div>
           </div>
+
           {dominant && (
             <div>
               <span className="text-gray-400">Tendência dominante:</span>{" "}
@@ -223,17 +233,20 @@ const SentimentSignalsPanel: React.FC<SentimentSignalsPanelProps> = ({ trend, di
         </div>
       </div>
 
+      {/* Sentiment Cards with Sparklines */}
       <div className="relative grid grid-cols-1 sm:grid-cols-3 gap-4">
         {metrics.map((item) => {
           const TrendIcon = item.change > 0.8 ? TrendingUp : item.change < -0.8 ? TrendingDown : Minus;
           const trendLabel = item.change > 0.8 ? "Acelerando" : item.change < -0.8 ? "Perdendo força" : "Estável";
           const closingX = item.sparkline.split(" ").pop()?.split(",")[0] ?? "100";
+
           return (
             <div
               key={item.key}
               className="relative overflow-hidden rounded-2xl border border-white/5 bg-gradient-to-b from-white/5 to-white/0 backdrop-blur-xl p-4 flex flex-col gap-4 shadow-inner shadow-black/40"
             >
               <div className={`absolute inset-x-6 top-0 h-1 bg-gradient-to-r ${item.accent}`} />
+
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <p className="text-xs uppercase tracking-wide text-gray-500">{item.description}</p>
@@ -253,6 +266,7 @@ const SentimentSignalsPanel: React.FC<SentimentSignalsPanelProps> = ({ trend, di
                 <span className="text-white font-semibold">{item.volatility}%</span>
               </div>
 
+              {/* Sparkline */}
               <div className="h-20 relative">
                 <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full">
                   <polyline
@@ -277,9 +291,13 @@ const SentimentSignalsPanel: React.FC<SentimentSignalsPanelProps> = ({ trend, di
                 <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent pointer-events-none" />
               </div>
 
+              {/* Trend footer */}
               <div className="flex items-center justify-between text-sm">
                 <div className="flex items-center gap-2 text-gray-300">
-                  <TrendIcon size={18} className={item.change > 0.8 ? "text-emerald-400" : item.change < -0.8 ? "text-rose-400" : "text-gray-400"} />
+                  <TrendIcon
+                    size={18}
+                    className={item.change > 0.8 ? "text-emerald-400" : item.change < -0.8 ? "text-rose-400" : "text-gray-400"}
+                  />
                   <span>{trendLabel}</span>
                 </div>
                 <p className="text-gray-400">
