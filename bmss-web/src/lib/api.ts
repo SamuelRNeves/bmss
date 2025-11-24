@@ -12,11 +12,28 @@ const normalizedConfiguredBase = configuredApiBase
   ? configuredApiBase.replace(/\/+$/, "")
   : undefined;
 
-export const API_BASE_URL =
-  normalizedConfiguredBase ||
-  (process.env.NODE_ENV === "development"
-    ? DEV_API_BASE
-    : PROD_DEFAULT_API_BASE);
+const isLocalHost = (hostname: string): boolean => {
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname.endsWith(".local")
+  );
+};
+
+const getDefaultApiBase = (): string => {
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    if (!isLocalHost(host)) {
+      // Quando o front roda em outro dispositivo/rede (ex.: IP interno),
+      // apontamos para o backend público para evitar timeouts de \"localhost\".
+      return PROD_DEFAULT_API_BASE;
+    }
+  }
+
+  return DEV_API_BASE;
+};
+
+export const API_BASE_URL = normalizedConfiguredBase || getDefaultApiBase();
 
 export function getRequiredApiBaseUrl(): string {
   return API_BASE_URL;
