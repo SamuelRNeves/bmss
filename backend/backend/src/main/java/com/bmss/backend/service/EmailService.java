@@ -5,17 +5,14 @@ import com.resend.Resend;
 import com.resend.core.exception.ResendException;
 import com.resend.services.emails.model.SendEmailRequest;
 import com.resend.services.emails.model.SendEmailResponse;
+import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
@@ -41,6 +38,7 @@ public class EmailService {
 
     public EmailService(EmailProperties emailProperties) {
         this.fromAddress = emailProperties.resolveFromEmail();
+
         if (emailProperties.isEnabled()) {
             this.resend = new Resend(emailProperties.getApiKey());
             this.emailEnabled = true;
@@ -53,6 +51,11 @@ public class EmailService {
         }
 
         this.emailExecutor = Executors.newCachedThreadPool(newEmailThreadFactory());
+    }
+
+    @PostConstruct
+    public void debugEmailConfig() {
+        log.info("📧 RESEND FROM: {}", fromAddress);
     }
 
     @PreDestroy
@@ -76,26 +79,25 @@ public class EmailService {
         Preferencia preferenciaNormalizada = normalizarPreferencia(notificacao);
         String perfilFormatado = formatarPerfilInvestidor(perfilInvestidor);
 
-        String htmlContent = String.format(
-                "<h2>Olá, %s! 👋</h2>" +
-                        "<p>Você agora está inscrito para receber análises inteligentes do sentimento do mercado Bitcoin.</p>" +
-                        "<br/>" +
-                        "<p><strong>Suas preferências:</strong></p>" +
-                        "<ul>" +
-                        "<li>📊 Perfil de investidor: %s</li>" +
-                        "<li>🔔 Notificações: %s</li>" +
-                        "</ul>" +
-                        "<br/>" +
-                        "<p>Você pode alterar essa configuração a qualquer momento em seu painel de usuário.</p>" +
-                        "<br/>" +
-                        "<p>Atenciosamente,</p>" +
-                        "<p><strong>Equipe BMSS</strong></p>",
-                nome,
-                perfilFormatado,
-                preferenciaNormalizada.descricao());
+        String htmlContent = """
+                <h2>Olá, %s! 👋</h2>
+                <p>Você agora está inscrito para receber análises inteligentes do sentimento do mercado Bitcoin.</p>
+                <br/>
+                <p><strong>Suas preferências:</strong></p>
+                <ul>
+                    <li>📊 Perfil de investidor: %s</li>
+                    <li>🔔 Notificações: %s</li>
+                </ul>
+                <br/>
+                <p>Você pode alterar essa configuração a qualquer momento em seu painel de usuário.</p>
+                <br/>
+                <p>Atenciosamente,</p>
+                <p><strong>Equipe BMSS</strong></p>
+                """.formatted(nome, perfilFormatado, preferenciaNormalizada.descricao());
 
         EmailDeliveryResult result = tentarEnvioComFallback(email, subject, attemptAt, htmlContent);
         lastDeliveryResult.set(result);
+
         return result;
     }
 
@@ -111,6 +113,9 @@ public class EmailService {
         return Optional.ofNullable(disabledReason);
     }
 
+    // ==========================
+    // Normalização de dados
+    // ==========================
     private Preferencia normalizarPreferencia(String notificacao) {
         if (notificacao == null) {
             return new Preferencia("Resumo diário de mercado");
@@ -130,9 +135,7 @@ public class EmailService {
     }
 
     private String formatarPerfilInvestidor(String perfilInvestidor) {
-        if (perfilInvestidor == null) {
-            return "Moderado";
-        }
+        if (perfilInvestidor == null) return "Moderado";
 
         return switch (perfilInvestidor.toUpperCase()) {
             case "CONSERVADOR" -> "Conservador";
@@ -141,21 +144,27 @@ public class EmailService {
         };
     }
 
-    private record Preferencia(String descricao) {
-    }
+    private record Preferencia(String descricao) {}
 
+    // ==========================
+    // Envio + Fallback
+    // ==========================
     private EmailDeliveryResult tentarEnvioComFallback(String destinatario, String subject, Instant attemptAt, String htmlContent) {
-        Function<CompletableFuture<EmailDeliveryResult>, CompletableFuture<EmailDeliveryResult>> flatten = Function.identity();
 
         return enviarComRemetenteAsync(fromAddress, destinatario, subject, htmlContent)
                 .handleAsync((response, throwable) -> {
+
                     if (throwable == null) {
-                        log.info("✅ Email enviado pelo Resend. FROM='{}' TO='{}'. Response: {}", fromAddress, destinatario, response);
-                        return CompletableFuture.completedFuture(EmailDeliveryResult.success(destinatario, subject, attemptAt, response.getId()));
+                        log.info("✅ Email enviado via Resend. FROM='{}' TO='{}'", fromAddress, destinatario);
+                        return CompletableFuture.completedFuture(
+                                EmailDeliveryResult.success(destinatario, subject, attemptAt, response.getId())
+                        );
                     }
+
                     return tratarFalhaComPossivelFallback(destinatario, subject, attemptAt, htmlContent, throwable);
+
                 }, emailExecutor)
-                .thenComposeAsync(flatten, emailExecutor)
+                .thenCompose(Function.identity())
                 .join();
     }
 
@@ -163,65 +172,74 @@ public class EmailService {
         return statusCode == 400 || statusCode == 422;
     }
 
-    private CompletableFuture<EmailDeliveryResult> tratarFalhaComPossivelFallback(String destinatario,
-                                                                                 String subject,
-                                                                                 Instant attemptAt,
-                                                                                 String htmlContent,
-                                                                                 Throwable primaryError) {
+    private CompletableFuture<EmailDeliveryResult> tratarFalhaComPossivelFallback(
+            String destinatario,
+            String subject,
+            Instant attemptAt,
+            String htmlContent,
+            Throwable primaryError) {
+
         Throwable rootCause = unwrap(primaryError);
         int statusCode = extrairStatusCode(rootCause);
-        log.error("❌ Falha ao enviar email. FROM='{}' TO='{}'. HTTP Status: {}. Detalhes: {}",
-                fromAddress,
-                destinatario,
-                statusCode == -1 ? "desconhecido" : statusCode,
-                rootCause.getMessage(),
-                rootCause);
+
+        log.error("❌ Falha no envio. FROM='{}' TO='{}'. HTTP Status={}, Erro={}",
+                fromAddress, destinatario, statusCode, rootCause.getMessage());
 
         if (deveUsarFallback(statusCode)) {
-            log.warn("🔄 Reenviando com fallback de remetente devido a possível rejeição por DNS/SPF/DKIM. Novo FROM='{}'",
-                    FALLBACK_FROM_ADDRESS);
+            log.warn("🔄 Tentando fallback. Novo FROM='{}'", FALLBACK_FROM_ADDRESS);
+
             return enviarComRemetenteAsync(FALLBACK_FROM_ADDRESS, destinatario, subject, htmlContent)
                     .handleAsync((fallbackResponse, fallbackThrowable) -> {
+
                         if (fallbackThrowable == null) {
-                            log.info("✅ Email enviado com fallback. FROM='{}' TO='{}'. Response: {}",
-                                    FALLBACK_FROM_ADDRESS,
-                                    destinatario,
-                                    fallbackResponse);
+                            log.info("✅ Fallback enviado. FROM='{}' TO='{}'",
+                                    FALLBACK_FROM_ADDRESS, destinatario);
                             return EmailDeliveryResult.success(destinatario, subject, attemptAt, fallbackResponse.getId());
                         }
 
                         Throwable fallbackRoot = unwrap(fallbackThrowable);
-                        int fallbackStatus = extrairStatusCode(fallbackRoot);
-                        String failureReason = "Falha após fallback: " + Optional.ofNullable(fallbackRoot.getMessage()).orElse("Erro desconhecido");
-                        log.error("❌ Fallback também falhou. FROM='{}' TO='{}'. HTTP Status: {}. Detalhes: {}",
-                                FALLBACK_FROM_ADDRESS,
+                        int fallbackCode = extrairStatusCode(fallbackRoot);
+
+                        return EmailDeliveryResult.failure(
                                 destinatario,
-                                fallbackStatus == -1 ? "desconhecido" : fallbackStatus,
-                                fallbackRoot.getMessage(),
-                                fallbackRoot);
-                        return EmailDeliveryResult.failure(destinatario, subject, attemptAt, formatFailureMessage(fallbackStatus, failureReason));
+                                subject,
+                                attemptAt,
+                                formatFailureMessage(fallbackCode, fallbackRoot.getMessage())
+                        );
+
                     }, emailExecutor);
         }
 
-        String failureReason = Optional.ofNullable(rootCause.getMessage()).orElse("Erro desconhecido ao enviar email");
-        return CompletableFuture.completedFuture(EmailDeliveryResult.failure(destinatario, subject, attemptAt, formatFailureMessage(statusCode, failureReason)));
+        return CompletableFuture.completedFuture(
+                EmailDeliveryResult.failure(destinatario, subject, attemptAt, formatFailureMessage(statusCode, rootCause.getMessage()))
+        );
     }
 
-    private CompletableFuture<SendEmailResponse> enviarComRemetenteAsync(String remetente,
-                                                                         String destinatario,
-                                                                         String subject,
-                                                                         String htmlContent) {
-        return CompletableFuture.supplyAsync(() -> enviarComRemetente(remetente, destinatario, subject, htmlContent), emailExecutor);
+    private CompletableFuture<SendEmailResponse> enviarComRemetenteAsync(
+            String remetente,
+            String destinatario,
+            String subject,
+            String htmlContent) {
+
+        return CompletableFuture.supplyAsync(
+                () -> enviarComRemetente(remetente, destinatario, subject, htmlContent),
+                emailExecutor
+        );
     }
 
-    private SendEmailResponse enviarComRemetente(String remetente, String destinatario, String subject, String htmlContent) {
+    private SendEmailResponse enviarComRemetente(
+            String remetente,
+            String destinatario,
+            String subject,
+            String htmlContent) {
+
         SendEmailRequest request = SendEmailRequest.builder()
                 .from(remetente)
                 .to(destinatario)
                 .subject(subject)
                 .html(htmlContent)
                 .build();
-        log.debug("📨 Payload Resend preparado. FROM='{}' TO='{}' SUBJECT='{}'", remetente, destinatario, subject);
+
         try {
             return resend.emails().send(request);
         } catch (ResendException e) {
@@ -242,17 +260,15 @@ public class EmailService {
         Throwable current = unwrap(throwable);
         while (current != null) {
             Integer code = invocarMetodoInteger(current, "getStatusCode");
-            if (code != null) {
-                return code;
-            }
+            if (code != null) return code;
             current = current.getCause();
         }
         return -1;
     }
 
     private Throwable unwrap(Throwable throwable) {
-        if (throwable instanceof CompletionException completionException && completionException.getCause() != null) {
-            return completionException.getCause();
+        if (throwable instanceof CompletionException c && c.getCause() != null) {
+            return c.getCause();
         }
         return throwable;
     }
@@ -261,19 +277,13 @@ public class EmailService {
         try {
             var method = throwable.getClass().getMethod(methodName);
             Object value = method.invoke(throwable);
-            if (value instanceof Integer code) {
-                return code;
-            }
-        } catch (Exception ignored) {
-            // método não disponível
-        }
+            if (value instanceof Integer i) return i;
+        } catch (Exception ignored) {}
         return null;
     }
 
     private String formatFailureMessage(int statusCode, String message) {
-        if (statusCode == -1) {
-            return message;
-        }
+        if (statusCode == -1) return message;
         return "HTTP " + statusCode + " - " + message;
     }
 }

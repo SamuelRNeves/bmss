@@ -1,7 +1,6 @@
-// useAuth.tsx
 "use client";
 
-import {
+import React, {
   createContext,
   useCallback,
   useContext,
@@ -12,6 +11,9 @@ import {
 } from "react";
 import api, { API_BASE_URL } from "@/lib/api";
 
+// ============================================================================
+// Tipos
+// ============================================================================
 interface UserData {
   id?: number;
   name: string;
@@ -27,23 +29,20 @@ type UserPatch = Partial<
   Pick<UserData, "investorProfile" | "notificationPreference" | "profileImageUrl">
 >;
 
+// ============================================================================
+// Utilidades
+// ============================================================================
 const PROFILE_IMAGE_MAX_BYTES = 2_500_000;
 const DATA_URL_PREFIX = /^data:image\/[-+\w.]+;base64,/i;
 
 const normalizeProfileImageValue = (
   value: string | null | undefined
 ): string | null | undefined => {
-  if (value === undefined) {
-    return undefined;
-  }
-  if (value === null) {
-    return null;
-  }
+  if (value === undefined) return undefined;
+  if (value === null) return null;
 
   const trimmed = value.trim();
-  if (!trimmed) {
-    return null;
-  }
+  if (!trimmed) return null;
 
   return trimmed.replace(/\s+/g, "");
 };
@@ -57,11 +56,15 @@ const enforceProfileImageLimit = (
   value: string | null | undefined
 ): string | null | undefined => {
   const normalized = normalizeProfileImageValue(value);
-  if (typeof normalized !== "string") {
-    return normalized;
-  }
 
-  if (normalized.startsWith("http://") || normalized.startsWith("https://") || normalized.startsWith("/")) {
+  if (typeof normalized !== "string") return normalized;
+
+  // Se for URL externa, não valida tamanho
+  if (
+    normalized.startsWith("http://") ||
+    normalized.startsWith("https://") ||
+    normalized.startsWith("/")
+  ) {
     return normalized;
   }
 
@@ -83,21 +86,12 @@ const resolveProfileImageSource = (
   apiBase: string
 ): string | null | undefined => {
   const normalized = normalizeProfileImageValue(value);
-  if (normalized === undefined) {
-    return undefined;
-  }
 
-  if (normalized === null) {
-    return null;
-  }
+  if (normalized === undefined) return undefined;
+  if (normalized === null) return null;
 
-  if (normalized.startsWith("data:image")) {
-    return normalized;
-  }
-
-  if (normalized.startsWith("http://") || normalized.startsWith("https://")) {
-    return normalized;
-  }
+  if (normalized.startsWith("data:image")) return normalized;
+  if (normalized.startsWith("http://") || normalized.startsWith("https://")) return normalized;
 
   const publicBase = resolvePublicBase(apiBase);
   const suffix = normalized.startsWith("/") ? normalized : `/${normalized}`;
@@ -108,9 +102,15 @@ const resolveApiBase = (): string => {
   return API_BASE_URL.replace(/\/+$/, "");
 };
 
+// ============================================================================
+// LocalStorage Keys
+// ============================================================================
 export const INVESTOR_PROFILE_STORAGE_KEY = "bmss:last-investor-profile";
 const USER_CACHE_STORAGE_KEY = "bmss:cached-user:v1";
 
+// ============================================================================
+// Cache local
+// ============================================================================
 type CachedUserPayload = {
   id?: number;
   name?: string;
@@ -122,13 +122,14 @@ type CachedUserPayload = {
 
 const loadCachedUser = (): UserData | null => {
   if (typeof window === "undefined") return null;
+
   try {
     const raw = window.localStorage.getItem(USER_CACHE_STORAGE_KEY);
+
     if (!raw) {
       const storedProfile = window.localStorage.getItem(INVESTOR_PROFILE_STORAGE_KEY);
-      if (!storedProfile) {
-        return null;
-      }
+      if (!storedProfile) return null;
+
       return {
         name: "",
         email: "",
@@ -139,9 +140,7 @@ const loadCachedUser = (): UserData | null => {
     }
 
     const parsed = JSON.parse(raw) as CachedUserPayload | null;
-    if (!parsed) {
-      return null;
-    }
+    if (!parsed) return null;
 
     return {
       id: typeof parsed.id === "number" ? parsed.id : undefined,
@@ -153,8 +152,7 @@ const loadCachedUser = (): UserData | null => {
         typeof parsed.notificationPreference === "string"
           ? parsed.notificationPreference
           : "resumo_diario",
-      profileImageUrl:
-        typeof parsed.profileImageUrl === "string" ? parsed.profileImageUrl : null,
+      profileImageUrl: typeof parsed.profileImageUrl === "string" ? parsed.profileImageUrl : null,
     };
   } catch {
     return null;
@@ -163,6 +161,7 @@ const loadCachedUser = (): UserData | null => {
 
 const persistCachedUser = (value: UserData | null) => {
   if (typeof window === "undefined") return;
+
   if (!value) {
     window.localStorage.removeItem(USER_CACHE_STORAGE_KEY);
     window.localStorage.removeItem(INVESTOR_PROFILE_STORAGE_KEY);
@@ -188,6 +187,9 @@ const persistCachedUser = (value: UserData | null) => {
   }
 };
 
+// ============================================================================
+// Contexto
+// ============================================================================
 interface AuthContextValue {
   user: UserData | null;
   loading: boolean;
@@ -198,6 +200,9 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+// ============================================================================
+// Provider
+// ============================================================================
 function useProvideAuth(): AuthContextValue {
   const [user, setUserState] = useState<UserData | null>(() => loadCachedUser());
   const [loading, setLoading] = useState(true);
@@ -207,10 +212,7 @@ function useProvideAuth(): AuthContextValue {
   const setUser = useCallback(
     (updater: UserData | null | ((prev: UserData | null) => UserData | null)) => {
       setUserState((prev) => {
-        const next =
-          typeof updater === "function"
-            ? (updater as (value: UserData | null) => UserData | null)(prev)
-            : updater;
+        const next = typeof updater === "function" ? updater(prev) : updater;
         persistCachedUser(next ?? null);
         return next ?? null;
       });
@@ -218,6 +220,9 @@ function useProvideAuth(): AuthContextValue {
     []
   );
 
+  // ====================================================
+  // Carregar /auth/me
+  // ====================================================
   useEffect(() => {
     const token = typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
     if (!token) {
@@ -232,18 +237,21 @@ function useProvideAuth(): AuthContextValue {
       .get("/auth/me")
       .then((res) => {
         if (!isMounted) return;
+
         const payload = res.data as Partial<UserData> | undefined;
+
         if (payload) {
           const resolvedProfile = resolveProfileImageSource(payload.profileImageUrl, apiBase);
+
           const normalizedUser: UserData = {
-            id: payload.id as number | undefined,
-            name: (payload.name as string) ?? "",
-            email: (payload.email as string) ?? "",
-            investorProfile: (payload.investorProfile as string) ?? "MODERADO",
-            notificationPreference:
-              (payload.notificationPreference as string | undefined) ?? "resumo_diario",
+            id: payload.id,
+            name: payload.name ?? "",
+            email: payload.email ?? "",
+            investorProfile: payload.investorProfile ?? "MODERADO",
+            notificationPreference: payload.notificationPreference ?? "resumo_diario",
             profileImageUrl: resolvedProfile ?? null,
           };
+
           setUser(normalizedUser);
         } else {
           setUser(null);
@@ -251,7 +259,6 @@ function useProvideAuth(): AuthContextValue {
       })
       .catch((error) => {
         if (error.response?.status === 401) {
-          console.warn("🔒 Token expirado ou inválido, removendo...");
           if (typeof window !== "undefined") {
             localStorage.removeItem("jwtToken");
           }
@@ -262,9 +269,7 @@ function useProvideAuth(): AuthContextValue {
         }
       })
       .finally(() => {
-        if (isMounted) {
-          setLoading(false);
-        }
+        if (isMounted) setLoading(false);
       });
 
     return () => {
@@ -272,94 +277,67 @@ function useProvideAuth(): AuthContextValue {
     };
   }, [apiBase, setUser]);
 
+  // Sync de eventos locais
   useEffect(() => {
-    const handler: EventListener = (event) => {
+    const handler = (event: Event) => {
       const detail = (event as CustomEvent<Partial<UserData>>).detail;
-      if (!detail) {
-        return;
-      }
+      if (!detail) return;
 
       setUser((prev) => {
-        if (!prev) {
-          return prev;
-        }
+        if (!prev) return prev;
         return { ...prev, ...detail };
       });
     };
 
     window.addEventListener("bmss:profile-updated", handler);
-    return () => {
-      window.removeEventListener("bmss:profile-updated", handler);
-    };
+    return () => window.removeEventListener("bmss:profile-updated", handler);
   }, [setUser]);
 
+  // ====================================================
+  // Atualização remota
+  // ====================================================
   const persistUserUpdate = useCallback(
     async (patch: UserPatch): Promise<UserPatch> => {
-      if (!patch || Object.keys(patch).length === 0) {
-        return {};
-      }
+      if (!patch || Object.keys(patch).length === 0) return {};
 
       if (!user) {
         throw new Error("Informações do usuário ainda não foram carregadas");
       }
 
+      // Atualização local
       const applyLocalUpdate = (delta: UserPatch) => {
         const sanitized: UserPatch = {};
 
         if (delta.investorProfile !== undefined) {
           sanitized.investorProfile = delta.investorProfile;
         }
-
         if (delta.notificationPreference !== undefined) {
           sanitized.notificationPreference = delta.notificationPreference;
         }
-
         if (delta.profileImageUrl !== undefined) {
           const resolved = resolveProfileImageSource(delta.profileImageUrl, apiBase);
           sanitized.profileImageUrl = resolved ?? null;
         }
 
         setUser((prev) => {
-          if (!prev) {
-            return prev;
-          }
-
-          const next = { ...prev };
-
-          if (sanitized.investorProfile !== undefined) {
-            next.investorProfile = sanitized.investorProfile;
-          }
-
-          if (sanitized.notificationPreference !== undefined) {
-            next.notificationPreference = sanitized.notificationPreference;
-          }
-
-          if (sanitized.profileImageUrl !== undefined) {
-            next.profileImageUrl = sanitized.profileImageUrl ?? null;
-          }
-
-          return next;
+          if (!prev) return prev;
+          return { ...prev, ...sanitized };
         });
 
         if (Object.keys(sanitized).length > 0) {
           window.dispatchEvent(
-            new CustomEvent("bmss:profile-updated", {
-              detail: sanitized,
-            })
+            new CustomEvent("bmss:profile-updated", { detail: sanitized })
           );
         }
 
         return sanitized;
       };
 
-      if (!user.id) {
-        return applyLocalUpdate(patch);
-      }
+      // Usuário sem ID → não precisa bater API
+      if (!user.id) return applyLocalUpdate(patch);
 
       const token = typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
-      if (!token) {
-        throw new Error("Usuário não autenticado");
-      }
+      if (!token) throw new Error("Usuário não autenticado");
 
       const requestPayload: Record<string, unknown> = {};
 
@@ -370,7 +348,8 @@ function useProvideAuth(): AuthContextValue {
       const shouldBootstrapPreference =
         patch.notificationPreference === undefined &&
         (patch.investorProfile !== undefined || patch.profileImageUrl !== undefined) &&
-        (user.notificationPreference === null || user.notificationPreference === undefined);
+        (user.notificationPreference === null ||
+          user.notificationPreference === undefined);
 
       if (patch.notificationPreference !== undefined) {
         requestPayload.notificationPreference = patch.notificationPreference;
@@ -415,12 +394,14 @@ function useProvideAuth(): AuthContextValue {
         (payload && Object.prototype.hasOwnProperty.call(payload, "investorProfile"))
       ) {
         normalized.investorProfile =
-          (payload?.investorProfile as string | undefined) ?? patch.investorProfile;
+          (payload?.investorProfile as string | undefined) ??
+          patch.investorProfile;
       }
 
       if (
         patch.notificationPreference !== undefined ||
-        (payload && Object.prototype.hasOwnProperty.call(payload, "notificationPreference")) ||
+        (payload &&
+          Object.prototype.hasOwnProperty.call(payload, "notificationPreference")) ||
         shouldBootstrapPreference
       ) {
         normalized.notificationPreference =
@@ -438,10 +419,8 @@ function useProvideAuth(): AuthContextValue {
           ? (payload?.profileImageUrl as string | null | undefined)
           : patch.profileImageUrl;
 
-        const resolvedProfile = resolveProfileImageSource(rawProfileImage ?? undefined, apiBase);
-        if (resolvedProfile !== undefined) {
-          normalized.profileImageUrl = resolvedProfile ?? null;
-        }
+        const resolved = resolveProfileImageSource(rawProfileImage ?? undefined, apiBase);
+        if (resolved !== undefined) normalized.profileImageUrl = resolved ?? null;
       }
 
       return applyLocalUpdate(normalized);
@@ -451,28 +430,15 @@ function useProvideAuth(): AuthContextValue {
 
   const updateInvestorProfile = useCallback(
     async (nextProfile: InvestorProfile): Promise<void> => {
-      if (!nextProfile) {
-        return;
-      }
-
-      try {
-        await persistUserUpdate({ investorProfile: nextProfile });
-      } catch (error) {
-        console.error("Erro ao atualizar perfil do investidor:", error);
-        throw error;
-      }
+      if (!nextProfile) return;
+      await persistUserUpdate({ investorProfile: nextProfile });
     },
     [persistUserUpdate]
   );
 
   const updateUserSettings = useCallback(
     async (patch: UserPatch): Promise<UserPatch> => {
-      try {
-        return await persistUserUpdate(patch);
-      } catch (error) {
-        console.error("Erro ao atualizar dados do usuário:", error);
-        throw error;
-      }
+      return await persistUserUpdate(patch);
     },
     [persistUserUpdate]
   );
@@ -490,11 +456,17 @@ function useProvideAuth(): AuthContextValue {
   return { user, loading, logout, updateInvestorProfile, updateUserSettings };
 }
 
+// ============================================================================
+// Provider Component
+// ============================================================================
 export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useProvideAuth();
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
+// ============================================================================
+// Hook consumidor
+// ============================================================================
 export function useAuth(): AuthContextValue {
   const context = useContext(AuthContext);
   if (!context) {

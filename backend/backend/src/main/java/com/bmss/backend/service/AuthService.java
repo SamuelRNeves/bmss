@@ -365,6 +365,8 @@ public ResponseEntity<?> register(RegisterRequest request) {
             }
         }
 
+
+        
         // Enviar email de boas-vindas (assíncrono)
         logger.info("👤 Usuário salvo no banco: {}", finalSavedUser.getEmail());
         CompletableFuture.runAsync(() -> {
