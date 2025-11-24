@@ -97,181 +97,112 @@ const buildPurchaseGuidance = (
   perfil: InvestorProfile,
   percentualPositivo: number,
   percentualNeutro: number,
-  percentualNegativo: number,
-  momentum: number,
-  consenso: number,
-  polarizacao: number,
-  volume: number
+  percentualNegativo: number
 ): PurchaseGuidance => {
+  const viesLiquidez = percentualNeutro >= 0.2;
   const margemPositiva = percentualPositivo - percentualNegativo;
+  const choqueVendedor = percentualNegativo >= 0.65;
+  const vantagemNegativa = percentualNegativo - percentualPositivo;
+  const neutroAmortecedor = percentualNeutro >= 0.55;
 
-  if (perfil === "CONSERVADOR") {
-    if (
-      percentualPositivo >= 0.35 &&
-      percentualNegativo <= 0.2 &&
-      momentum >= 10 &&
-      consenso >= 85 &&
-      polarizacao <= 20 &&
-      volume >= 40
-    ) {
-      return {
-        status: "comprar",
-        titulo: "Compra liberada (proteção máxima)",
-        detalhe:
-          "Ambiente estável, tendência positiva clara e baixa dispersão. Entradas cheias liberadas com stops largos e hedge ativo para blindar quedas.",
-      };
-    }
-
-    if (
-      percentualPositivo >= 0.28 &&
-      percentualNeutro >= 0.4 &&
-      momentum >= 4 &&
-      momentum <= 10 &&
-      polarizacao <= 30
-    ) {
-      return {
-        status: "comprar",
-        titulo: "Compra seletiva (entrada reduzida)",
-        detalhe:
-          "Positivo relevante com neutro amortecendo. Faça posições menores, priorize setores defensivos e adicione somente após novas confirmações.",
-      };
-    }
-
-    if (
-      percentualNeutro >= 0.45 &&
-      momentum >= -4 &&
-      momentum <= 4 &&
-      polarizacao <= 35
-    ) {
-      return {
-        status: "observar",
-        titulo: "Aguardar / manter posição",
-        detalhe:
-          "Neutro dominante sugere mercado lateral. Mantenha proteções, rebalanceie ganhos e evite aumentar risco até surgir direção clara.",
-      };
-    }
-
-    if (percentualNegativo >= 0.3 && momentum <= -6 && polarizacao >= 40) {
+  if (perfil === "AGRESSIVO") {
+    if (choqueVendedor && percentualPositivo < 0.08) {
       return {
         status: "evitar",
-        titulo: "Venda / reduzir exposição",
+        titulo: "Pressão vendedora dominante",
         detalhe:
-          "Pressão vendedora relevante, polarização alta e momentum negativo. Reduza beta, aumente caixa e priorize ativos protegidos.",
+          "Mesmo tolerando ruído, o perfil agressivo preserva munição quando o negativo passa de 65% e o positivo não reage. Foque em trades curtos ou espere alívio.",
+      };
+    }
+
+    if (percentualPositivo >= 0.03 && (viesLiquidez || margemPositiva > -0.15)) {
+      return {
+        status: "comprar",
+        titulo: "Janela tática aberta",
+        detalhe:
+          "Com 3%+ de sinais positivos e pelo menos 20% neutros, há espaço para entradas rápidas com stops curtos. O agressivo prioriza velocidade e aceita drawdown de curto prazo.",
+      };
+    }
+
+    if (vantagemNegativa > 0.12 && !neutroAmortecedor) {
+      return {
+        status: "observar",
+        titulo: "Venda ainda fala mais alto",
+        detalhe:
+          "Negativo supera o positivo e o neutro não está amortecendo bem. O agressivo pode operar contrarian em prazos curtos, mas sem travar capital em posições longas.",
       };
     }
 
     return {
       status: "observar",
-      titulo: "Defesa ativada",
+      titulo: "Paciência estratégica",
       detalhe:
-        "Sem alinhamento completo dos filtros conservadores. Continue protegendo capital, faça entradas mínimas apenas com stops curtos e hedge.",
+        "Espere o neutro subir para perto de 30% ou o positivo reagir antes de alavancar. Preserve liquidez para capturar rompimentos com stops curtos.",
     };
   }
 
   if (perfil === "MODERADO") {
     if (
-      percentualPositivo >= 0.3 &&
-      percentualNegativo <= 0.25 &&
-      momentum >= 6 &&
-      consenso >= 75 &&
-      volume >= 25
+      percentualPositivo >= 0.15 &&
+      percentualNegativo <= 0.4 &&
+      (percentualPositivo >= percentualNegativo || neutroAmortecedor)
     ) {
       return {
         status: "comprar",
-        titulo: "Compra liberada (equilíbrio)",
+        titulo: "Compras graduais liberadas",
         detalhe:
-          "Ambiente começando a acelerar com venda contida. Entradas graduais permitidas, mantendo parte em caixa para aproveitar correções.",
+          "Balanceado entre prudência e oportunidade: com 15%+ positivos, venda contida e neutro amortecendo, o moderado pode comprar em parcelas, mantendo stops mais folgados.",
       };
     }
 
-    if (percentualPositivo >= 0.25 && percentualNeutro >= 0.4 && momentum >= 2) {
-      return {
-        status: "comprar",
-        titulo: "Compra seletiva",
-        detalhe:
-          "Positivo e neutro sustentam o cenário. Prefira aportes fatiados, stops intermediários e revisão rápida se o fluxo virar.",
-      };
-    }
-
-    if (polarizacao >= 35 || consenso <= 60) {
-      return {
-        status: "observar",
-        titulo: "Aguardar confirmação",
-        detalhe:
-          "Leitura dividida ou consenso fraco. Mantenha posição, rebalanceie ganhos e espere o sentimento alinhar antes de aumentar risco.",
-      };
-    }
-
-    if (percentualNegativo >= 0.35 && momentum <= -5) {
+    if (percentualNegativo >= 0.6 || margemPositiva <= -0.2) {
       return {
         status: "evitar",
-        titulo: "Reduzir posição",
+        titulo: "Cenário frágil para novas posições",
+        detalhe: "Sentimento negativo muito alto ou vantagem vendedora relevante. Preservar capital e aguardar que o neutro volte a amortecer o risco.",
+      };
+    }
+
+    if (vantagemNegativa >= 0.08 && !neutroAmortecedor) {
+      return {
+        status: "observar",
+        titulo: "Aguardar reequilíbrio",
         detalhe:
-          "Negativo ganhou tração e momentum piorou. Enxugue exposição cíclica, proteja lucros e aguarde sinal de retomada.",
+          "O negativo ainda supera o positivo. Espere o neutro segurar melhor a volatilidade ou o positivo virar a liderança antes de novas compras.",
       };
     }
 
     return {
       status: "observar",
-      titulo: "Gestão ativa, sem pressa",
+      titulo: "Aguardando confirmação",
       detalhe:
-        "Cenário misto. Preserve liquidez, use tamanhos moderados e só acelere quando o positivo se firmar ou a polarização ceder.",
+        "Priorize equilíbrio: monte posições pequenas quando houver neutro acima de 20% e espere o positivo superar o negativo antes de acelerar compras.",
     };
   }
 
-  // Perfil agressivo
-  if (
-    percentualPositivo >= 0.25 &&
-    momentum >= 2 &&
-    polarizacao <= 45 &&
-    volume >= 15
-  ) {
+  // Perfil CONSERVADOR
+  if (percentualPositivo >= 0.2 && percentualNegativo <= 0.3 && percentualNeutro >= 0.2) {
     return {
       status: "comprar",
-      titulo: "Compra liberada (agressiva)",
+      titulo: "Entrada seletiva permitida",
       detalhe:
-        "Fluxo já puxa para cima e a dispersão é aceitável. O agressivo pode entrar cedo, usando stops móveis e gestão ativa de alavancagem.",
+        "O conservador teme quedas de curto prazo; por isso exige 20%+ de sinais positivos, neutro robusto e venda contida para iniciar posições protegidas e menores.",
     };
   }
 
-  if (
-    percentualNegativo <= 0.4 &&
-    percentualNeutro >= 0.35 &&
-    momentum >= 0 &&
-    momentum <= 2 &&
-    polarizacao <= 55
-  ) {
-    return {
-      status: "comprar",
-      titulo: "Compra especulativa (alta volatilidade)",
-      detalhe:
-        "Ambiente instável, mas com colchão neutro. Entradas táticas em prazos curtos buscando antecipar reversões; stops curtos são obrigatórios.",
-    };
-  }
-
-  if (consenso < 50 || polarizacao > 60) {
-    return {
-      status: "observar",
-      titulo: "Aguardar leitura clara",
-      detalhe:
-        "Mercado sem consenso ou dispersão extrema. O agressivo monitora gatilhos técnicos enquanto preserva caixa para o rompimento verdadeiro.",
-    };
-  }
-
-  if (percentualNegativo >= 0.45 && momentum <= -10) {
+  if (percentualNegativo >= 0.45 || margemPositiva < -0.1) {
     return {
       status: "evitar",
-      titulo: "Venda / reduzir exposição",
-      detalhe:
-        "Pressão vendedora dominante e momentum piorando. Melhor reduzir alavancagem, operar apenas reversões rápidas ou ficar líquido.",
+      titulo: "Preservar capital",
+      detalhe: "Ambiente defensivo para o conservador. Fique em caixa ou ativos estáveis até que a pressão vendedora recue e o neutro volte a amortecer a volatilidade.",
     };
   }
 
   return {
     status: "observar",
-    titulo: "Observação ativa",
+    titulo: "Monitorando sinais",
     detalhe:
-      "Sem gatilho forte. Priorize setups curtos, proteja capital e espere melhoria no momentum ou queda da polarização para acelerar.",
+      "Mantenha postura cautelosa; o conservador espera que o positivo fique mais encorpado e que o negativo permaneça abaixo de 30% antes de alocar novo capital.",
   };
 };
 
@@ -568,6 +499,7 @@ export default function Recomendacoes({
       distribuicao: distribuicaoSanitizada,
     } satisfies SentimentSnapshot;
   }, [snapshot]);
+  
   const convictionScore = useMemo(() => computeConvictionScore(snapshotAtual), [snapshotAtual]);
   const convictionLabel = resolveConfidenceLabel(convictionScore);
   const tacticalInsights = useMemo(() => {
@@ -589,23 +521,7 @@ export default function Recomendacoes({
     const neutro = clampRatio(distribuicao.neutro / (totalDistribuicao || 1));
     const negativo = clampRatio(distribuicao.negativo / (totalDistribuicao || 1));
 
-    const momentum = Math.round(snapshotAtual.media * 100);
-    const consenso = Math.round(clampRatio(snapshotAtual.proporcaoDominante) * 100);
-    const polarizacao = Math.round(
-      (1 - clampRatio(Math.max(positivo, negativo, neutro))) * 100
-    );
-    const volume = snapshotAtual.totalItens;
-
-    return buildPurchaseGuidance(
-      perfil,
-      positivo,
-      neutro,
-      negativo,
-      momentum,
-      consenso,
-      polarizacao,
-      volume
-    );
+    return buildPurchaseGuidance(perfil, positivo, neutro, negativo);
   }, [perfil, snapshotAtual]);
 
   if (!recomendacao) {
@@ -624,10 +540,10 @@ export default function Recomendacoes({
   };
 
   const legendaSugestoes = [
-    "Conservador prioriza proteção máxima: só libera compra cheia com positivo ≥ 35%, negativo ≤ 20%, momentum ≥ +10, consenso ≥ 85%, polarização ≤ 20% e volume ≥ 40 sinais.",
-    "Moderado equilibra risco: compra liberada com positivo ≥ 30%, negativo ≤ 25%, momentum ≥ +6, consenso ≥ 75% e volume ≥ 25. Polarização alta ou consenso fraco obriga aguardar.",
-    "Agressivo busca oportunidade mesmo no ruído: compra cedo com positivo ≥ 25%, momentum ≥ +2, polarização ≤ 45% e volume ≥ 15. Pode especular com neutro alto mesmo com negativo moderado.",
-    "Polarização mede dispersão (quanto menor, melhor); consenso é a liderança do viés dominante. Momentum deriva do score médio; volume é o total de sinais que alimentam o gráfico.",
+    "Agressivo prioriza velocidade e upside; aceita perdas de curto prazo e pode comprar com respingos positivos mínimos, mas pausa se o negativo dominar sem neutro para amortecer.",
+    "Moderado busca equilíbrio: prefere neutro amortecendo volatilidade e só acelera quando o positivo lidera ou o neutro passa de ~55% para blindar quedas rápidas.",
+    "Conservador protege capital: teme quedas no curto prazo, só entra com positivo robusto (20%+), neutro forte e negativo controlado.",
+    "Se o negativo superar o positivo sem colchão neutro, o sistema reduz compras para moderado/conservador e sugere observar. Neutro alto funciona como colchão; negativo alto trava compras.",
   ];
 
   const formatSignals = (percentual: number) => {
