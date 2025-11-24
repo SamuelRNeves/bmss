@@ -12,6 +12,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { buildApiUrl } from "@/lib/api";
+import { AUTH_TOKEN_CHANGED_EVENT } from "@/lib/useAuth";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -52,6 +53,7 @@ export default function LoginPage() {
 
       // Salva o token no localStorage
       localStorage.setItem("jwtToken", token);
+      window.dispatchEvent(new Event(AUTH_TOKEN_CHANGED_EVENT));
 
       // Redireciona ao dashboard
       router.push("/");

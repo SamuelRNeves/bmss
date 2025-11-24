@@ -97,6 +97,8 @@ const buildPurchaseGuidance = (
   const viesLiquidez = percentualNeutro >= 0.2;
   const margemPositiva = percentualPositivo - percentualNegativo;
   const choqueVendedor = percentualNegativo >= 0.65;
+  const vantagemNegativa = percentualNegativo - percentualPositivo;
+  const neutroAmortecedor = percentualNeutro >= 0.55;
 
   if (perfil === "AGRESSIVO") {
     if (choqueVendedor && percentualPositivo < 0.08) {
@@ -117,20 +119,34 @@ const buildPurchaseGuidance = (
       };
     }
 
+    if (vantagemNegativa > 0.12 && !neutroAmortecedor) {
+      return {
+        status: "observar",
+        titulo: "Venda ainda fala mais alto",
+        detalhe:
+          "Negativo supera o positivo e o neutro não está amortecendo bem. O agressivo pode operar contrarian em prazos curtos, mas sem travar capital em posições longas.",
+      };
+    }
+
     return {
       status: "observar",
-      titulo: "Esperando direção clara",
-      detalhe: "Sinais mistos: opere leve, priorize liquidez e aumente o risco apenas se o positivo continuar ganhando terreno sobre o negativo.",
+      titulo: "Paciência estratégica",
+      detalhe:
+        "Espere o neutro subir para perto de 30% ou o positivo reagir antes de alavancar. Preserve liquidez para capturar rompimentos com stops curtos.",
     };
   }
 
   if (perfil === "MODERADO") {
-    if (percentualPositivo >= 0.12 && percentualNegativo <= 0.45) {
+    if (
+      percentualPositivo >= 0.15 &&
+      percentualNegativo <= 0.4 &&
+      (percentualPositivo >= percentualNegativo || neutroAmortecedor)
+    ) {
       return {
         status: "comprar",
         titulo: "Compras graduais liberadas",
         detalhe:
-          "Balanceado entre prudência e oportunidade: acima de 12% positivos e venda abaixo de 45%, o moderado pode comprar em parcelas, mantendo stops mais folgados.",
+          "Balanceado entre prudência e oportunidade: com 15%+ positivos, venda contida e neutro amortecendo, o moderado pode comprar em parcelas, mantendo stops mais folgados.",
       };
     }
 
@@ -139,6 +155,15 @@ const buildPurchaseGuidance = (
         status: "evitar",
         titulo: "Cenário frágil para novas posições",
         detalhe: "Sentimento negativo muito alto ou vantagem vendedora relevante. Preservar capital e aguardar que o neutro volte a amortecer o risco.",
+      };
+    }
+
+    if (vantagemNegativa >= 0.08 && !neutroAmortecedor) {
+      return {
+        status: "observar",
+        titulo: "Aguardar reequilíbrio",
+        detalhe:
+          "O negativo ainda supera o positivo. Espere o neutro segurar melhor a volatilidade ou o positivo virar a liderança antes de novas compras.",
       };
     }
 
@@ -485,10 +510,10 @@ export default function Recomendacoes({
   };
 
   const legendaSugestoes = [
-    "Agressivo prioriza velocidade e upside, aceita perda de curto prazo e compra quando há mínimo respiro positivo e neutro servindo de colchão de liquidez.",
-    "Moderado busca equilíbrio: prefere neutro amortecendo volatilidade, só acelera compras quando o positivo lidera e o negativo perde fôlego.",
+    "Agressivo prioriza velocidade e upside; aceita perdas de curto prazo e pode comprar com respingos positivos mínimos, mas pausa se o negativo dominar sem neutro para amortecer.",
+    "Moderado busca equilíbrio: prefere neutro amortecendo volatilidade e só acelera quando o positivo lidera ou o neutro passa de ~55% para blindar quedas rápidas.",
     "Conservador protege capital: teme quedas no curto prazo, só entra com positivo robusto (20%+), neutro forte e negativo controlado.",
-    "Sistema usa a mistura positivo/neutro/negativo do gráfico ao lado. Neutro alto funciona como colchão; negativo elevado trava compras para perfis menos tolerantes.",
+    "Se o negativo superar o positivo sem colchão neutro, o sistema reduz compras para moderado/conservador e sugere observar. Neutro alto funciona como colchão; negativo alto trava compras.",
   ];
 
   const formatSignals = (percentual: number) => {
