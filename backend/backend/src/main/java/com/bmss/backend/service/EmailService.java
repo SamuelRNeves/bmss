@@ -76,21 +76,23 @@ public class EmailService {
         Preferencia preferenciaNormalizada = normalizarPreferencia(notificacao);
         String perfilFormatado = formatarPerfilInvestidor(perfilInvestidor);
 
-        String htmlContent = """
-                <h2>Olá, %s! 👋</h2>
-                <p>Você agora está inscrito para receber análises inteligentes do sentimento do mercado Bitcoin.</p>
-                <br/>
-                <p><strong>Suas preferências:</strong></p>
-                <ul>
-                    <li>📊 Perfil de investidor: %s</li>
-                    <li>🔔 Notificações: %s</li>
-                </ul>
-                <br/>
-                <p>Você pode alterar essa configuração a qualquer momento em seu painel de usuário.</p>
-                <br/>
-                <p>Atenciosamente,</p>
-                <p><strong>Equipe BMSS</strong></p>
-            """.formatted(nome, perfilFormatado, preferenciaNormalizada.descricao());
+        String htmlContent = String.format(
+                "<h2>Olá, %s! 👋</h2>" +
+                        "<p>Você agora está inscrito para receber análises inteligentes do sentimento do mercado Bitcoin.</p>" +
+                        "<br/>" +
+                        "<p><strong>Suas preferências:</strong></p>" +
+                        "<ul>" +
+                        "<li>📊 Perfil de investidor: %s</li>" +
+                        "<li>🔔 Notificações: %s</li>" +
+                        "</ul>" +
+                        "<br/>" +
+                        "<p>Você pode alterar essa configuração a qualquer momento em seu painel de usuário.</p>" +
+                        "<br/>" +
+                        "<p>Atenciosamente,</p>" +
+                        "<p><strong>Equipe BMSS</strong></p>",
+                nome,
+                perfilFormatado,
+                preferenciaNormalizada.descricao());
 
         EmailDeliveryResult result = tentarEnvioComFallback(email, subject, attemptAt, htmlContent);
         lastDeliveryResult.set(result);
@@ -143,6 +145,8 @@ public class EmailService {
     }
 
     private EmailDeliveryResult tentarEnvioComFallback(String destinatario, String subject, Instant attemptAt, String htmlContent) {
+        Function<CompletableFuture<EmailDeliveryResult>, CompletableFuture<EmailDeliveryResult>> flatten = Function.identity();
+
         return enviarComRemetenteAsync(fromAddress, destinatario, subject, htmlContent)
                 .handleAsync((response, throwable) -> {
                     if (throwable == null) {
@@ -151,7 +155,7 @@ public class EmailService {
                     }
                     return tratarFalhaComPossivelFallback(destinatario, subject, attemptAt, htmlContent, throwable);
                 }, emailExecutor)
-                .thenCompose(Function.identity())
+                .thenComposeAsync(flatten, emailExecutor)
                 .join();
     }
 
