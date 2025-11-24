@@ -1,14 +1,13 @@
 // useAuth.ts
 "use client";
 
-import {
+import React, {
   createContext,
   useCallback,
   useContext,
   useEffect,
   useMemo,
   useState,
-  type ReactNode,
 } from "react";
 import api, { API_BASE_URL } from "@/lib/api";
 
@@ -29,8 +28,7 @@ type UserPatch = Partial<
 
 const PROFILE_IMAGE_MAX_BYTES = 2500000;
 
-// SOLUÇÃO ALTERNATIVA: Remover completamente a regex problemática
-// e usar métodos de string em vez disso
+// Funções utilitárias
 const isDataURL = (value: string): boolean => {
   return value.startsWith('data:image') && value.includes(';base64,');
 };
@@ -38,17 +36,11 @@ const isDataURL = (value: string): boolean => {
 const normalizeProfileImageValue = (
   value: string | null | undefined
 ): string | null | undefined => {
-  if (value === undefined) {
-    return undefined;
-  }
-  if (value === null) {
-    return null;
-  }
+  if (value === undefined) return undefined;
+  if (value === null) return null;
 
   const trimmed = value.trim();
-  if (!trimmed) {
-    return null;
-  }
+  if (!trimmed) return null;
 
   return trimmed.replace(/\s+/g, "");
 };
@@ -65,11 +57,13 @@ const enforceProfileImageLimit = (
   value: string | null | undefined
 ): string | null | undefined => {
   const normalized = normalizeProfileImageValue(value);
-  if (typeof normalized !== "string") {
-    return normalized;
-  }
+  if (typeof normalized !== "string") return normalized;
 
-  if (normalized.startsWith("http://") || normalized.startsWith("https://") || normalized.startsWith("/")) {
+  if (
+    normalized.startsWith("http://") || 
+    normalized.startsWith("https://") || 
+    normalized.startsWith("/")
+  ) {
     return normalized;
   }
 
@@ -91,21 +85,11 @@ const resolveProfileImageSource = (
   apiBase: string
 ): string | null | undefined => {
   const normalized = normalizeProfileImageValue(value);
-  if (normalized === undefined) {
-    return undefined;
-  }
+  if (normalized === undefined) return undefined;
+  if (normalized === null) return null;
 
-  if (normalized === null) {
-    return null;
-  }
-
-  if (normalized.startsWith("data:image")) {
-    return normalized;
-  }
-
-  if (normalized.startsWith("http://") || normalized.startsWith("https://")) {
-    return normalized;
-  }
+  if (normalized.startsWith("data:image")) return normalized;
+  if (normalized.startsWith("http://") || normalized.startsWith("https://")) return normalized;
 
   const publicBase = resolvePublicBase(apiBase);
   const suffix = normalized.startsWith("/") ? normalized : `/${normalized}`;
@@ -116,6 +100,7 @@ const resolveApiBase = (): string => {
   return API_BASE_URL.replace(/\/+$/, "");
 };
 
+// Chaves de storage
 export const INVESTOR_PROFILE_STORAGE_KEY = "bmss:last-investor-profile";
 const USER_CACHE_STORAGE_KEY = "bmss:cached-user:v1";
 
@@ -134,9 +119,8 @@ const loadCachedUser = (): UserData | null => {
     const raw = window.localStorage.getItem(USER_CACHE_STORAGE_KEY);
     if (!raw) {
       const storedProfile = window.localStorage.getItem(INVESTOR_PROFILE_STORAGE_KEY);
-      if (!storedProfile) {
-        return null;
-      }
+      if (!storedProfile) return null;
+      
       return {
         name: "",
         email: "",
@@ -147,22 +131,17 @@ const loadCachedUser = (): UserData | null => {
     }
 
     const parsed = JSON.parse(raw) as CachedUserPayload | null;
-    if (!parsed) {
-      return null;
-    }
+    if (!parsed) return null;
 
     return {
       id: typeof parsed.id === "number" ? parsed.id : undefined,
       name: typeof parsed.name === "string" ? parsed.name : "",
       email: typeof parsed.email === "string" ? parsed.email : "",
-      investorProfile:
-        typeof parsed.investorProfile === "string" ? parsed.investorProfile : "MODERADO",
-      notificationPreference:
-        typeof parsed.notificationPreference === "string"
-          ? parsed.notificationPreference
-          : "resumo_diario",
-      profileImageUrl:
-        typeof parsed.profileImageUrl === "string" ? parsed.profileImageUrl : null,
+      investorProfile: typeof parsed.investorProfile === "string" ? parsed.investorProfile : "MODERADO",
+      notificationPreference: typeof parsed.notificationPreference === "string" 
+        ? parsed.notificationPreference 
+        : "resumo_diario",
+      profileImageUrl: typeof parsed.profileImageUrl === "string" ? parsed.profileImageUrl : null,
     };
   } catch {
     return null;
@@ -196,6 +175,7 @@ const persistCachedUser = (value: UserData | null) => {
   }
 };
 
+// Interface do contexto
 interface AuthContextValue {
   user: UserData | null;
   loading: boolean;
@@ -204,8 +184,10 @@ interface AuthContextValue {
   updateUserSettings: (patch: UserPatch) => Promise<UserPatch>;
 }
 
+// Criar contexto com valor padrão undefined
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+// Hook provider
 function useProvideAuth(): AuthContextValue {
   const [user, setUserState] = useState<UserData | null>(() => loadCachedUser());
   const [loading, setLoading] = useState(true);
@@ -215,12 +197,9 @@ function useProvideAuth(): AuthContextValue {
   const setUser = useCallback(
     (updater: UserData | null | ((prev: UserData | null) => UserData | null)) => {
       setUserState((prev) => {
-        const next =
-          typeof updater === "function"
-            ? (updater as (value: UserData | null) => UserData | null)(prev)
-            : updater;
-        persistCachedUser(next ?? null);
-        return next ?? null;
+        const next = typeof updater === "function" ? updater(prev) : updater;
+        persistCachedUser(next);
+        return next;
       });
     },
     []
@@ -248,8 +227,7 @@ function useProvideAuth(): AuthContextValue {
             name: (payload.name as string) ?? "",
             email: (payload.email as string) ?? "",
             investorProfile: (payload.investorProfile as string) ?? "MODERADO",
-            notificationPreference:
-              (payload.notificationPreference as string | undefined) ?? "resumo_diario",
+            notificationPreference: (payload.notificationPreference as string | undefined) ?? "resumo_diario",
             profileImageUrl: resolvedProfile ?? null,
           };
           setUser(normalizedUser);
@@ -281,16 +259,12 @@ function useProvideAuth(): AuthContextValue {
   }, [apiBase, setUser]);
 
   useEffect(() => {
-    const handler: EventListener = (event) => {
+    const handler = (event: Event) => {
       const detail = (event as CustomEvent<Partial<UserData>>).detail;
-      if (!detail) {
-        return;
-      }
+      if (!detail) return;
 
       setUser((prev) => {
-        if (!prev) {
-          return prev;
-        }
+        if (!prev) return prev;
         return { ...prev, ...detail };
       });
     };
@@ -303,9 +277,7 @@ function useProvideAuth(): AuthContextValue {
 
   const persistUserUpdate = useCallback(
     async (patch: UserPatch): Promise<UserPatch> => {
-      if (!patch || Object.keys(patch).length === 0) {
-        return {};
-      }
+      if (!patch || Object.keys(patch).length === 0) return {};
 
       if (!user) {
         throw new Error("Informações do usuário ainda não foram carregadas");
@@ -328,20 +300,15 @@ function useProvideAuth(): AuthContextValue {
         }
 
         setUser((prev) => {
-          if (!prev) {
-            return prev;
-          }
+          if (!prev) return prev;
 
           const next = { ...prev };
-
           if (sanitized.investorProfile !== undefined) {
             next.investorProfile = sanitized.investorProfile;
           }
-
           if (sanitized.notificationPreference !== undefined) {
             next.notificationPreference = sanitized.notificationPreference;
           }
-
           if (sanitized.profileImageUrl !== undefined) {
             next.profileImageUrl = sanitized.profileImageUrl ?? null;
           }
@@ -420,33 +387,25 @@ function useProvideAuth(): AuthContextValue {
 
       if (
         patch.investorProfile !== undefined ||
-        (payload && Object.prototype.hasOwnProperty.call(payload, "investorProfile"))
+        (payload && payload.investorProfile !== undefined)
       ) {
-        normalized.investorProfile =
-          (payload?.investorProfile as string | undefined) ?? patch.investorProfile;
+        normalized.investorProfile = (payload?.investorProfile as string) ?? patch.investorProfile;
       }
 
       if (
         patch.notificationPreference !== undefined ||
-        (payload && Object.prototype.hasOwnProperty.call(payload, "notificationPreference")) ||
+        (payload && payload.notificationPreference !== undefined) ||
         shouldBootstrapPreference
       ) {
         normalized.notificationPreference =
-          (payload?.notificationPreference as string | undefined) ??
+          (payload?.notificationPreference as string) ??
           patch.notificationPreference ??
           (shouldBootstrapPreference ? "resumo_diario" : undefined);
       }
 
-      const responseIncludesProfileImage = Boolean(
-        payload && Object.prototype.hasOwnProperty.call(payload, "profileImageUrl")
-      );
-
-      if (patch.profileImageUrl !== undefined || responseIncludesProfileImage) {
-        const rawProfileImage = responseIncludesProfileImage
-          ? (payload?.profileImageUrl as string | null | undefined)
-          : patch.profileImageUrl;
-
-        const resolvedProfile = resolveProfileImageSource(rawProfileImage ?? undefined, apiBase);
+      if (patch.profileImageUrl !== undefined || (payload && payload.profileImageUrl !== undefined)) {
+        const rawProfileImage = payload?.profileImageUrl as string | null | undefined ?? patch.profileImageUrl;
+        const resolvedProfile = resolveProfileImageSource(rawProfileImage, apiBase);
         if (resolvedProfile !== undefined) {
           normalized.profileImageUrl = resolvedProfile ?? null;
         }
@@ -459,10 +418,7 @@ function useProvideAuth(): AuthContextValue {
 
   const updateInvestorProfile = useCallback(
     async (nextProfile: InvestorProfile): Promise<void> => {
-      if (!nextProfile) {
-        return;
-      }
-
+      if (!nextProfile) return;
       try {
         await persistUserUpdate({ investorProfile: nextProfile });
       } catch (error) {
@@ -498,11 +454,17 @@ function useProvideAuth(): AuthContextValue {
   return { user, loading, logout, updateInvestorProfile, updateUserSettings };
 }
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const value = useProvideAuth();
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+// Provider component
+interface AuthProviderProps {
+  children: React.ReactNode;
 }
 
+export function AuthProvider({ children }: AuthProviderProps) {
+  const value = useProvideAuth();
+  return React.createElement(AuthContext.Provider, { value }, children);
+}
+
+// Hook consumer
 export function useAuth(): AuthContextValue {
   const context = useContext(AuthContext);
   if (!context) {

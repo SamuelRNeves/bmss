@@ -1,7 +1,7 @@
-// useAuth.ts
+// useAuth.tsx
 "use client";
 
-import {
+import React, {
   createContext,
   useCallback,
   useContext,
@@ -10,7 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import api, { API_BASE_URL } from "@/lib/api";
+import api, { API_BASE_URL } from "../lib/api";
 
 interface UserData {
   id?: number;

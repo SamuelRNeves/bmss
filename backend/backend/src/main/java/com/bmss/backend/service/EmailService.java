@@ -5,12 +5,8 @@ import com.resend.Resend;
 import com.resend.core.exception.ResendException;
 import com.resend.services.emails.model.SendEmailRequest;
 import com.resend.services.emails.model.SendEmailResponse;
-<<<<<<< HEAD
-
 import jakarta.annotation.PostConstruct;
-=======
 import jakarta.annotation.PreDestroy;
->>>>>>> teste
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -28,12 +24,6 @@ import java.util.function.Function;
 @Service
 @Slf4j
 public class EmailService {
-    @PostConstruct
-public void debugEmailConfig() {
-    log.info("📧 RESEND FROM = '{}'", fromAddress);
-}
-
-
     private static final String FALLBACK_FROM_ADDRESS = "BMSS Alerts <onboarding@resend.dev>";
     private static final AtomicInteger EXECUTOR_THREAD_COUNTER = new AtomicInteger(0);
 
@@ -63,6 +53,11 @@ public void debugEmailConfig() {
         }
 
         this.emailExecutor = Executors.newCachedThreadPool(newEmailThreadFactory());
+    }
+
+    @PostConstruct
+    public void debugEmailConfig() {
+        log.info("📧 RESEND FROM = '{}'", fromAddress);
     }
 
     @PreDestroy
@@ -152,9 +147,6 @@ public void debugEmailConfig() {
     private record Preferencia(String descricao) {
     }
 
-<<<<<<< HEAD
-    
-=======
     private EmailDeliveryResult tentarEnvioComFallback(String destinatario, String subject, Instant attemptAt, String htmlContent) {
         return enviarComRemetenteAsync(fromAddress, destinatario, subject, htmlContent)
                 .handleAsync((response, throwable) -> {
@@ -285,5 +277,4 @@ public void debugEmailConfig() {
         }
         return "HTTP " + statusCode + " - " + message;
     }
->>>>>>> teste
 }
