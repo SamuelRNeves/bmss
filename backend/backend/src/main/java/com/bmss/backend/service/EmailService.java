@@ -143,8 +143,6 @@ public class EmailService {
     }
 
     private EmailDeliveryResult tentarEnvioComFallback(String destinatario, String subject, Instant attemptAt, String htmlContent) {
-        Function<CompletableFuture<EmailDeliveryResult>, CompletableFuture<EmailDeliveryResult>> flatten = Function.identity();
-
         return enviarComRemetenteAsync(fromAddress, destinatario, subject, htmlContent)
                 .handleAsync((response, throwable) -> {
                     if (throwable == null) {
@@ -153,7 +151,7 @@ public class EmailService {
                     }
                     return tratarFalhaComPossivelFallback(destinatario, subject, attemptAt, htmlContent, throwable);
                 }, emailExecutor)
-                .thenComposeAsync(flatten, emailExecutor)
+                .thenCompose(Function.identity())
                 .join();
     }
 
