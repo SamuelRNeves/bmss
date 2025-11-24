@@ -94,78 +94,85 @@ const buildPurchaseGuidance = (
   percentualNeutro: number,
   percentualNegativo: number
 ): PurchaseGuidance => {
-  const janelaAgressiva = percentualPositivo >= 0.01 && percentualNeutro >= 0.15;
-  const compraAgressivaSegura = percentualPositivo >= 0.05 && percentualNegativo <= 0.65;
+  const viesLiquidez = percentualNeutro >= 0.2;
+  const margemPositiva = percentualPositivo - percentualNegativo;
+  const choqueVendedor = percentualNegativo >= 0.65;
 
   if (perfil === "AGRESSIVO") {
-    if (compraAgressivaSegura || janelaAgressiva) {
+    if (choqueVendedor && percentualPositivo < 0.08) {
+      return {
+        status: "evitar",
+        titulo: "Pressão vendedora dominante",
+        detalhe:
+          "Mesmo tolerando ruído, o perfil agressivo preserva munição quando o negativo passa de 65% e o positivo não reage. Foque em trades curtos ou espere alívio.",
+      };
+    }
+
+    if (percentualPositivo >= 0.03 && (viesLiquidez || margemPositiva > -0.15)) {
       return {
         status: "comprar",
         titulo: "Janela tática aberta",
         detalhe:
-          "Mesmo com pouco volume positivo (0 a 5%) e neutro perto de 15%, o perfil agressivo pode montar posição com stops curtos, assumindo ruído de curto prazo.",
-      };
-    }
-
-    if (percentualNegativo >= 0.7) {
-      return {
-        status: "evitar",
-        titulo: "Pressão vendedora pesada",
-        detalhe: "Venda dominante. Priorize defesa ou operações de curtíssima duração até o fluxo aliviar.",
+          "Com 3%+ de sinais positivos e pelo menos 20% neutros, há espaço para entradas rápidas com stops curtos. O agressivo prioriza velocidade e aceita drawdown de curto prazo.",
       };
     }
 
     return {
       status: "observar",
-      titulo: "Aguarde o fluxo definir",
-      detalhe: "Sinais mistos. Mantenha tamanho reduzido e entre apenas quando o noticiário mostrar direção consistente.",
+      titulo: "Esperando direção clara",
+      detalhe: "Sinais mistos: opere leve, priorize liquidez e aumente o risco apenas se o positivo continuar ganhando terreno sobre o negativo.",
     };
   }
 
   if (perfil === "MODERADO") {
-    if (percentualPositivo >= 0.1 && percentualNegativo <= 0.5) {
+    if (percentualPositivo >= 0.12 && percentualNegativo <= 0.45) {
       return {
         status: "comprar",
         titulo: "Compras graduais liberadas",
-        detalhe: "Com pelo menos 10% de sinais positivos e pressão vendedora moderada, use aportes fracionados e stops folgados.",
+        detalhe:
+          "Balanceado entre prudência e oportunidade: acima de 12% positivos e venda abaixo de 45%, o moderado pode comprar em parcelas, mantendo stops mais folgados.",
       };
     }
 
-    if (percentualNegativo >= 0.55) {
+    if (percentualNegativo >= 0.6 || margemPositiva <= -0.2) {
       return {
         status: "evitar",
-        titulo: "Risco alto para novas posições",
-        detalhe: "Noticiário negativo acima de 55%. Espere reversão ou reforço do neutro antes de recomprar.",
+        titulo: "Cenário frágil para novas posições",
+        detalhe: "Sentimento negativo muito alto ou vantagem vendedora relevante. Preservar capital e aguardar que o neutro volte a amortecer o risco.",
       };
     }
 
     return {
       status: "observar",
       titulo: "Aguardando confirmação",
-      detalhe: "Use tempo para rebalancear e só aumente exposição quando o positivo ultrapassar 10% ou o neutro absorver parte da pressão.",
+      detalhe:
+        "Priorize equilíbrio: monte posições pequenas quando houver neutro acima de 20% e espere o positivo superar o negativo antes de acelerar compras.",
     };
   }
 
-  if (percentualPositivo >= 0.18 && percentualNegativo <= 0.35 && percentualNeutro >= 0.15) {
+  // Perfil CONSERVADOR
+  if (percentualPositivo >= 0.2 && percentualNegativo <= 0.3 && percentualNeutro >= 0.2) {
     return {
       status: "comprar",
       titulo: "Entrada seletiva permitida",
-      detalhe: "Com pelo menos 18% de sinais positivos, neutro sólido e venda limitada, dá para iniciar posições pequenas e protegidas.",
+      detalhe:
+        "O conservador teme quedas de curto prazo; por isso exige 20%+ de sinais positivos, neutro robusto e venda contida para iniciar posições protegidas e menores.",
     };
   }
 
-  if (percentualNegativo >= 0.45) {
+  if (percentualNegativo >= 0.45 || margemPositiva < -0.1) {
     return {
       status: "evitar",
       titulo: "Preservar capital",
-      detalhe: "Ambiente defensivo. Priorize caixa e renda fixa até o positivo ganhar tração consistente.",
+      detalhe: "Ambiente defensivo para o conservador. Fique em caixa ou ativos estáveis até que a pressão vendedora recue e o neutro volte a amortecer a volatilidade.",
     };
   }
 
   return {
     status: "observar",
     titulo: "Monitorando sinais",
-    detalhe: "Mantenha postura conservadora; só compre quando a fatia positiva ficar mais robusta e o negativo cair abaixo de 35%.",
+    detalhe:
+      "Mantenha postura cautelosa; o conservador espera que o positivo fique mais encorpado e que o negativo permaneça abaixo de 30% antes de alocar novo capital.",
   };
 };
 
@@ -478,9 +485,10 @@ export default function Recomendacoes({
   };
 
   const legendaSugestoes = [
-    "Agressivo: compra liberada mesmo com 0 a 5% de sinais positivos se houver pelo menos 15% neutro, assumindo stops curtos e reavaliação rápida.",
-    "Moderado: só compra quando o positivo passa de 10% e o negativo fica até 50%; fora disso, espera confirmação ou monta posição fracionada.",
-    "Conservador: prioriza segurança; compra apenas com ~18% ou mais de sinais positivos, neutro acima de 15% e negativo abaixo de 35%.",
+    "Agressivo prioriza velocidade e upside, aceita perda de curto prazo e compra quando há mínimo respiro positivo e neutro servindo de colchão de liquidez.",
+    "Moderado busca equilíbrio: prefere neutro amortecendo volatilidade, só acelera compras quando o positivo lidera e o negativo perde fôlego.",
+    "Conservador protege capital: teme quedas no curto prazo, só entra com positivo robusto (20%+), neutro forte e negativo controlado.",
+    "Sistema usa a mistura positivo/neutro/negativo do gráfico ao lado. Neutro alto funciona como colchão; negativo elevado trava compras para perfis menos tolerantes.",
   ];
 
   const formatSignals = (percentual: number) => {
