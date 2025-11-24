@@ -150,6 +150,7 @@ const buildPurchaseGuidance = (
     };
   }
 
+  // Perfil CONSERVADOR
   if (percentualPositivo >= 0.2 && percentualNegativo <= 0.3 && percentualNeutro >= 0.2) {
     return {
       status: "comprar",
