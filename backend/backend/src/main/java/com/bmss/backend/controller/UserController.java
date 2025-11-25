@@ -13,6 +13,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Optional;
 
 @RestController
@@ -127,16 +129,15 @@ public class UserController {
 
             String token = jwtService.generateToken(user.getEmail());
 
-            return ResponseEntity.ok(
-                    java.util.Map.of(
-                            "success", true,
-                            "message", "Perfil atualizado com sucesso",
-                            "investorProfile", user.getInvestorProfile(),
-                            "notificationPreference", user.getNotificationPreference(),
-                            "profileImageUrl", user.getProfileImageUrl(),
-                            "token", token
-                    )
-            );
+            Map<String, Object> responseBody = new LinkedHashMap<>();
+            responseBody.put("success", true);
+            responseBody.put("message", "Perfil atualizado com sucesso");
+            responseBody.put("investorProfile", user.getInvestorProfile());
+            responseBody.put("notificationPreference", user.getNotificationPreference());
+            responseBody.put("profileImageUrl", user.getProfileImageUrl());
+            responseBody.put("token", token);
+
+            return ResponseEntity.ok(responseBody);
 
         } catch (IllegalArgumentException validationError) {
             return ResponseEntity.badRequest().body(validationError.getMessage());

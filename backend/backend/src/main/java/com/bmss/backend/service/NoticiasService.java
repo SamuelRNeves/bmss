@@ -52,6 +52,10 @@ public class NoticiasService {
     private final RestTemplate flaskRestTemplate;
     private final URI flaskEndpoint;
     private final URI tweetsFlaskEndpoint;
+    private final String gnewsApiKey;
+    private final String gnewsDefaultQuery;
+
+    private final Duration noticiasTtl;
 
     private static final Logger log = LoggerFactory.getLogger(NoticiasService.class);
     private static final Map<String, CacheEntry> cache = new ConcurrentHashMap<>();
@@ -67,7 +71,10 @@ public class NoticiasService {
             @Value("${bmss.sentiment.flask-url:http://localhost:5000/analyze-batch}") String flaskUrl,
             @Value("${bmss.sentiment.tweets-url:http://localhost:5000/analyze-tweets}") String tweetsFlaskUrl,
             @Value("${bmss.sentiment.connect-timeout:10s}") Duration connectTimeout,
-            @Value("${bmss.sentiment.read-timeout:20s}") Duration readTimeout
+            @Value("${bmss.sentiment.read-timeout:20s}") Duration readTimeout,
+            @Value("${bmss.gnews.api-key:}") String gnewsApiKey,
+            @Value("${bmss.gnews.default-query:bitcoin OR criptomoeda}") String gnewsDefaultQuery,
+            @Value("${bmss.noticias.ttl-minutes:30}") long noticiasTtlMinutes
     ) {
 
         this.itemRepository = itemRepository;
@@ -79,6 +86,9 @@ public class NoticiasService {
                 .build();
         this.flaskEndpoint = URI.create(Objects.requireNonNull(flaskUrl, "Flask URL must not be null"));
         this.tweetsFlaskEndpoint = URI.create(Objects.requireNonNull(tweetsFlaskUrl, "Tweets Flask URL must not be null"));
+        this.gnewsApiKey = gnewsApiKey;
+        this.gnewsDefaultQuery = gnewsDefaultQuery;
+        this.noticiasTtl = Duration.ofMinutes(Math.max(1, noticiasTtlMinutes));
     }
 
     private static final List<String> BLOCKED_DOMAINS = Arrays.asList(
@@ -101,6 +111,12 @@ public class NoticiasService {
 
         try {
             List<Item> itens = itemRepository.findTop50ByIsTweetFalseOrIsTweetIsNullOrderByPublishedAtDesc();
+
+            if (shouldRefreshNoticias(itens)) {
+                log.info("⏱️ Notícias desatualizadas ou ausentes. Recarregando via GNews/Flask (TTL {} min)", noticiasTtl.toMinutes());
+                fetchAndStoreNews(safeKeyword);
+                itens = itemRepository.findTop50ByIsTweetFalseOrIsTweetIsNullOrderByPublishedAtDesc();
+            }
 
             List<FeedDTO> analisadas = itens.stream()
                     .filter(item -> item.getSentimentLabel() != null && !item.getSentimentLabel().isBlank())
@@ -178,15 +194,19 @@ public class NoticiasService {
     // 🔹 GNews API - COM FILTRO PÓS-COLETA E PREVENÇÃO DE DUPLICATAS
     // ============================================================
     private List<FeedDTO> fetchFromGNews(String keyword) {
-        String GNEWS_API_KEY = "c413eaed68da399c2ef9fa585fe591aa";
-        
+        String apiKey = gnewsApiKey;
+        if (apiKey == null || apiKey.isBlank()) {
+            log.warn("⚠️ GNews API Key não configurada (bmss.gnews.api-key). Retornando lista vazia.");
+            return Collections.emptyList();
+        }
+
         // Query simples dentro do limite de 200 caracteres
-        String query = "bitcoin OR criptomoeda";
+        String query = buildGnewsQuery(keyword);
         
         try {
             String encodedQuery = URLEncoder.encode(query, StandardCharsets.UTF_8);
             String url = "https://gnews.io/api/v4/search?q=" + encodedQuery +
-                    "&lang=pt&country=br&max=30&apikey=" + GNEWS_API_KEY;
+                    "&lang=pt&country=br&max=30&apikey=" + apiKey;
 
             log.info("🌍 [GNews] Buscando notícias: {}", url);
 
@@ -236,6 +256,33 @@ public class NoticiasService {
             log.error("❌ Erro ao acessar GNews: {}", e.getMessage());
             return Collections.emptyList();
         }
+    }
+
+    private String buildGnewsQuery(String keyword) {
+        String normalizedKeyword = (keyword == null || keyword.isBlank()) ? gnewsDefaultQuery : keyword;
+        if (normalizedKeyword.length() > 180) {
+            normalizedKeyword = normalizedKeyword.substring(0, 180);
+        }
+
+        // Mantém consulta padrão como fallback para sempre incluir termos de bitcoin/cripto
+        if (!normalizedKeyword.equalsIgnoreCase(gnewsDefaultQuery)) {
+            return normalizedKeyword + " OR " + gnewsDefaultQuery;
+        }
+        return normalizedKeyword;
+    }
+
+    private boolean shouldRefreshNoticias(List<Item> itens) {
+        if (itens == null || itens.isEmpty()) {
+            return true;
+        }
+
+        Item first = itens.get(0);
+        LocalDateTime publishedAt = first.getPublishedAt();
+        if (publishedAt == null) {
+            return true;
+        }
+
+        return publishedAt.isBefore(LocalDateTime.now().minus(noticiasTtl));
     }
 
     // ============================================================
