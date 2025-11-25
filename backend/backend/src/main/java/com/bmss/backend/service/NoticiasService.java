@@ -75,7 +75,7 @@ public class NoticiasService {
             @Value("${bmss.sentiment.tweets-url:http://localhost:5000/analyze-tweets}") String tweetsFlaskUrl,
             @Value("${bmss.sentiment.connect-timeout:10s}") Duration connectTimeout,
             @Value("${bmss.sentiment.read-timeout:20s}") Duration readTimeout,
-            @Value("${news.fetch.windowHours:36}") long newsWindowHours,
+            @Value("${news.fetch.windowHours:3}") long newsWindowHours,
             @Value("${news.fetch.defaultLimit:12}") int defaultNewsLimit
     ) {
 
@@ -610,6 +610,26 @@ private String normalizeSentimentToEnglish(String sentiment) {
         return BLOCKED_DOMAINS.stream().anyMatch(url::contains);
     }
 
+    private LocalDateTime parsePublishedAt(String publishedAtRaw) {
+        if (publishedAtRaw == null || publishedAtRaw.isBlank()) {
+            return LocalDateTime.now();
+        }
+
+        try {
+            return OffsetDateTime.parse(publishedAtRaw)
+                    .atZoneSameInstant(ZoneId.systemDefault())
+                    .toLocalDateTime();
+        } catch (DateTimeParseException ignored) {
+        }
+
+        try {
+            return LocalDateTime.parse(publishedAtRaw);
+        } catch (DateTimeParseException e) {
+            log.debug("⚠️ Não foi possível converter publishedAt '{}': {}", publishedAtRaw, e.getMessage());
+            return LocalDateTime.now();
+        }
+    }
+
     // ============================================================
     // 🔹 Chamada ao Flask (microserviço de sentimento)
     // ============================================================
@@ -708,6 +728,7 @@ private String normalizeSentimentToEnglish(String sentiment) {
 
                 dto.setSentimento(label);
                 dto.setScore(score);
+                LocalDateTime publishedAt = parsePublishedAt(dto.getPublishedAt());
 
                 if (itemRepository.existsByUrl(dto.getUrl())) {
                     log.debug("Pulando notícia já existente: {}", dto.getUrl());
@@ -723,7 +744,7 @@ private String normalizeSentimentToEnglish(String sentiment) {
                             .sourceName(dto.getSource())
                             .sentimentLabel(label)
                             .sentimentScore(score)
-                            .publishedAt(LocalDateTime.now())
+                            .publishedAt(publishedAt)
                             .analyzedAt(LocalDateTime.now())
                             .isTweet(false)
                             .build();
