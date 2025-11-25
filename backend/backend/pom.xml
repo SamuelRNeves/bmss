@@ -90,6 +90,13 @@
             <version>8.3.0</version>
         </dependency>
 
+        <!-- 💾 Banco em memória para desenvolvimento local -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
         <!-- Commons IO for file utilities -->
         <dependency>
             <groupId>commons-io</groupId>
