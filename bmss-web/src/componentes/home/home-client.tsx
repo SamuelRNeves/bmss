@@ -669,7 +669,11 @@ export default function HomeClient() {
       }
     } catch (error) {
       console.error("Erro:", error);
-      showToast("error", "Erro", getFetchErrorMessage(error));
+      const message = getFetchErrorMessage(error);
+      const isTimeoutMessage = message.toLowerCase().includes("tempo de resposta excedido");
+      if (!isTimeoutMessage) {
+        showToast("error", "Erro", message);
+      }
 
       const fallbackNews = generateFallbackNews();
       const fallbackTweets = generateFallbackTweets();
@@ -756,10 +760,8 @@ export default function HomeClient() {
   useEffect(() => {
     mountedRef.current = true;
     fetchStats();
-    const interval = setInterval(fetchStats, 60000);
     return () => {
       mountedRef.current = false;
-      clearInterval(interval);
     };
   }, [fetchStats]);
 

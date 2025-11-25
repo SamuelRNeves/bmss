@@ -33,6 +33,7 @@ import java.net.URI;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
@@ -54,6 +55,10 @@ public class NoticiasService {
     private final URI tweetsFlaskEndpoint;
     private final Duration newsFreshnessWindow;
     private final int defaultNewsLimit;
+    private final Object gnewsRateLock = new Object();
+    private static final int GNEWS_DAILY_LIMIT = 10;
+    private LocalDate lastGnewsRequestDate = LocalDate.now();
+    private int gnewsRequestsToday = 0;
 
     private static final Logger log = LoggerFactory.getLogger(NoticiasService.class);
     private static final Map<String, CacheEntry> cache = new ConcurrentHashMap<>();
@@ -212,8 +217,13 @@ public class NoticiasService {
     // 🔹 GNews API - COM FILTRO PÓS-COLETA E PREVENÇÃO DE DUPLICATAS
     // ============================================================
     private List<FeedDTO> fetchFromGNews(String keyword) {
-        String GNEWS_API_KEY = "c413eaed68da399c2ef9fa585fe591aa";
-        
+        String GNEWS_API_KEY = "8cb88cbb6c3f925873b829f4925ae55d";
+
+        if (!canUseGNews()) {
+            log.warn("⚠️ Limite diário da GNews atingido ({} chamadas). Usando fallback.", GNEWS_DAILY_LIMIT);
+            return Collections.emptyList();
+        }
+
         // Query simples dentro do limite de 200 caracteres
         String query = "bitcoin OR criptomoeda";
         
@@ -269,6 +279,24 @@ public class NoticiasService {
         } catch (Exception e) {
             log.error("❌ Erro ao acessar GNews: {}", e.getMessage());
             return Collections.emptyList();
+        }
+    }
+
+    private boolean canUseGNews() {
+        synchronized (gnewsRateLock) {
+            LocalDate today = LocalDate.now();
+
+            if (!today.equals(lastGnewsRequestDate)) {
+                lastGnewsRequestDate = today;
+                gnewsRequestsToday = 0;
+            }
+
+            if (gnewsRequestsToday >= GNEWS_DAILY_LIMIT) {
+                return false;
+            }
+
+            gnewsRequestsToday++;
+            return true;
         }
     }
 
