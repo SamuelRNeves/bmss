@@ -52,6 +52,8 @@ public class NoticiasService {
     private final RestTemplate flaskRestTemplate;
     private final URI flaskEndpoint;
     private final URI tweetsFlaskEndpoint;
+    private final Duration newsFreshnessWindow;
+    private final int defaultNewsLimit;
 
     private static final Logger log = LoggerFactory.getLogger(NoticiasService.class);
     private static final Map<String, CacheEntry> cache = new ConcurrentHashMap<>();
@@ -67,7 +69,9 @@ public class NoticiasService {
             @Value("${bmss.sentiment.flask-url:http://localhost:5000/analyze-batch}") String flaskUrl,
             @Value("${bmss.sentiment.tweets-url:http://localhost:5000/analyze-tweets}") String tweetsFlaskUrl,
             @Value("${bmss.sentiment.connect-timeout:10s}") Duration connectTimeout,
-            @Value("${bmss.sentiment.read-timeout:20s}") Duration readTimeout
+            @Value("${bmss.sentiment.read-timeout:20s}") Duration readTimeout,
+            @Value("${news.fetch.windowHours:36}") long newsWindowHours,
+            @Value("${news.fetch.defaultLimit:12}") int defaultNewsLimit
     ) {
 
         this.itemRepository = itemRepository;
@@ -79,6 +83,8 @@ public class NoticiasService {
                 .build();
         this.flaskEndpoint = URI.create(Objects.requireNonNull(flaskUrl, "Flask URL must not be null"));
         this.tweetsFlaskEndpoint = URI.create(Objects.requireNonNull(tweetsFlaskUrl, "Tweets Flask URL must not be null"));
+        this.newsFreshnessWindow = Duration.ofHours(newsWindowHours);
+        this.defaultNewsLimit = defaultNewsLimit;
     }
 
     private static final List<String> BLOCKED_DOMAINS = Arrays.asList(
@@ -92,15 +98,18 @@ public class NoticiasService {
     // ============================================================
     public List<FeedDTO> buscarNoticias(int limit, String keyword) {
         String safeKeyword = (keyword == null || keyword.isBlank()) ? "bitcoin" : keyword;
-        int safeLimit = limit <= 0 ? 0 : limit;
+        int safeLimit = limit <= 0 ? defaultNewsLimit : limit;
 
-        if (safeLimit == 0) {
-            log.warn("⚠️ Limite zero recebido para busca de notícias. Retornando lista vazia.");
-            return Collections.emptyList();
-        }
+        log.info("📰 Buscando notícias com limite {} (janela {}h)", safeLimit, newsFreshnessWindow.toHours());
 
         try {
             List<Item> itens = itemRepository.findTop50ByIsTweetFalseOrIsTweetIsNullOrderByPublishedAtDesc();
+
+            if (shouldRefreshNews(itens)) {
+                log.info("🕒 Notícias desatualizadas ou ausentes. Forçando nova coleta.");
+                fetchAndStoreNews(safeKeyword);
+                itens = itemRepository.findTop50ByIsTweetFalseOrIsTweetIsNullOrderByPublishedAtDesc();
+            }
 
             List<FeedDTO> analisadas = itens.stream()
                     .filter(item -> item.getSentimentLabel() != null && !item.getSentimentLabel().isBlank())
@@ -135,6 +144,31 @@ public class NoticiasService {
             log.error("❌ Erro ao buscar notícias analisadas: {}", e.getMessage());
             return Collections.emptyList();
         }
+    }
+
+    private boolean shouldRefreshNews(List<Item> itens) {
+        if (itens == null || itens.isEmpty()) {
+            return true;
+        }
+
+        LocalDateTime newest = itens.stream()
+                .map(Item::getPublishedAt)
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElse(null);
+
+        if (newest == null) {
+            return true;
+        }
+
+        LocalDateTime cutoff = LocalDateTime.now().minus(newsFreshnessWindow);
+        boolean stale = newest.isBefore(cutoff);
+
+        if (stale) {
+            log.info("⌛ Última notícia analisada é de {}, anterior à janela de {}h.", newest, newsFreshnessWindow.toHours());
+        }
+
+        return stale;
     }
 
     private List<FeedDTO> coletarNoticiasExternas(int limit, String keyword, boolean bypassCache) {
