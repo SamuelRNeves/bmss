@@ -19,6 +19,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
@@ -85,6 +86,15 @@ public class NoticiasService {
             "itiny.xyz", "rssing.com", "feedproxy.google",
             "flipboard.com", "biztoc.com", "techspotlight.xyz",
             "news.google.com", "toptechjournal.xyz", "duckduckgo.com"
+    );
+
+    private static final List<RssSource> CRYPTO_RSS_SOURCES = List.of(
+            new RssSource("CoinDesk", "https://www.coindesk.com/arc/outboundfeeds/rss/"),
+            new RssSource("Cointelegraph", "https://br.cointelegraph.com/rss"),
+            new RssSource("Decrypt", "https://decrypt.co/feed"),
+            new RssSource("NewsBTC", "https://www.newsbtc.com/feed/"),
+            new RssSource("Bitcoin Magazine", "https://bitcoinmagazine.com/.rss"),
+            new RssSource("InfoMoney Cripto", "https://www.infomoney.com.br/crypto/feed/")
     );
 
     // ============================================================
@@ -161,6 +171,11 @@ public class NoticiasService {
             noticias = fetchFromGoogleNewsRSS(safeKeyword);
         }
 
+        if (noticias.isEmpty()) {
+            log.warn("⚠️ Google RSS também falhou. Alternando para feeds RSS públicos de cripto.");
+            noticias = fetchFromCryptoRssFeeds(safeKeyword);
+        }
+
         noticias = removeDuplicates(noticias);
 
         if (!noticias.isEmpty()) {
@@ -232,6 +247,9 @@ public class NoticiasService {
                     .limit(20)
                     .collect(Collectors.toList());
 
+        } catch (HttpClientErrorException e) {
+            log.error("❌ Erro ao acessar GNews (status {}): {}", e.getStatusCode(), e.getResponseBodyAsString());
+            return Collections.emptyList();
         } catch (Exception e) {
             log.error("❌ Erro ao acessar GNews: {}", e.getMessage());
             return Collections.emptyList();
@@ -475,6 +493,75 @@ private String normalizeSentimentToEnglish(String sentiment) {
         } catch (Exception e) {
             log.error("❌ Erro no fallback RSS: {}", e.getMessage());
         }
+        return list;
+    }
+
+    // ============================================================
+    // 🔹 RSS público (sem Google/GNews)
+    // ============================================================
+    private List<FeedDTO> fetchFromCryptoRssFeeds(String keyword) {
+        String sanitizedKeyword = (keyword == null || keyword.isBlank()) ? "bitcoin" : keyword.trim();
+        List<FeedDTO> collected = new ArrayList<>();
+
+        for (RssSource source : CRYPTO_RSS_SOURCES) {
+            try {
+                collected.addAll(parseGenericRss(source, sanitizedKeyword));
+            } catch (Exception e) {
+                log.warn("⚠️ Falha ao consultar feed {}: {}", source.getName(), e.getMessage());
+            }
+        }
+
+        log.info("🪙 RSS público retornou {} notícias.", collected.size());
+        return collected;
+    }
+
+    private List<FeedDTO> parseGenericRss(RssSource source, String keyword) throws Exception {
+        List<FeedDTO> list = new ArrayList<>();
+
+        URL url = new URL(source.getUrl());
+        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+        connection.setRequestProperty("User-Agent", "Mozilla/5.0 (compatible; BMSSBot/1.0; +https://bmss.com.br)");
+        connection.setConnectTimeout(5000);
+        connection.setReadTimeout(5000);
+
+        try (InputStream stream = connection.getInputStream()) {
+            DocumentBuilder builder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
+            Document doc = builder.parse(stream);
+            NodeList items = doc.getElementsByTagName("item");
+
+            for (int i = 0; i < items.getLength() && list.size() < 25; i++) {
+                Element el = (Element) items.item(i);
+                String title = getElementText(el, "title");
+                String link = getElementText(el, "link");
+
+                if (title == null || link == null) {
+                    continue;
+                }
+
+                String description = Optional.ofNullable(getElementText(el, "description")).orElse("");
+
+                if (!isRelevantNews(title, description, keyword)) {
+                    continue;
+                }
+
+                String publishedAt = normalizeRssDate(getElementText(el, "pubDate"));
+
+                list.add(new FeedDTO(
+                        title,
+                        description,
+                        link,
+                        source.getName(),
+                        publishedAt,
+                        "neutral",
+                        0.0,
+                        false,
+                        null
+                ));
+            }
+        } finally {
+            connection.disconnect();
+        }
+
         return list;
     }
 
@@ -941,6 +1028,24 @@ private LocalDateTime parseTwitterDate(Object dateObj) {
         CacheEntry(List<FeedDTO> data, long timestamp) {
             this.data = data;
             this.timestamp = timestamp;
+        }
+    }
+
+    private static class RssSource {
+        private final String name;
+        private final String url;
+
+        RssSource(String name, String url) {
+            this.name = name;
+            this.url = url;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public String getUrl() {
+            return url;
         }
     }
 }
