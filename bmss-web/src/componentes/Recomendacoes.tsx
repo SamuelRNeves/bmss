@@ -575,7 +575,7 @@ export default function Recomendacoes({
                 {snapshotAtual.nivel} • {snapshotAtual.intensidade}
               </span>
               <span className="px-2 py-0.5 rounded-full bg-neutral-800/70 text-gray-300">
-                Confiança {convictionLabel} • {Math.round(convictionScore * 100)}%
+                Confiança do sinal • {Math.round(convictionScore * 100)}% ({convictionLabel})
               </span>
               {isLoading && (
                 <span className="flex items-center gap-1 text-amber-300">
