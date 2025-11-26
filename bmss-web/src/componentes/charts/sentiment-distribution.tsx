@@ -109,7 +109,9 @@ export function SentimentDistribution({ distribution }: SentimentDistributionPro
         backgroundColor: segments.map((segment) => segment.color),
         borderColor: segments.map((segment) => segment.border),
         borderWidth: 2,
-        hoverOffset: 8,
+        hoverOffset: 10,
+        spacing: 4,
+        borderRadius: 16,
       },
     ],
   };
@@ -121,15 +123,21 @@ export function SentimentDistribution({ distribution }: SentimentDistributionPro
       legend: {
         position: 'bottom',
         labels: {
-          color: '#9ca3af',
+          color: '#e5e7eb',
           font: {
+            weight: '600',
             size: isMobile ? 10 : 12
           },
-          padding: isMobile ? 12 : 20,
+          padding: isMobile ? 8 : 14,
           usePointStyle: true,
         },
       },
       tooltip: {
+        backgroundColor: '#0b0f17',
+        titleColor: '#e5e7eb',
+        bodyColor: '#cbd5e1',
+        borderColor: '#1f2937',
+        borderWidth: 1,
         callbacks: {
           label: function(context) {
             const label = context.label || '';
@@ -139,16 +147,19 @@ export function SentimentDistribution({ distribution }: SentimentDistributionPro
         }
       },
     },
-    cutout: isMobile ? '58%' : '65%',
+    cutout: isMobile ? '62%' : '70%',
   }), [isMobile]);
 
   return (
-    <div className="relative bg-gradient-to-b from-neutral-900/90 via-neutral-950 to-black border border-neutral-800/70 rounded-3xl p-5 sm:p-7 overflow-hidden">
-      <div className="absolute inset-0 pointer-events-none opacity-40" style={{ background: 'radial-gradient(circle at top, rgba(250, 204, 21, 0.15), transparent 65%)' }} />
+    <div className="relative bg-gradient-to-b from-slate-900/90 via-black to-black border border-neutral-800/70 rounded-3xl p-5 sm:p-7 overflow-hidden shadow-[0_20px_80px_-40px_rgba(0,0,0,0.8)]">
+      <div className="absolute inset-0 pointer-events-none opacity-50" style={{ background: 'radial-gradient(circle at 25% 20%, rgba(52, 211, 153, 0.12), transparent 40%), radial-gradient(circle at 80% 0%, rgba(248, 113, 113, 0.14), transparent 45%)' }} />
+      <div className="absolute inset-4 border border-white/5 rounded-[26px] pointer-events-none" />
       <div className="relative z-10">
         <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
           <h3 className="text-white text-base sm:text-lg font-semibold">Distribuição de Sentimento</h3>
-          <div className="text-xs uppercase tracking-wide text-gray-500">Dados sincronizados com a análise acima</div>
+          <div className="text-[11px] uppercase tracking-wide text-gray-400 bg-white/5 border border-white/5 rounded-full px-3 py-1">
+            Dados sincronizados com a análise acima
+          </div>
         </div>
 
         <div className="relative h-56 sm:h-64">
@@ -159,6 +170,7 @@ export function SentimentDistribution({ distribution }: SentimentDistributionPro
             <span className={`text-3xl font-bold text-white`}>{dominant.value.toFixed(1)}%</span>
             <span className="text-xs uppercase tracking-wide" style={{ color: dominant.color }}>{dominant.label}</span>
           </div>
+          <div className="absolute inset-8 rounded-full bg-black/30 shadow-inner border border-white/5 pointer-events-none" />
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mt-6">
