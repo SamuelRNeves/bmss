@@ -646,7 +646,7 @@ export default function Recomendacoes({
               )}
             </div>
 
-            {/* SEÇÃO DO PULSE - RESOLVENDO O CONFLITO */}
+            {/* SEÇÃO DO PULSE - CONFLITO RESOLVIDO: Mantendo toda a estrutura do pulse */}
             <div className="flex flex-wrap items-center gap-3 text-sm font-semibold text-white/90">
               <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10">
                 <Clock3 size={14} className="text-sky-300" />

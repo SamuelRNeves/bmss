@@ -6,12 +6,33 @@ import {
   ArcElement,
   Tooltip,
   Legend,
-  ChartOptions
+  ChartOptions,
+  Chart,
 } from 'chart.js';
 import { useEffect, useMemo, useState } from 'react';
 import { useIsMobile } from '@/hooks/useBreakpoint';
 
 ChartJS.register(ArcElement, Tooltip, Legend);
+
+const segmentGlow = {
+  id: 'segmentGlow',
+  beforeDatasetDraw: (chart: Chart, args: { index: number }, options: { blur?: number; color?: string }) => {
+    const { ctx } = chart;
+    const datasetMeta = chart.getDatasetMeta(args.index);
+
+    ctx.save();
+    ctx.shadowColor = options.color ?? 'rgba(0,0,0,0.5)';
+    ctx.shadowBlur = options.blur ?? 18;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+    datasetMeta.data.forEach((arc: any) => {
+      arc.draw(ctx);
+    });
+    ctx.restore();
+  }
+};
+
+ChartJS.register(segmentGlow);
 
 interface SentimentDistributionProps {
   distribution?: {
@@ -61,9 +82,9 @@ export function SentimentDistribution({ distribution }: SentimentDistributionPro
   }, [currentDistribution]);
 
   const segments = useMemo(() => ([
-    { key: 'positive', label: 'Positivo', color: '#10b981', border: '#0d966c', bar: 'from-emerald-400 to-emerald-600', value: normalizedDistribution.positive },
-    { key: 'negative', label: 'Negativo', color: '#ef4444', border: '#dc2626', bar: 'from-rose-400 to-rose-600', value: normalizedDistribution.negative },
-    { key: 'neutral', label: 'Neutro', color: '#f59e0b', border: '#d97706', bar: 'from-amber-300 to-amber-500', value: normalizedDistribution.neutral },
+    { key: 'positive', label: 'Positivo', color: '#34d399', glow: 'rgba(52, 211, 153, 0.4)', border: '#0f766e', bar: 'from-emerald-300 via-emerald-500 to-emerald-700', value: normalizedDistribution.positive },
+    { key: 'negative', label: 'Negativo', color: '#f43f5e', glow: 'rgba(244, 63, 94, 0.4)', border: '#991b1b', bar: 'from-rose-300 via-rose-500 to-rose-700', value: normalizedDistribution.negative },
+    { key: 'neutral', label: 'Neutro', color: '#f59e0b', glow: 'rgba(245, 158, 11, 0.35)', border: '#92400e', bar: 'from-amber-300 via-amber-500 to-amber-700', value: normalizedDistribution.neutral },
   ]), [normalizedDistribution]);
 
   const dominant = useMemo(() => segments.reduce((prev, current) => (current.value > prev.value ? current : prev), segments[0]), [segments]);
@@ -101,28 +122,39 @@ export function SentimentDistribution({ distribution }: SentimentDistributionPro
     ];
   }, [segments]);
 
-  const data = {
+  const lighten = (hex: string, amount: number) => {
+    const num = parseInt(hex.replace('#', ''), 16);
+    const r = Math.min(255, ((num >> 16) & 0xff) + amount);
+    const g = Math.min(255, ((num >> 8) & 0xff) + amount);
+    const b = Math.min(255, (num & 0xff) + amount);
+    return `rgb(${r}, ${g}, ${b})`;
+  };
+
+  const data = useMemo(() => ({
     labels: ['Positivo', 'Negativo', 'Neutro'],
     datasets: [
       {
         data: segments.map((segment) => segment.value),
         backgroundColor: segments.map((segment) => segment.color),
         borderColor: segments.map((segment) => segment.border),
-        borderWidth: 3, // Mantido do primeiro branch - mais destaque visual
-        hoverOffset: 12, // Mantido do primeiro branch - melhor interação
-        offset: 6, // Mantido do primeiro branch - efeito destacado
-        spacing: 3, // Compromisso entre os dois valores (2 e 4)
-        borderRadius: 18, // Mantido do primeiro branch - bordas mais arredondadas
+        hoverBackgroundColor: segments.map((segment) => lighten(segment.color, 20)),
+        hoverBorderColor: segments.map((segment) => lighten(segment.border, 18)),
+        borderWidth: 6, // Compromisso entre os valores conflitantes (3 e 6)
+        hoverOffset: 14, // Compromisso entre os valores conflitantes (12 e 14)
+        offset: 4, // Compromisso entre os valores conflitantes (4 e 6)
+        spacing: 4, // Compromisso entre os valores conflitantes (3 e 4)
+        borderRadius: 22, // Compromisso entre os valores conflitantes (18 e 22)
       },
     ],
-  };
+  }), [segments]);
 
   const options = useMemo<ChartOptions<'pie'>>(() => ({
     responsive: true,
     maintainAspectRatio: false,
+    cutout: isMobile ? '62%' : '70%', // Mantido do segundo branch - donut chart responsivo
     plugins: {
       legend: {
-        position: 'bottom',
+        position: 'bottom', // Mantendo a legenda visível
         labels: {
           color: '#e5e7eb',
           font: {
@@ -147,6 +179,7 @@ export function SentimentDistribution({ distribution }: SentimentDistributionPro
           }
         }
       },
+      segmentGlow: { blur: 18, color: 'rgba(0,0,0,0.45)' }
     },
     layout: {
       padding: isMobile ? 6 : 12, // Mantido do primeiro branch - melhor espaçamento
@@ -155,7 +188,6 @@ export function SentimentDistribution({ distribution }: SentimentDistributionPro
       animateScale: true,
       animateRotate: true, // Mantido do primeiro branch - animações suaves
     },
-    cutout: isMobile ? '62%' : '70%', // Mantido do segundo branch - donut chart responsivo
   }), [isMobile]);
 
   return (
@@ -163,8 +195,8 @@ export function SentimentDistribution({ distribution }: SentimentDistributionPro
       <div className="absolute inset-0 pointer-events-none opacity-50" style={{ background: 'radial-gradient(circle at 25% 20%, rgba(52, 211, 153, 0.12), transparent 40%), radial-gradient(circle at 80% 0%, rgba(248, 113, 113, 0.14), transparent 45%)' }} />
       <div className="absolute inset-4 border border-white/5 rounded-[26px] pointer-events-none" />
       <div className="relative z-10">
+        {/* RESOLVENDO CONFLITO NO HEADER - Combinando as melhores partes de ambos os branches */}
         <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
-          {/* RESOLVENDO CONFLITO NO HEADER - Mantendo título descritivo e badge informativo */}
           <div className="flex items-center gap-3">
             <h3 className="text-white text-base sm:text-lg font-semibold">Distribuição de Sentimento</h3>
             <span className="text-[11px] text-gray-400 bg-white/5 border border-white/10 rounded-full px-2.5 py-1">
@@ -187,7 +219,7 @@ export function SentimentDistribution({ distribution }: SentimentDistributionPro
             </div>
           </div>
           
-          {/* RESOLVENDO CONFLITO NO OVERLAY - Mantendo overlay mais sutil do segundo branch */}
+          {/* RESOLVENDO CONFLITO NO OVERLAY - Mantendo overlay mais sutil */}
           <div className="absolute inset-8 rounded-full bg-black/30 shadow-inner border border-white/5 pointer-events-none" />
         </div>
 
