@@ -28,6 +28,7 @@ public class Item {
     @Column(name = "published_at")
     private LocalDateTime publishedAt;
 
+    @Builder.Default
     @Column(name = "created_at")
     private LocalDateTime createdAt = LocalDateTime.now();
 

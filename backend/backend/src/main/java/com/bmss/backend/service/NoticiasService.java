@@ -739,12 +739,13 @@ private String normalizeSentimentToEnglish(String sentiment) {
                 try {
                     Item item = Item.builder()
                             .title(dto.getTitle())
-                            .text(dto.getDescription())
+                            .text(Optional.ofNullable(dto.getDescription()).orElse(""))
                             .url(dto.getUrl())
                             .sourceName(dto.getSource())
                             .sentimentLabel(label)
                             .sentimentScore(score)
                             .publishedAt(publishedAt)
+                            .createdAt(LocalDateTime.now())
                             .analyzedAt(LocalDateTime.now())
                             .isTweet(false)
                             .build();
