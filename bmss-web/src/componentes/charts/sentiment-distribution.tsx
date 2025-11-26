@@ -1,6 +1,6 @@
 "use client";
 
-import { Doughnut } from 'react-chartjs-2';
+import { Pie } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
   ArcElement,
@@ -108,15 +108,16 @@ export function SentimentDistribution({ distribution }: SentimentDistributionPro
         data: segments.map((segment) => segment.value),
         backgroundColor: segments.map((segment) => segment.color),
         borderColor: segments.map((segment) => segment.border),
-        borderWidth: 2,
-        hoverOffset: 10,
-        spacing: 4,
-        borderRadius: 16,
+        borderWidth: 3, // Mantido do primeiro branch - mais destaque visual
+        hoverOffset: 12, // Mantido do primeiro branch - melhor interação
+        offset: 6, // Mantido do primeiro branch - efeito destacado
+        spacing: 3, // Compromisso entre os dois valores (2 e 4)
+        borderRadius: 18, // Mantido do primeiro branch - bordas mais arredondadas
       },
     ],
   };
 
-  const options = useMemo<ChartOptions<'doughnut'>>(() => ({
+  const options = useMemo<ChartOptions<'pie'>>(() => ({
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
@@ -147,7 +148,14 @@ export function SentimentDistribution({ distribution }: SentimentDistributionPro
         }
       },
     },
-    cutout: isMobile ? '62%' : '70%',
+    layout: {
+      padding: isMobile ? 6 : 12, // Mantido do primeiro branch - melhor espaçamento
+    },
+    animation: {
+      animateScale: true,
+      animateRotate: true, // Mantido do primeiro branch - animações suaves
+    },
+    cutout: isMobile ? '62%' : '70%', // Mantido do segundo branch - donut chart responsivo
   }), [isMobile]);
 
   return (
@@ -156,20 +164,30 @@ export function SentimentDistribution({ distribution }: SentimentDistributionPro
       <div className="absolute inset-4 border border-white/5 rounded-[26px] pointer-events-none" />
       <div className="relative z-10">
         <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
-          <h3 className="text-white text-base sm:text-lg font-semibold">Distribuição de Sentimento</h3>
+          {/* RESOLVENDO CONFLITO NO HEADER - Mantendo título descritivo e badge informativo */}
+          <div className="flex items-center gap-3">
+            <h3 className="text-white text-base sm:text-lg font-semibold">Distribuição de Sentimento</h3>
+            <span className="text-[11px] text-gray-400 bg-white/5 border border-white/10 rounded-full px-2.5 py-1">
+              Visual em pizza para leitura rápida
+            </span>
+          </div>
           <div className="text-[11px] uppercase tracking-wide text-gray-400 bg-white/5 border border-white/5 rounded-full px-3 py-1">
             Dados sincronizados com a análise acima
           </div>
         </div>
 
         <div className="relative h-56 sm:h-64">
-          <Doughnut data={data} options={options} />
+          <Pie data={data} options={options} />
 
-          <div className="absolute inset-0 flex items-center justify-center flex-col">
-            <span className="text-sm text-gray-400">Liderança</span>
-            <span className={`text-3xl font-bold text-white`}>{dominant.value.toFixed(1)}%</span>
-            <span className="text-xs uppercase tracking-wide" style={{ color: dominant.color }}>{dominant.label}</span>
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="px-4 py-3 rounded-2xl bg-black/70 border border-white/10 shadow-xl backdrop-blur">
+              <p className="text-[11px] uppercase tracking-[0.3em] text-gray-400 text-center">Liderança</p>
+              <p className="text-3xl font-bold text-white text-center">{dominant.value.toFixed(1)}%</p>
+              <p className="text-xs uppercase tracking-wide text-center" style={{ color: dominant.color }}>{dominant.label}</p>
+            </div>
           </div>
+          
+          {/* RESOLVENDO CONFLITO NO OVERLAY - Mantendo overlay mais sutil do segundo branch */}
           <div className="absolute inset-8 rounded-full bg-black/30 shadow-inner border border-white/5 pointer-events-none" />
         </div>
 

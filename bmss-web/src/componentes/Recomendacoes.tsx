@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   ShieldAlert,
   RefreshCw,
+  Clock3,
 } from "lucide-react";
 import { useAuth, INVESTOR_PROFILE_STORAGE_KEY } from "@/lib/useAuth";
 import type { SentimentSnapshot, InvestorProfile } from "@/lib/sentiment-insights";
@@ -556,10 +557,49 @@ export default function Recomendacoes({
 
   const perfilAtual = perfil ?? "MODERADO";
   const percentuais = {
-    positivo: Math.round(snapshotAtual.distribuicao.positivo),
-    neutro: Math.round(snapshotAtual.distribuicao.neutro),
-    negativo: Math.round(snapshotAtual.distribuicao.negativo),
+    positivo: Number(snapshotAtual.distribuicao.positivo.toFixed(1)),
+    neutro: Number(snapshotAtual.distribuicao.neutro.toFixed(1)),
+    negativo: Number(snapshotAtual.distribuicao.negativo.toFixed(1)),
   };
+
+  const [renderedAt] = useState<Date>(() => new Date());
+
+  const pulseHeadline = useMemo(() => {
+    const intensidadeTexto =
+      snapshotAtual.intensidade === "forte"
+        ? "de alta voltagem"
+        : snapshotAtual.intensidade === "moderada"
+        ? "com ritmo moderado"
+        : "de baixa intensidade";
+
+    if (snapshotAtual.dominante === "positivo") {
+      return `Fluxo otimista ${intensidadeTexto}`;
+    }
+
+    if (snapshotAtual.dominante === "negativo") {
+      return `Clima defensivo ${intensidadeTexto}`;
+    }
+
+    return `Mercado equilibrado ${intensidadeTexto}`;
+  }, [snapshotAtual.dominante, snapshotAtual.intensidade]);
+
+  const pulseDetails = useMemo(() => {
+    const total = snapshotAtual.totalItens || 0;
+    const totalTexto = total
+      ? `${new Intl.NumberFormat("pt-BR").format(total)} análises recentes`
+      : "Base em atualização";
+
+    return `${totalTexto}: ${percentuais.positivo}% positivas, ${percentuais.neutro}% neutras e ${percentuais.negativo}% negativas.`;
+  }, [percentuais.negativo, percentuais.neutro, percentuais.positivo, snapshotAtual.totalItens]);
+
+  const pulseTimestamp = useMemo(
+    () =>
+      renderedAt.toLocaleTimeString("pt-BR", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+    [renderedAt]
+  );
 
   const legendaSugestoes = [
     "Agressivo prioriza velocidade e upside; aceita perdas de curto prazo e pode comprar com respingos positivos mínimos, mas pausa se o negativo dominar sem neutro para amortecer.",
@@ -605,6 +645,17 @@ export default function Recomendacoes({
                 </span>
               )}
             </div>
+
+            {/* SEÇÃO DO PULSE - RESOLVENDO O CONFLITO */}
+            <div className="flex flex-wrap items-center gap-3 text-sm font-semibold text-white/90">
+              <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10">
+                <Clock3 size={14} className="text-sky-300" />
+                {pulseHeadline}
+              </span>
+              <span className="text-xs text-gray-400">• {pulseTimestamp}</span>
+            </div>
+            <p className="text-xs text-gray-400 leading-relaxed">{pulseDetails}</p>
+
             <div className="text-[11px] text-gray-400 flex flex-wrap items-center gap-2">
               <span className="px-2 py-0.5 rounded-full bg-neutral-800/60 text-gray-300 border border-neutral-700/70">
                 {confidenceBreakdown}
