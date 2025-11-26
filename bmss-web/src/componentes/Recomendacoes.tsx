@@ -645,6 +645,8 @@ export default function Recomendacoes({
                 </span>
               )}
             </div>
+
+            {/* SEÇÃO DO PULSE - RESOLVENDO O CONFLITO */}
             <div className="flex flex-wrap items-center gap-3 text-sm font-semibold text-white/90">
               <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10">
                 <Clock3 size={14} className="text-sky-300" />
@@ -653,6 +655,7 @@ export default function Recomendacoes({
               <span className="text-xs text-gray-400">• {pulseTimestamp}</span>
             </div>
             <p className="text-xs text-gray-400 leading-relaxed">{pulseDetails}</p>
+
             <div className="text-[11px] text-gray-400 flex flex-wrap items-center gap-2">
               <span className="px-2 py-0.5 rounded-full bg-neutral-800/60 text-gray-300 border border-neutral-700/70">
                 {confidenceBreakdown}
