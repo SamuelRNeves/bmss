@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Loader2, RotateCcw } from "lucide-react";
 import { NewsCard } from "./news-card";
 import { buildApiUrl, getFetchErrorMessage } from "@/lib/api";
@@ -18,54 +18,61 @@ const INITIAL_VISIBLE_NEWS = 6;
 
 export default function NewsFeedContent() {
   const [news, setNews] = useState<FeedItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [sentimentFilter, setSentimentFilter] = useState("todos");
-  const [visibleNewsCount, setVisibleNewsCount] = useState(INITIAL_VISIBLE_NEWS);
+  const [visibleNewsCount, setVisibleNewsCount] = useState(0);
+  const [hasFetched, setHasFetched] = useState(false);
 
   const sentimentOptions = useMemo(() => SENTIMENT_FILTER_OPTIONS, []);
 
-  const fetchNews = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const mappedFilter = mapSentimentFilter(sentimentFilter);
-      const endpoint =
-        mappedFilter === "todos"
-          ? buildApiUrl(`noticias/ultimas?limit=${FETCH_LIMIT}&q=bitcoin`)
-          : buildApiUrl(`noticias/filtrar?sentiment=${mappedFilter}&limit=${FETCH_LIMIT}`);
+  const fetchNews = useCallback(
+    async (filterParam?: string) => {
+      setIsLoading(true);
+      try {
+        const filter = filterParam ?? sentimentFilter;
+        const mappedFilter = mapSentimentFilter(filter);
+        const endpoint =
+          mappedFilter === "todos"
+            ? buildApiUrl(`noticias/ultimas?limit=${FETCH_LIMIT}&q=bitcoin`)
+            : buildApiUrl(`noticias/filtrar?sentiment=${mappedFilter}&limit=${FETCH_LIMIT}`);
 
-      const res = await fetch(endpoint);
-      const data = await res.json();
-      const items: FeedItem[] = Array.isArray(data?.data)
-        ? data.data.map((item: unknown) => mapApiItemToFeedItem(item, createFallbackNews()))
-        : [];
+        const res = await fetch(endpoint);
+        const data = await res.json();
+        const items: FeedItem[] = Array.isArray(data?.data)
+          ? data.data.map((item: unknown) => mapApiItemToFeedItem(item, createFallbackNews()))
+          : [];
 
-      setNews(items);
-      setVisibleNewsCount((prev) => {
-        if (items.length === 0) {
-          return 0;
-        }
+        setNews(items);
+        setHasFetched(true);
+        setVisibleNewsCount((prev) => {
+          if (items.length === 0) {
+            return 0;
+          }
 
-        if (prev > INITIAL_VISIBLE_NEWS) {
-          return Math.min(items.length, prev);
-        }
+          if (prev > INITIAL_VISIBLE_NEWS) {
+            return Math.min(items.length, prev);
+          }
 
-        return Math.min(INITIAL_VISIBLE_NEWS, items.length);
-      });
-    } catch (err) {
-      console.error("Erro ao buscar notícias:", getFetchErrorMessage(err));
-      const fallback = buildFallbackList("news");
-      setNews(fallback);
-      setVisibleNewsCount((prev) => {
-        if (prev > INITIAL_VISIBLE_NEWS) {
-          return Math.min(fallback.length, prev);
-        }
-        return Math.min(INITIAL_VISIBLE_NEWS, fallback.length);
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  }, [sentimentFilter]);
+          return Math.min(INITIAL_VISIBLE_NEWS, items.length);
+        });
+      } catch (err) {
+        console.error("Erro ao buscar notícias:", getFetchErrorMessage(err));
+        const fallback = buildFallbackList("news");
+        setNews(fallback);
+        setHasFetched(true);
+        setVisibleNewsCount((prev) => {
+          if (prev > INITIAL_VISIBLE_NEWS) {
+            return Math.min(fallback.length, prev);
+          }
+          return Math.min(INITIAL_VISIBLE_NEWS, fallback.length);
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [sentimentFilter]
+  );
 
   const refreshNews = useCallback(async () => {
     setIsRefreshing(true);
@@ -89,17 +96,25 @@ export default function NewsFeedContent() {
       console.error("Erro ao atualizar notícias:", getFetchErrorMessage(err));
     } finally {
       setIsRefreshing(false);
-      await fetchNews();
+      await fetchNews(sentimentFilter);
     }
-  }, [fetchNews]);
+  }, [fetchNews, sentimentFilter]);
 
-  useEffect(() => {
-    fetchNews();
-  }, [fetchNews]);
+  const handleFilterChange = useCallback(
+    (value: string) => {
+      setSentimentFilter(value);
+      if (hasFetched) {
+        fetchNews(value);
+      }
+    },
+    [fetchNews, hasFetched]
+  );
 
-  useEffect(() => {
-    setVisibleNewsCount(INITIAL_VISIBLE_NEWS);
-  }, [sentimentFilter]);
+  const handleInitialLoad = useCallback(() => {
+    if (!isLoading) {
+      fetchNews(sentimentFilter);
+    }
+  }, [fetchNews, isLoading, sentimentFilter]);
 
   const visibleNews = news.slice(0, visibleNewsCount);
 
@@ -112,7 +127,7 @@ export default function NewsFeedContent() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <button
             type="button"
-            onClick={refreshNews}
+            onClick={hasFetched ? refreshNews : handleInitialLoad}
             disabled={isLoading || isRefreshing}
             className="flex items-center justify-center gap-2 rounded-full bg-yellow-400 px-4 py-2 font-semibold text-neutral-900 shadow transition-colors hover:bg-yellow-300 disabled:cursor-not-allowed disabled:opacity-70"
           >
@@ -124,14 +139,14 @@ export default function NewsFeedContent() {
             ) : (
               <>
                 <RotateCcw className="h-4 w-4" />
-                Atualizar notícias
+                {hasFetched ? "Atualizar notícias" : "Carregar notícias"}
               </>
             )}
           </button>
 
           <select
             value={sentimentFilter}
-            onChange={(e) => setSentimentFilter(e.target.value)}
+            onChange={(e) => handleFilterChange(e.target.value)}
             className="rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-2 text-gray-300 focus:outline-none focus:ring-2 focus:ring-yellow-400/60"
           >
             {sentimentOptions.map((option) => (
@@ -143,7 +158,11 @@ export default function NewsFeedContent() {
         </div>
       </div>
 
-      {isLoading ? (
+      {!hasFetched && !isLoading ? (
+        <div className="text-gray-400 text-center py-6">
+          Clique em &quot;Carregar notícias&quot; para buscar as manchetes mais recentes.
+        </div>
+      ) : isLoading ? (
         <div className="text-gray-400 text-center py-6">Carregando notícias...</div>
       ) : (
         <>
