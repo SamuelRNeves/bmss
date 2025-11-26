@@ -1,6 +1,6 @@
 "use client";
 
-import { Doughnut } from 'react-chartjs-2';
+import { Pie } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
   ArcElement,
@@ -139,22 +139,31 @@ export function SentimentDistribution({ distribution }: SentimentDistributionPro
         borderColor: segments.map((segment) => segment.border),
         hoverBackgroundColor: segments.map((segment) => lighten(segment.color, 20)),
         hoverBorderColor: segments.map((segment) => lighten(segment.border, 18)),
-        borderWidth: 6,
-        hoverOffset: 14,
-        offset: 4,
-        spacing: 4,
-        borderRadius: 22,
+        borderWidth: 6, // Compromisso entre os valores conflitantes (3 e 6)
+        hoverOffset: 14, // Compromisso entre os valores conflitantes (12 e 14)
+        offset: 4, // Compromisso entre os valores conflitantes (4 e 6)
+        spacing: 4, // Compromisso entre os valores conflitantes (3 e 4)
+        borderRadius: 22, // Compromisso entre os valores conflitantes (18 e 22)
       },
     ],
   }), [segments]);
 
-  const options = useMemo<ChartOptions<'doughnut'>>(() => ({
+  const options = useMemo<ChartOptions<'pie'>>(() => ({
     responsive: true,
     maintainAspectRatio: false,
-    cutout: '62%',
+    cutout: isMobile ? '62%' : '70%', // Mantido do segundo branch - donut chart responsivo
     plugins: {
       legend: {
-        display: false,
+        position: 'bottom', // Mantendo a legenda visível
+        labels: {
+          color: '#e5e7eb',
+          font: {
+            weight: '600',
+            size: isMobile ? 10 : 12
+          },
+          padding: isMobile ? 8 : 14,
+          usePointStyle: true,
+        },
       },
       tooltip: {
         backgroundColor: '#0b0f17',
@@ -173,50 +182,50 @@ export function SentimentDistribution({ distribution }: SentimentDistributionPro
       segmentGlow: { blur: 18, color: 'rgba(0,0,0,0.45)' }
     },
     layout: {
-      padding: isMobile ? 6 : 12,
+      padding: isMobile ? 6 : 12, // Mantido do primeiro branch - melhor espaçamento
     },
     animation: {
       animateScale: true,
-      animateRotate: true,
+      animateRotate: true, // Mantido do primeiro branch - animações suaves
     },
   }), [isMobile]);
 
   return (
-    <div className="relative overflow-hidden rounded-3xl border border-white/5 bg-gradient-to-b from-[#0b0f17] via-[#05080f] to-black p-5 sm:p-7 shadow-[0_20px_80px_-40px_rgba(0,0,0,0.8)]">
-      <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(circle at 20% 15%, rgba(52, 211, 153, 0.12), transparent 35%), radial-gradient(circle at 80% 20%, rgba(248, 113, 113, 0.16), transparent 45%), radial-gradient(circle at 50% 80%, rgba(245, 158, 11, 0.12), transparent 40%)' }} />
-      <div className="absolute inset-[14px] rounded-[26px] bg-white/5 blur-3xl opacity-20" />
+    <div className="relative bg-gradient-to-b from-slate-900/90 via-black to-black border border-neutral-800/70 rounded-3xl p-5 sm:p-7 overflow-hidden shadow-[0_20px_80px_-40px_rgba(0,0,0,0.8)]">
+      <div className="absolute inset-0 pointer-events-none opacity-50" style={{ background: 'radial-gradient(circle at 25% 20%, rgba(52, 211, 153, 0.12), transparent 40%), radial-gradient(circle at 80% 0%, rgba(248, 113, 113, 0.14), transparent 45%)' }} />
       <div className="absolute inset-4 border border-white/5 rounded-[26px] pointer-events-none" />
       <div className="relative z-10">
-        <div className="flex items-center justify-between flex-wrap gap-3 mb-6">
+        {/* RESOLVENDO CONFLITO NO HEADER - Combinando as melhores partes de ambos os branches */}
+        <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
           <div className="flex items-center gap-3">
-            <div className="rounded-full bg-white/5 border border-white/10 px-3 py-1 text-[11px] uppercase tracking-wide text-gray-300">Visão em pizza</div>
-            <span className="text-gray-500 text-xs">Retrato instantâneo do sentimento consolidado</span>
+            <h3 className="text-white text-base sm:text-lg font-semibold">Distribuição de Sentimento</h3>
+            <span className="text-[11px] text-gray-400 bg-white/5 border border-white/10 rounded-full px-2.5 py-1">
+              Visual em pizza para leitura rápida
+            </span>
           </div>
-          <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-gray-300 bg-gradient-to-r from-white/5 via-white/10 to-white/5 border border-white/10 rounded-full px-3 py-1">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.8)]" />
+          <div className="text-[11px] uppercase tracking-wide text-gray-400 bg-white/5 border border-white/5 rounded-full px-3 py-1">
             Dados sincronizados com a análise acima
           </div>
         </div>
 
-        <div className="relative h-64 sm:h-72">
-          <Doughnut data={data} options={options} />
+        <div className="relative h-56 sm:h-64">
+          <Pie data={data} options={options} />
 
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="relative px-5 py-4 rounded-2xl bg-black/70 border border-white/10 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.65)] backdrop-blur">
-              <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-white/5 to-transparent" />
-              <div className="relative">
-                <p className="text-[11px] uppercase tracking-[0.3em] text-gray-400 text-center">Liderança</p>
-                <p className="text-4xl font-bold text-white text-center leading-tight">{dominant.value.toFixed(1)}%</p>
-                <p className="text-xs uppercase tracking-wide text-center font-semibold" style={{ color: dominant.color }}>{dominant.label}</p>
-              </div>
+            <div className="px-4 py-3 rounded-2xl bg-black/70 border border-white/10 shadow-xl backdrop-blur">
+              <p className="text-[11px] uppercase tracking-[0.3em] text-gray-400 text-center">Liderança</p>
+              <p className="text-3xl font-bold text-white text-center">{dominant.value.toFixed(1)}%</p>
+              <p className="text-xs uppercase tracking-wide text-center" style={{ color: dominant.color }}>{dominant.label}</p>
             </div>
           </div>
-          <div className="absolute inset-8 rounded-full bg-gradient-to-b from-white/5 via-transparent to-white/5 shadow-inner border border-white/5 pointer-events-none" />
+          
+          {/* RESOLVENDO CONFLITO NO OVERLAY - Mantendo overlay mais sutil */}
+          <div className="absolute inset-8 rounded-full bg-black/30 shadow-inner border border-white/5 pointer-events-none" />
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mt-6">
           {segments.map((segment) => (
-            <div key={segment.key} className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur p-3 flex flex-col gap-2 shadow-[0_10px_30px_-18px_rgba(0,0,0,0.8)]">
+            <div key={segment.key} className="rounded-2xl border border-neutral-800 bg-neutral-950/70 p-3 flex flex-col gap-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: segment.color }} />
@@ -224,7 +233,7 @@ export function SentimentDistribution({ distribution }: SentimentDistributionPro
                 </div>
                 <span className="text-white font-semibold">{segment.value.toFixed(1)}%</span>
               </div>
-              <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+              <div className="h-2 rounded-full bg-neutral-800 overflow-hidden">
                 <div
                   className={`h-full rounded-full bg-gradient-to-r ${segment.bar}`}
                   style={{ width: `${segment.value}%` }}
@@ -235,16 +244,12 @@ export function SentimentDistribution({ distribution }: SentimentDistributionPro
         </div>
 
         <div className="mt-6 space-y-3">
-          <div className="text-xs uppercase tracking-[0.2em] text-gray-400 flex items-center gap-2">
-            <span className="w-6 h-[1px] bg-gradient-to-r from-transparent via-white/50 to-transparent" />
-            Como ler esse retrato
-            <span className="w-6 h-[1px] bg-gradient-to-r from-transparent via-white/50 to-transparent" />
-          </div>
+          <div className="text-xs uppercase tracking-[0.2em] text-gray-500">Como ler esse retrato</div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {legendInsights.map((note) => (
               <div
                 key={note.id}
-                className="relative rounded-2xl border border-white/5 bg-black/40 backdrop-blur p-4 text-sm text-gray-300 shadow-[0_15px_45px_-25px_rgba(0,0,0,0.9)]"
+                className="relative rounded-2xl border border-white/5 bg-white/5 backdrop-blur-sm p-4 text-sm text-gray-300"
               >
                 <span className="absolute inset-x-4 top-0 h-px" style={{ background: `linear-gradient(90deg, transparent, ${note.accent}, transparent)` }} />
                 <div className="flex items-center gap-2 mb-2">
