@@ -367,6 +367,7 @@ export default function HomeClient() {
   const [stats, setStats] = useState<DashboardStats>(INITIAL_STATS);
   const [isLoading, setIsLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<string>("");
+  const [analysisTimestamp, setAnalysisTimestamp] = useState<string | null>(null);
   const previousStatsRef = useRef<DashboardStats | null>(null);
   const mountedRef = useRef(true);
   const [dailyHeadline, setDailyHeadline] = useState<FeedItem | null>(null);
@@ -643,7 +644,14 @@ export default function HomeClient() {
           totalItens: allItems.length,
         })
       );
-      setLastUpdate(new Date().toLocaleTimeString("pt-BR"));
+      const now = new Date();
+      setLastUpdate(
+        now.toLocaleTimeString("pt-BR", {
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      );
+      setAnalysisTimestamp(now.toISOString());
       setSentimentTrend(
         buildSentimentTrend(allItems, {
           defaultRatios: {
@@ -722,6 +730,15 @@ export default function HomeClient() {
             neutro: fallbackPercentages.neutral,
           },
           totalItens: fallbackItems.length,
+        })
+      );
+
+      const now = new Date();
+      setAnalysisTimestamp(now.toISOString());
+      setLastUpdate(
+        now.toLocaleTimeString("pt-BR", {
+          hour: "2-digit",
+          minute: "2-digit",
         })
       );
 
