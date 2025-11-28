@@ -75,7 +75,25 @@ function getCategoryLabel(notification: NotificationPayload): string {
   }
 }
 
-export function StatusBar() {
+interface StatusFallback {
+  title: string;
+  description?: string;
+  sentiment: NotificationSentiment;
+  publishedAt?: string;
+}
+
+interface StatusBarProps {
+  fallbackSummary?: StatusFallback | null;
+  analysisStats?: {
+    total: number;
+    positive: number;
+    neutral: number;
+    negative: number;
+    updatedAt?: string;
+  };
+}
+
+export function StatusBar({ fallbackSummary, analysisStats }: StatusBarProps) {
   const [summary, setSummary] = useState<NotificationPayload | null>(null);
   const [notifications, setNotifications] = useState<NotificationPayload[]>([]);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
@@ -138,17 +156,31 @@ export function StatusBar() {
       });
       seenIdsRef.current = preservedSeen;
 
-    const newUnread = new Set<string>();
-    others.forEach((item) => {
-      if (!seenIdsRef.current.has(item.id)) {
-        newUnread.add(item.id);
-      }
-    });
-    setUnreadIds(newUnread);
+      const newUnread = new Set<string>();
+      others.forEach((item) => {
+        if (!seenIdsRef.current.has(item.id)) {
+          newUnread.add(item.id);
+        }
+      });
+      setUnreadIds(newUnread);
     } finally {
       setIsLoading(false);
     }
   }, [formatTimestamp]);
+
+  const resolvedSummary = useMemo(() => {
+    if (summary) return summary;
+    if (!fallbackSummary) return null;
+
+    return {
+      id: "fallback-summary",
+      title: fallbackSummary.title,
+      description: fallbackSummary.description ?? fallbackSummary.title,
+      sentiment: fallbackSummary.sentiment,
+      category: "summary" as const,
+      publishedAt: fallbackSummary.publishedAt,
+    } satisfies NotificationPayload;
+  }, [fallbackSummary, summary]);
 
   useEffect(() => {
     fetchNotifications().catch((reason) => {
@@ -213,9 +245,28 @@ export function StatusBar() {
     setUnreadIds(new Set<string>());
   }, [panelOpen, notifications]);
 
+  useEffect(() => {
+    if (lastUpdate || !resolvedSummary?.publishedAt) {
+      return;
+    }
+
+    const computed = formatTimestamp(resolvedSummary.publishedAt);
+    if (computed) {
+      setLastUpdate(computed);
+    }
+  }, [formatTimestamp, lastUpdate, resolvedSummary?.publishedAt]);
+
+  useEffect(() => {
+    if (!analysisStats?.updatedAt) return;
+    const formatted = formatTimestamp(analysisStats.updatedAt);
+    if (formatted) {
+      setLastUpdate((current) => current || formatted);
+    }
+  }, [analysisStats?.updatedAt, formatTimestamp]);
+
   const unreadCount = unreadIds.size;
 
-  const statusTone: NotificationSentiment = summary?.sentiment ?? "neutral";
+  const statusTone: NotificationSentiment = resolvedSummary?.sentiment ?? "neutral";
   const statusConfig = useMemo(() => {
     switch (statusTone) {
       case "positive":
@@ -223,26 +274,42 @@ export function StatusBar() {
           icon: CheckCircle,
           color: "text-emerald-300",
           bg: "bg-emerald-500/10",
-          label: summary?.title ?? "Mercado otimista",
+          label: resolvedSummary?.title ?? "Mercado otimista",
         };
       case "negative":
         return {
           icon: AlertTriangle,
           color: "text-rose-300",
           bg: "bg-rose-500/10",
-          label: summary?.title ?? "Alerta de pressão vendedora",
+          label: resolvedSummary?.title ?? "Alerta de pressão vendedora",
         };
       default:
         return {
           icon: Activity,
           color: "text-sky-300",
           bg: "bg-sky-500/10",
-          label: summary?.title ?? "Sentimento equilibrado",
+          label: resolvedSummary?.title ?? "Sentimento equilibrado",
         };
     }
-  }, [statusTone, summary?.title]);
+  }, [resolvedSummary?.title, statusTone]);
 
   const StatusIcon = statusConfig.icon;
+
+  const analysisDetail = useMemo(() => {
+    if (!analysisStats) return null;
+
+    const formatter = new Intl.NumberFormat("pt-BR");
+    const totalLabel = analysisStats.total
+      ? `${formatter.format(analysisStats.total)} análises recentes`
+      : "Base em atualização";
+
+    const fmt = (value: number) =>
+      value.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+    return `${totalLabel}: ${fmt(analysisStats.positive)}% positivas, ${fmt(
+      analysisStats.neutral
+    )}% neutras e ${fmt(analysisStats.negative)}% negativas.`;
+  }, [analysisStats]);
 
   const handleToggleNotifications = useCallback(() => {
     setNotificationsEnabled((prev) => {
@@ -351,10 +418,44 @@ export function StatusBar() {
                 <span className="text-xs text-gray-400">• {lastUpdate}</span>
               )}
             </div>
-            {summary?.description && (
-              <p className="text-xs text-gray-400 md:max-w-xl">
-                {summary.description}
+            {(analysisDetail || resolvedSummary?.description) && (
+              <p className="text-xs text-gray-300 md:max-w-2xl">
+                {analysisDetail ?? resolvedSummary?.description}
               </p>
+            )}
+            {analysisStats && (
+              <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-gray-400">
+                {["positive", "neutral", "negative"].map((key) => {
+                  const label =
+                    key === "positive" ? "Positivas" : key === "negative" ? "Negativas" : "Neutras";
+                  const color =
+                    key === "positive"
+                      ? "bg-emerald-500/15 text-emerald-200"
+                      : key === "negative"
+                      ? "bg-rose-500/15 text-rose-200"
+                      : "bg-amber-500/15 text-amber-200";
+                  const value =
+                    key === "positive"
+                      ? analysisStats.positive
+                      : key === "negative"
+                      ? analysisStats.negative
+                      : analysisStats.neutral;
+
+                  return (
+                    <span
+                      key={key}
+                      className={`inline-flex items-center gap-1 rounded-full px-2 py-1 font-medium ${color}`}
+                    >
+                      <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                      {value.toLocaleString("pt-BR", {
+                        minimumFractionDigits: 1,
+                        maximumFractionDigits: 1,
+                      })}
+                      % {label}
+                    </span>
+                  );
+                })}
+              </div>
             )}
           </div>
 
@@ -411,31 +512,31 @@ export function StatusBar() {
                       </div>
                     )}
 
-                    {summary && (
+                    {resolvedSummary && (
                       <div className="rounded-lg border border-neutral-800 bg-neutral-900/70 p-3">
                         <div className="flex items-start gap-3">
-                          <div className="mt-1 text-sm">{getNotificationIcon(summary)}</div>
+                          <div className="mt-1 text-sm">{getNotificationIcon(resolvedSummary)}</div>
                           <div className="flex-1">
                             <p className="text-[11px] uppercase tracking-wide text-gray-500">
-                              {getCategoryLabel(summary)}
+                              {getCategoryLabel(resolvedSummary)}
                             </p>
                             <p className="text-sm font-semibold text-white leading-snug">
-                              {summary.title}
+                              {resolvedSummary.title}
                             </p>
-                            {summary.description && (
+                            {resolvedSummary.description && (
                               <p className="mt-1 text-xs text-gray-400 leading-snug">
-                                {summary.description}
+                                {resolvedSummary.description}
                               </p>
                             )}
                             <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-gray-500">
                               <span
-                                className={`px-2 py-0.5 rounded-full font-medium ${SENTIMENT_BADGES[summary.sentiment]}`}
+                                className={`px-2 py-0.5 rounded-full font-medium ${SENTIMENT_BADGES[resolvedSummary.sentiment]}`}
                               >
-                                {SENTIMENT_LABELS[summary.sentiment]}
+                                {SENTIMENT_LABELS[resolvedSummary.sentiment]}
                               </span>
-                              {summary.source && <span>{summary.source}</span>}
-                              {summary.publishedAt && (
-                                <span>{formatTimestamp(summary.publishedAt)}</span>
+                              {resolvedSummary.source && <span>{resolvedSummary.source}</span>}
+                              {resolvedSummary.publishedAt && (
+                                <span>{formatTimestamp(resolvedSummary.publishedAt)}</span>
                               )}
                             </div>
                           </div>
