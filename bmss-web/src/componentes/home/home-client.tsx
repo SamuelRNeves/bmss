@@ -21,7 +21,12 @@ import {
   BarChart3,
   RefreshCw,
 } from "lucide-react";
-import { buildApiUrl, getFetchErrorMessage, getTendencias } from "@/lib/api";
+import {
+  NotificationSentiment,
+  buildApiUrl,
+  getFetchErrorMessage,
+  getTendencias,
+} from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
 import BitcoinPriceClient from "../BitcoinPriceClient";
 import { SentimentDistribution } from "@/componentes/charts/sentiment-distribution";
@@ -770,6 +775,45 @@ export default function HomeClient() {
     showToast("info", "Atualizando", "Buscando dados...", 2000);
   }, [fetchStats]);
 
+  const fallbackStatusSummary = useMemo(() => {
+    if (!recommendationSnapshot) return null;
+
+    const sentimentMap: Record<SentimentSnapshot["dominante"], NotificationSentiment> = {
+      positivo: "positive",
+      negativo: "negative",
+      neutro: "neutral",
+    };
+
+    const intensityLabel =
+      recommendationSnapshot.intensidade === "forte"
+        ? "de alta voltagem"
+        : recommendationSnapshot.intensidade === "moderada"
+        ? "em ritmo moderado"
+        : "em ritmo leve";
+
+    const headline =
+      recommendationSnapshot.dominante === "positivo"
+        ? `Clima otimista ${intensityLabel}`
+        : recommendationSnapshot.dominante === "negativo"
+        ? `Pressão vendedora ${intensityLabel}`
+        : `Mercado equilibrado ${intensityLabel}`;
+
+    const totalLabel = recommendationSnapshot.totalItens
+      ? `${new Intl.NumberFormat("pt-BR").format(recommendationSnapshot.totalItens)} análises recentes`
+      : "Base em atualização";
+
+    const description = `${totalLabel}: ${recommendationSnapshot.distribuicao.positivo.toFixed(
+      1
+    )}% positivas, ${recommendationSnapshot.distribuicao.neutro.toFixed(1)}% neutras e ${recommendationSnapshot.distribuicao.negativo.toFixed(1)}% negativas.`;
+
+    return {
+      title: headline,
+      description,
+      sentiment: sentimentMap[recommendationSnapshot.dominante],
+      publishedAt: new Date().toISOString(),
+    };
+  }, [recommendationSnapshot]);
+
   const sentimentBadges = useMemo(
     () => (
       <div className="flex flex-wrap items-center gap-3">
@@ -799,7 +843,7 @@ export default function HomeClient() {
   return (
     <div className="min-h-screen bg-neutral-950 text-white">
       <Header />
-      <StatusBar />
+      <StatusBar fallbackSummary={fallbackStatusSummary} />
       <ToastNotifier />
 
       <div className="px-4 py-6 sm:px-6 lg:px-8">

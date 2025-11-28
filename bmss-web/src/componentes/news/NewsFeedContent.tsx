@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, RotateCcw } from "lucide-react";
 import { NewsCard } from "./news-card";
 import { buildApiUrl, getFetchErrorMessage } from "@/lib/api";
@@ -116,6 +116,12 @@ export default function NewsFeedContent() {
     }
   }, [fetchNews, isLoading, sentimentFilter]);
 
+  useEffect(() => {
+    if (!hasFetched && !isLoading) {
+      fetchNews(sentimentFilter);
+    }
+  }, [fetchNews, hasFetched, isLoading, sentimentFilter]);
+
   const visibleNews = news.slice(0, visibleNewsCount);
 
   return (
@@ -158,12 +164,10 @@ export default function NewsFeedContent() {
         </div>
       </div>
 
-      {!hasFetched && !isLoading ? (
-        <div className="text-gray-400 text-center py-6">
-          Clique em &quot;Carregar notícias&quot; para buscar as manchetes mais recentes.
-        </div>
-      ) : isLoading ? (
+      {isLoading ? (
         <div className="text-gray-400 text-center py-6">Carregando notícias...</div>
+      ) : !hasFetched ? (
+        <div className="text-gray-400 text-center py-6">Preparando o feed...</div>
       ) : (
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
