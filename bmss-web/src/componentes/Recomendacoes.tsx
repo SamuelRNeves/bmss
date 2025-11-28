@@ -195,12 +195,12 @@ const buildPurchaseGuidance = (
   }
 
   // Perfil CONSERVADOR
-  if (percentualPositivo >= 0.2 && percentualNegativo <= 0.3 && percentualNeutro >= 0.2) {
+  if (percentualPositivo >= 0.4 && percentualNegativo <= 0.3 && percentualNeutro >= 0.2) {
     return {
       status: "comprar",
       titulo: "Entrada seletiva permitida",
       detalhe:
-        "O conservador teme quedas de curto prazo; por isso exige 20%+ de sinais positivos, neutro robusto e venda contida para iniciar posições protegidas e menores.",
+        "O conservador teme quedas de curto prazo; por isso exige 40%+ de sinais positivos, neutro robusto e venda contida para iniciar posições protegidas e menores.",
     };
   }
 
@@ -604,7 +604,7 @@ export default function Recomendacoes({
   const legendaSugestoes = [
     "Agressivo prioriza velocidade e upside; aceita perdas de curto prazo e pode comprar com respingos positivos mínimos, mas pausa se o negativo dominar sem neutro para amortecer.",
     "Moderado busca equilíbrio: prefere neutro amortecendo volatilidade e só acelera quando o positivo lidera ou o neutro passa de ~55% para blindar quedas rápidas.",
-    "Conservador protege capital: teme quedas no curto prazo, só entra com positivo robusto (20%+), neutro forte e negativo controlado.",
+    "Conservador protege capital: teme quedas no curto prazo, só entra com positivo robusto (40%+), neutro forte e negativo controlado.",
     "Se o negativo superar o positivo sem colchão neutro, o sistema reduz compras para moderado/conservador e sugere observar. Neutro alto funciona como colchão; negativo alto trava compras.",
   ];
 
