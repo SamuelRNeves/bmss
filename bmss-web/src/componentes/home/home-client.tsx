@@ -831,17 +831,6 @@ export default function HomeClient() {
     };
   }, [recommendationSnapshot]);
 
-  const statusBarAnalysisStats = useMemo(
-    () => ({
-      total: recommendationSnapshot.totalItens ?? 0,
-      positive: recommendationSnapshot.distribuicao.positivo,
-      neutral: recommendationSnapshot.distribuicao.neutro,
-      negative: recommendationSnapshot.distribuicao.negativo,
-      updatedAt: analysisTimestamp ?? undefined,
-    }),
-    [analysisTimestamp, recommendationSnapshot]
-  );
-
   const sentimentBadges = useMemo(
     () => (
       <div className="flex flex-wrap items-center gap-3">
@@ -871,7 +860,7 @@ export default function HomeClient() {
   return (
     <div className="min-h-screen bg-neutral-950 text-white">
       <Header />
-      <StatusBar fallbackSummary={fallbackStatusSummary} analysisStats={statusBarAnalysisStats} />
+      <StatusBar fallbackSummary={fallbackStatusSummary} />
       <ToastNotifier />
 
       <div className="px-4 py-6 sm:px-6 lg:px-8">

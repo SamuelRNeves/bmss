@@ -84,16 +84,9 @@ interface StatusFallback {
 
 interface StatusBarProps {
   fallbackSummary?: StatusFallback | null;
-  analysisStats?: {
-    total: number;
-    positive: number;
-    neutral: number;
-    negative: number;
-    updatedAt?: string;
-  };
 }
 
-export function StatusBar({ fallbackSummary, analysisStats }: StatusBarProps) {
+export function StatusBar({ fallbackSummary }: StatusBarProps) {
   const [summary, setSummary] = useState<NotificationPayload | null>(null);
   const [notifications, setNotifications] = useState<NotificationPayload[]>([]);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
@@ -256,14 +249,6 @@ export function StatusBar({ fallbackSummary, analysisStats }: StatusBarProps) {
     }
   }, [formatTimestamp, lastUpdate, resolvedSummary?.publishedAt]);
 
-  useEffect(() => {
-    if (!analysisStats?.updatedAt) return;
-    const formatted = formatTimestamp(analysisStats.updatedAt);
-    if (formatted) {
-      setLastUpdate((current) => current || formatted);
-    }
-  }, [analysisStats?.updatedAt, formatTimestamp]);
-
   const unreadCount = unreadIds.size;
 
   const statusTone: NotificationSentiment = resolvedSummary?.sentiment ?? "neutral";
@@ -294,22 +279,6 @@ export function StatusBar({ fallbackSummary, analysisStats }: StatusBarProps) {
   }, [resolvedSummary?.title, statusTone]);
 
   const StatusIcon = statusConfig.icon;
-
-  const analysisDetail = useMemo(() => {
-    if (!analysisStats) return null;
-
-    const formatter = new Intl.NumberFormat("pt-BR");
-    const totalLabel = analysisStats.total
-      ? `${formatter.format(analysisStats.total)} análises recentes`
-      : "Base em atualização";
-
-    const fmt = (value: number) =>
-      value.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-
-    return `${totalLabel}: ${fmt(analysisStats.positive)}% positivas, ${fmt(
-      analysisStats.neutral
-    )}% neutras e ${fmt(analysisStats.negative)}% negativas.`;
-  }, [analysisStats]);
 
   const handleToggleNotifications = useCallback(() => {
     setNotificationsEnabled((prev) => {
@@ -418,44 +387,10 @@ export function StatusBar({ fallbackSummary, analysisStats }: StatusBarProps) {
                 <span className="text-xs text-gray-400">• {lastUpdate}</span>
               )}
             </div>
-            {(analysisDetail || resolvedSummary?.description) && (
-              <p className="text-xs text-gray-300 md:max-w-2xl">
-                {analysisDetail ?? resolvedSummary?.description}
+            {resolvedSummary?.description && (
+              <p className="text-xs text-gray-400 md:max-w-xl">
+                {resolvedSummary.description}
               </p>
-            )}
-            {analysisStats && (
-              <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-gray-400">
-                {["positive", "neutral", "negative"].map((key) => {
-                  const label =
-                    key === "positive" ? "Positivas" : key === "negative" ? "Negativas" : "Neutras";
-                  const color =
-                    key === "positive"
-                      ? "bg-emerald-500/15 text-emerald-200"
-                      : key === "negative"
-                      ? "bg-rose-500/15 text-rose-200"
-                      : "bg-amber-500/15 text-amber-200";
-                  const value =
-                    key === "positive"
-                      ? analysisStats.positive
-                      : key === "negative"
-                      ? analysisStats.negative
-                      : analysisStats.neutral;
-
-                  return (
-                    <span
-                      key={key}
-                      className={`inline-flex items-center gap-1 rounded-full px-2 py-1 font-medium ${color}`}
-                    >
-                      <span className="h-1.5 w-1.5 rounded-full bg-current" />
-                      {value.toLocaleString("pt-BR", {
-                        minimumFractionDigits: 1,
-                        maximumFractionDigits: 1,
-                      })}
-                      % {label}
-                    </span>
-                  );
-                })}
-              </div>
             )}
           </div>
 

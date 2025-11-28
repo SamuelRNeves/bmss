@@ -132,75 +132,63 @@ export function SentimentDistribution({ distribution }: SentimentDistributionPro
   const ringSize = isMobile ? "h-56 w-56" : "h-64 w-64";
 
   return (
-    <div className="relative overflow-hidden rounded-3xl border border-white/5 bg-gradient-to-b from-slate-950 via-slate-950/70 to-black p-5 sm:p-7 shadow-[0_22px_90px_-50px_rgba(0,0,0,0.9)]">
-      <div className="pointer-events-none absolute inset-0 opacity-70" style={{
-        background:
-          "radial-gradient(circle at 20% 20%, rgba(52,211,153,0.12), transparent 32%), radial-gradient(circle at 80% 0%, rgba(245,158,11,0.12), transparent 35%), radial-gradient(circle at 50% 120%, rgba(99,102,241,0.08), transparent 35%)",
-      }} />
+    <div className="relative overflow-hidden rounded-3xl border border-neutral-800/70 bg-gradient-to-b from-slate-950 via-neutral-950 to-black p-5 sm:p-7 shadow-[0_20px_80px_-40px_rgba(0,0,0,0.8)]">
+      <div
+        className="pointer-events-none absolute inset-0 opacity-60"
+        style={{
+          background:
+            "radial-gradient(circle at 20% 20%, rgba(52,211,153,0.12), transparent 35%), radial-gradient(circle at 80% 0%, rgba(248,113,113,0.14), transparent 38%)",
+        }}
+      />
       <div className="absolute inset-4 rounded-[26px] border border-white/5 pointer-events-none" />
 
       <div className="relative z-10 space-y-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="space-y-2">
-            <div className="inline-flex items-center gap-2 rounded-full bg-white/5 px-3 py-1 text-[11px] uppercase tracking-[0.28em] text-sky-100/80 ring-1 ring-white/10">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              Retrato em tempo real
-            </div>
-            <div>
-              <h3 className="text-lg sm:text-xl font-semibold text-white">Distribuição de Sentimento</h3>
-              <p className="text-sm text-gray-400">Visual limpo para enxergar qual humor está liderando.</p>
-            </div>
+          <div className="space-y-1">
+            <h3 className="text-base font-semibold text-white sm:text-lg">Distribuição de Sentimento</h3>
+            <p className="text-xs text-gray-400">
+              Visual simples para comparar força relativa entre polos
+            </p>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm shadow-lg shadow-black/20">
-              <p className="text-[11px] uppercase tracking-wide text-gray-400">Maior fatia</p>
-              <p className="text-base font-semibold text-white">{dominant.label}</p>
-              <p className="text-lg font-bold" style={{ color: dominant.color }}>
-                {dominant.value.toFixed(1)}%
-              </p>
-            </div>
+          <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] uppercase tracking-wide text-gray-300">
+            <span className="h-2 w-2 rounded-full bg-emerald-400/80" />
+            Atualiza com os dados do painel
           </div>
         </div>
 
-        <div className="grid gap-6 items-center lg:grid-cols-[minmax(280px,340px),1fr]">
-          <div className="relative mx-auto">
-            <div className={`relative ${ringSize} max-w-full`}>
-              <div className="absolute inset-4 rounded-full bg-gradient-to-b from-white/10 to-transparent blur-3xl" />
-              <div
-                className="relative flex h-full w-full items-center justify-center rounded-full border border-white/10 bg-black/60 shadow-[0_25px_80px_-60px_rgba(0,0,0,0.9)]"
-                style={{ backgroundImage: conicGradient }}
-              >
-                <div className="absolute inset-6 rounded-full border border-white/10 opacity-60" />
-                <div className="absolute inset-9 rounded-full bg-black/70 backdrop-blur-sm" />
-                <div className="relative flex h-28 w-28 flex-col items-center justify-center gap-1 rounded-full border border-white/15 bg-black/70 text-center shadow-lg shadow-black/50">
-                  <span className="text-[11px] uppercase tracking-[0.25em] text-gray-400">Liderança</span>
-                  <span className="text-3xl font-bold text-white">{dominant.value.toFixed(1)}%</span>
-                  <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: dominant.color }}>
-                    {dominant.label}
-                  </span>
-                </div>
+        <div className="grid gap-6 lg:grid-cols-[320px,1fr]">
+          <div className={`relative mx-auto ${ringSize} max-w-full rounded-full bg-neutral-900/70 p-8 shadow-inner shadow-black/50`}>
+            <div
+              className="relative flex h-full w-full items-center justify-center rounded-full border border-white/5 bg-neutral-950"
+              style={{ backgroundImage: conicGradient }}
+            >
+              <div className="flex h-28 w-28 flex-col items-center justify-center rounded-full border border-white/10 bg-black/70 text-center shadow-lg shadow-black/40">
+                <span className="text-[11px] uppercase tracking-[0.3em] text-gray-400">Liderança</span>
+                <span className="text-3xl font-bold text-white">{dominant.value.toFixed(1)}%</span>
+                <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: dominant.color }}>
+                  {dominant.label}
+                </span>
               </div>
             </div>
           </div>
 
-          <div className="flex flex-col gap-5">
+          <div className="flex flex-col gap-4">
             <div className="grid gap-3 sm:grid-cols-3">
               {segments.map((segment) => (
                 <div
                   key={segment.key}
-                  className="relative overflow-hidden rounded-2xl border border-white/5 bg-white/5 p-3 shadow-sm shadow-black/30"
+                  className="rounded-2xl border border-neutral-800 bg-neutral-900/70 p-3 shadow-sm shadow-black/30"
                 >
-                  <div className="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-transparent" />
-                  <div className="relative flex items-center justify-between">
+                  <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: segment.color }} />
-                      <span className="text-xs uppercase tracking-wide text-gray-300">{segment.label}</span>
+                      <span className="text-xs uppercase tracking-wide text-gray-400">{segment.label}</span>
                     </div>
                     <span className="text-lg font-semibold text-white">{segment.value.toFixed(1)}%</span>
                   </div>
-                  <div className="relative mt-3 h-2 rounded-full bg-white/10">
+                  <div className="mt-3 h-2 rounded-full bg-neutral-800">
                     <div
-                      className={`h-full rounded-full bg-gradient-to-r ${segment.bar} shadow-[0_0_0_1px_rgba(255,255,255,0.06)]`}
+                      className={`h-full rounded-full bg-gradient-to-r ${segment.bar}`}
                       style={{ width: `${segment.value}%` }}
                     />
                   </div>
@@ -214,7 +202,7 @@ export function SentimentDistribution({ distribution }: SentimentDistributionPro
                 {legendInsights.map((note) => (
                   <div
                     key={note.id}
-                    className="relative rounded-2xl border border-white/10 bg-black/60 p-4 text-sm text-gray-300 backdrop-blur-sm"
+                    className="relative rounded-2xl border border-white/5 bg-white/5 p-4 text-sm text-gray-300 backdrop-blur-sm"
                   >
                     <span
                       className="absolute inset-x-4 top-0 h-px"
