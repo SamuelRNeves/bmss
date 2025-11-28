@@ -75,7 +75,18 @@ function getCategoryLabel(notification: NotificationPayload): string {
   }
 }
 
-export function StatusBar() {
+interface StatusFallback {
+  title: string;
+  description?: string;
+  sentiment: NotificationSentiment;
+  publishedAt?: string;
+}
+
+interface StatusBarProps {
+  fallbackSummary?: StatusFallback | null;
+}
+
+export function StatusBar({ fallbackSummary }: StatusBarProps) {
   const [summary, setSummary] = useState<NotificationPayload | null>(null);
   const [notifications, setNotifications] = useState<NotificationPayload[]>([]);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
@@ -138,17 +149,31 @@ export function StatusBar() {
       });
       seenIdsRef.current = preservedSeen;
 
-    const newUnread = new Set<string>();
-    others.forEach((item) => {
-      if (!seenIdsRef.current.has(item.id)) {
-        newUnread.add(item.id);
-      }
-    });
-    setUnreadIds(newUnread);
+      const newUnread = new Set<string>();
+      others.forEach((item) => {
+        if (!seenIdsRef.current.has(item.id)) {
+          newUnread.add(item.id);
+        }
+      });
+      setUnreadIds(newUnread);
     } finally {
       setIsLoading(false);
     }
   }, [formatTimestamp]);
+
+  const resolvedSummary = useMemo(() => {
+    if (summary) return summary;
+    if (!fallbackSummary) return null;
+
+    return {
+      id: "fallback-summary",
+      title: fallbackSummary.title,
+      description: fallbackSummary.description ?? fallbackSummary.title,
+      sentiment: fallbackSummary.sentiment,
+      category: "summary" as const,
+      publishedAt: fallbackSummary.publishedAt,
+    } satisfies NotificationPayload;
+  }, [fallbackSummary, summary]);
 
   useEffect(() => {
     fetchNotifications().catch((reason) => {
@@ -213,9 +238,20 @@ export function StatusBar() {
     setUnreadIds(new Set<string>());
   }, [panelOpen, notifications]);
 
+  useEffect(() => {
+    if (lastUpdate || !resolvedSummary?.publishedAt) {
+      return;
+    }
+
+    const computed = formatTimestamp(resolvedSummary.publishedAt);
+    if (computed) {
+      setLastUpdate(computed);
+    }
+  }, [formatTimestamp, lastUpdate, resolvedSummary?.publishedAt]);
+
   const unreadCount = unreadIds.size;
 
-  const statusTone: NotificationSentiment = summary?.sentiment ?? "neutral";
+  const statusTone: NotificationSentiment = resolvedSummary?.sentiment ?? "neutral";
   const statusConfig = useMemo(() => {
     switch (statusTone) {
       case "positive":
@@ -223,24 +259,24 @@ export function StatusBar() {
           icon: CheckCircle,
           color: "text-emerald-300",
           bg: "bg-emerald-500/10",
-          label: summary?.title ?? "Mercado otimista",
+          label: resolvedSummary?.title ?? "Mercado otimista",
         };
       case "negative":
         return {
           icon: AlertTriangle,
           color: "text-rose-300",
           bg: "bg-rose-500/10",
-          label: summary?.title ?? "Alerta de pressão vendedora",
+          label: resolvedSummary?.title ?? "Alerta de pressão vendedora",
         };
       default:
         return {
           icon: Activity,
           color: "text-sky-300",
           bg: "bg-sky-500/10",
-          label: summary?.title ?? "Sentimento equilibrado",
+          label: resolvedSummary?.title ?? "Sentimento equilibrado",
         };
     }
-  }, [statusTone, summary?.title]);
+  }, [resolvedSummary?.title, statusTone]);
 
   const StatusIcon = statusConfig.icon;
 
@@ -351,9 +387,9 @@ export function StatusBar() {
                 <span className="text-xs text-gray-400">• {lastUpdate}</span>
               )}
             </div>
-            {summary?.description && (
+            {resolvedSummary?.description && (
               <p className="text-xs text-gray-400 md:max-w-xl">
-                {summary.description}
+                {resolvedSummary.description}
               </p>
             )}
           </div>
@@ -411,31 +447,31 @@ export function StatusBar() {
                       </div>
                     )}
 
-                    {summary && (
+                    {resolvedSummary && (
                       <div className="rounded-lg border border-neutral-800 bg-neutral-900/70 p-3">
                         <div className="flex items-start gap-3">
-                          <div className="mt-1 text-sm">{getNotificationIcon(summary)}</div>
+                          <div className="mt-1 text-sm">{getNotificationIcon(resolvedSummary)}</div>
                           <div className="flex-1">
                             <p className="text-[11px] uppercase tracking-wide text-gray-500">
-                              {getCategoryLabel(summary)}
+                              {getCategoryLabel(resolvedSummary)}
                             </p>
                             <p className="text-sm font-semibold text-white leading-snug">
-                              {summary.title}
+                              {resolvedSummary.title}
                             </p>
-                            {summary.description && (
+                            {resolvedSummary.description && (
                               <p className="mt-1 text-xs text-gray-400 leading-snug">
-                                {summary.description}
+                                {resolvedSummary.description}
                               </p>
                             )}
                             <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-gray-500">
                               <span
-                                className={`px-2 py-0.5 rounded-full font-medium ${SENTIMENT_BADGES[summary.sentiment]}`}
+                                className={`px-2 py-0.5 rounded-full font-medium ${SENTIMENT_BADGES[resolvedSummary.sentiment]}`}
                               >
-                                {SENTIMENT_LABELS[summary.sentiment]}
+                                {SENTIMENT_LABELS[resolvedSummary.sentiment]}
                               </span>
-                              {summary.source && <span>{summary.source}</span>}
-                              {summary.publishedAt && (
-                                <span>{formatTimestamp(summary.publishedAt)}</span>
+                              {resolvedSummary.source && <span>{resolvedSummary.source}</span>}
+                              {resolvedSummary.publishedAt && (
+                                <span>{formatTimestamp(resolvedSummary.publishedAt)}</span>
                               )}
                             </div>
                           </div>
