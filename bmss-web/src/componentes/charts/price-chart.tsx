@@ -40,6 +40,33 @@ interface BitcoinPriceData {
   lastUpdated: string;
 }
 
+const STABLE_FALLBACK_SERIES: PriceData[] = (() => {
+  const prices: PriceData[] = [];
+  const now = new Date();
+  const basePrice = 64500;
+  const startingPrice = basePrice * 0.985;
+
+  for (let i = 7; i >= 0; i--) {
+    const pointDate = new Date(now.getTime() - i * 15 * 60 * 1000);
+    const progress = (7 - i) / 7;
+
+    const gentleTrend = startingPrice + progress * basePrice * 0.004;
+    const microOscillation = Math.sin(progress * Math.PI * 2) * 40;
+
+    const price = Number((gentleTrend + microOscillation).toFixed(2));
+
+    prices.push({
+      time: pointDate.toLocaleTimeString('pt-BR', {
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
+      price,
+    });
+  }
+
+  return prices;
+})();
+
 export function PriceChart() {
   const [priceData, setPriceData] = useState<PriceData[]>([]);
   const [currentBitcoinData, setCurrentBitcoinData] = useState<BitcoinPriceData | null>(null);
@@ -73,26 +100,22 @@ export function PriceChart() {
       });
     } catch (error) {
       console.error('Erro ao buscar preço do Bitcoin:', error);
+      setPriceData((prev) =>
+        prev.length > 0
+          ? prev
+          : STABLE_FALLBACK_SERIES
+      );
 
-      const mockPrice = 67432 + (Math.random() * 2000 - 1000);
-      const newPricePoint: PriceData = {
-        time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-        price: mockPrice,
-      };
-
-      setPriceData(prev => {
-        const newData = [...prev, newPricePoint];
-        return newData.slice(-12);
-      });
-
-      setCurrentBitcoinData({
-        usd: mockPrice,
-        brl: mockPrice * 5.2,
-        change24h: (Math.random() * 10 - 5),
-        success: false,
-        source: 'Fallback',
-        lastUpdated: new Date().toISOString(),
-      });
+      setCurrentBitcoinData((prev) =>
+        prev ?? {
+          usd: STABLE_FALLBACK_SERIES[STABLE_FALLBACK_SERIES.length - 1].price,
+          brl: null,
+          change24h: 1.2,
+          success: false,
+          source: 'Dados simulados',
+          lastUpdated: new Date().toISOString(),
+        }
+      );
     } finally {
       setIsLoading(false);
     }

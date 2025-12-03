@@ -7,6 +7,7 @@ import React, {
   useState,
   useRef,
 } from "react";
+import Link from "next/link";
 import { StatsCard } from "@/componentes/dashboard/stats-cards";
 import { StatusBar } from "@/componentes/status/status-bar";
 import { ToastNotifier, showToast } from "@/componentes/notifications/toast-notifier";
@@ -844,13 +845,45 @@ export default function HomeClient() {
 
   if (!user) {
     if (authLoading) {
-      return null;
+      return (
+        <div className="min-h-screen bg-neutral-950 text-white flex items-center justify-center">
+          <div className="text-center space-y-3">
+            <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-yellow-500/20 text-yellow-300">
+              <RefreshCw size={18} className="animate-spin" />
+            </div>
+            <p className="text-sm text-gray-300">Preparando sua experiência personalizada...</p>
+          </div>
+        </div>
+      );
     }
 
-    if (typeof window !== "undefined") {
-      window.location.href = "/login";
-    }
-    return null;
+    return (
+      <div className="min-h-screen bg-neutral-950 text-white flex items-center justify-center px-6 py-12">
+        <div className="max-w-2xl text-center space-y-6">
+          <div className="inline-flex items-center gap-2 rounded-full border border-yellow-400/30 bg-yellow-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-yellow-200">
+            BMSS
+          </div>
+          <h1 className="text-3xl sm:text-4xl font-black tracking-tight">Volte para o painel para acompanhar o mercado em tempo real</h1>
+          <p className="text-base text-gray-300">
+            Use o botão de login para acessar sua conta ou crie um novo acesso para continuar explorando métricas e alertas personalizados.
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <Link
+              href="/login"
+              className="inline-flex items-center justify-center rounded-xl bg-yellow-400 px-4 py-2 text-sm font-semibold text-black shadow-lg shadow-yellow-500/30 transition hover:bg-yellow-300"
+            >
+              Fazer login
+            </Link>
+            <Link
+              href="/cadastrar"
+              className="inline-flex items-center justify-center rounded-xl border border-yellow-400/40 bg-yellow-500/10 px-4 py-2 text-sm font-semibold text-yellow-200 transition hover:border-yellow-300/70 hover:bg-yellow-500/20"
+            >
+              Criar conta
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
