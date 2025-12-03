@@ -30,22 +30,18 @@ export default function PriceChartSafe() {
     try {
       setLoading(true);
       setError(null);
-      
+
       const resultado = await getBitcoin24h();
-      
+
       if (resultado.data) {
         setDados(resultado.data.prices);
         setVariacao(Number(resultado.data.change24h));
       } else {
-        setDados(FALLBACK_DATA);
-        setVariacao(2.3);
         setError(resultado.error || "Usando dados simulados");
       }
     } catch (err) {
       console.error("Erro ao carregar dados do gráfico:", err);
-      setDados(FALLBACK_DATA);
-      setVariacao(2.3);
-      setError("Erro de conexão - usando informações simuladas");
+      setError("Erro de conexão - exibindo última leitura disponível");
     } finally {
       setLoading(false);
     }
