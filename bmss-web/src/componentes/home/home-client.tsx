@@ -1,4 +1,5 @@
 "use client";
+import { useRouter } from "next/navigation";
 import React, {
   Suspense,
   useCallback,
@@ -362,6 +363,7 @@ const isFallbackHeadline = (headline: FeedItem | null) => {
 
 export default function HomeClient() {
   const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
 
   // TODOS OS HOOKS ANTES DE QUALQUER RETURN
   const [stats, setStats] = useState<DashboardStats>(INITIAL_STATS);
@@ -417,6 +419,12 @@ export default function HomeClient() {
       console.warn("Não foi possível carregar tendências do backend:", error);
     }
   }, []);
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.replace("/login");
+    }
+  }, [authLoading, router, user]);
 
   const loadStoredHighlight = useCallback((): FeedItem | null => {
     if (typeof window === "undefined") return null;
@@ -842,15 +850,30 @@ export default function HomeClient() {
     [stats]
   );
 
-  if (!user) {
-    if (authLoading) {
-      return null;
-    }
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-neutral-950 text-white flex items-center justify-center">
+        <div className="text-center space-y-3">
+          <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-yellow-500/20 text-yellow-300">
+            <RefreshCw size={18} className="animate-spin" />
+          </div>
+          <p className="text-sm text-gray-300">Carregando sessão...</p>
+        </div>
+      </div>
+    );
+  }
 
-    if (typeof window !== "undefined") {
-      window.location.href = "/login";
-    }
-    return null;
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-neutral-950 text-white flex items-center justify-center">
+        <div className="text-center space-y-3">
+          <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-yellow-500/20 text-yellow-300">
+            <RefreshCw size={18} className="animate-spin" />
+          </div>
+          <p className="text-sm text-gray-300">Redirecionando para login...</p>
+        </div>
+      </div>
+    );
   }
 
   return (

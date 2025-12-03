@@ -3,10 +3,9 @@
 
 import HomeClient from "@/componentes/home/home-client";
 
-// Renderiza o dashboard diretamente, sem redirecionar usuários não autenticados.
-// Isso evita que a página fique presa em um estado de loading quando o backend
-// não responde rápido, permitindo que o visitante acesse o conteúdo e os links
-// de login/cadastro imediatamente.
+// Renderiza o dashboard e deixa o cliente decidir o redirecionamento:
+// usuários autenticados visualizam o painel e visitantes são enviados para o
+// login assim que a checagem de sessão é concluída.
 export default function Home() {
   return <HomeClient />;
 }
