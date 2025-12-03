@@ -1,5 +1,7 @@
 // lib/api.ts
 import axios, { AxiosError } from "axios";
+import { trackRequestEnd, trackRequestStart } from "./globalLoading";
+import { getStoredAccessToken } from "./tokenStorage";
 
 // =====================================================
 // 🔧 Configuração global do Axios
@@ -59,21 +61,28 @@ const api = axios.create({
 // =====================================================
 // 🔐 Interceptor único — garante baseURL e injeta JWT
 // =====================================================
-api.interceptors.request.use((config) => {
-  // Garante baseURL
-  if (!config.baseURL) {
-    config.baseURL = getRequiredApiBaseUrl();
-  }
+api.interceptors.request.use(
+  (config) => {
+    trackRequestStart();
+    // Garante baseURL
+    if (!config.baseURL) {
+      config.baseURL = getRequiredApiBaseUrl();
+    }
 
-  // Injeta token JWT automaticamente
-  const token = localStorage.getItem("jwtToken");
-  if (token && !config.headers?.Authorization) {
-    config.headers = config.headers || {};
-    config.headers.Authorization = `Bearer ${token}`;
-  }
+    // Injeta token JWT automaticamente
+    const token = typeof window !== "undefined" ? getStoredAccessToken() : null;
+    if (token && !config.headers?.Authorization) {
+      config.headers = config.headers || {};
+      config.headers.Authorization = `Bearer ${token}`;
+    }
 
-  return config;
-});
+    return config;
+  },
+  (error) => {
+    trackRequestEnd();
+    return Promise.reject(error);
+  }
+);
 
 const COINGECKO_BASE_URL =
   process.env.NEXT_PUBLIC_COINGECKO_BASE_URL ||
@@ -174,10 +183,12 @@ function getCoinGeckoErrorMessage(error: unknown): string {
 */
 api.interceptors.response.use(
   (res) => {
+    trackRequestEnd();
     console.info(`✅ [API] ${res.status}: ${res.config.url}`);
     return res;
   },
   (error: AxiosError) => {
+    trackRequestEnd();
     if (error.response) {
       console.error(`❌ [API] ${error.response.status}: ${error.config?.url}`);
     } else if (error.code === "ECONNABORTED") {

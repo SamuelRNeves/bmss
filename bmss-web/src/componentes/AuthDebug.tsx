@@ -1,6 +1,7 @@
 // components/AuthDebug.tsx
 "use client";
 import { useEffect, useState } from "react";
+import { getStoredAccessToken } from "@/lib/tokenStorage";
 
 let renderCount = 0;
 
@@ -13,7 +14,7 @@ export default function AuthDebug() {
 
   useEffect(() => {
     console.log("🔍 AuthDebug useEffect executando");
-    const token = localStorage.getItem("jwtToken");
+    const token = getStoredAccessToken();
     
     if (token) {
       // Simula uma chamada API

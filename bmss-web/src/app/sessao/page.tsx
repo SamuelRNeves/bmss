@@ -16,7 +16,9 @@ import {
   Upload,
 } from "lucide-react";
 import { useAuth } from "@/lib/useAuth";
+import { AuthStateMessage } from "@/componentes/auth/AuthStateMessage";
 import { buildApiUrl } from "@/lib/api";
+import { getStoredAccessToken } from "@/lib/tokenStorage";
 
 interface PasswordFormState {
   currentPassword: string;
@@ -100,7 +102,7 @@ const optimizeImageDataUrl = (dataUrl: string, mimeType: string): Promise<string
   });
 
 export default function UserSessionPage() {
-  const { user, loading, updateUserSettings } = useAuth();
+  const { user, loading, authStatus, updateUserSettings } = useAuth();
   const router = useRouter();
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [statusTone, setStatusTone] = useState<"success" | "error" | null>(null);
@@ -118,10 +120,10 @@ export default function UserSessionPage() {
   });
 
   useEffect(() => {
-    if (!loading && !user) {
+    if (!loading && authStatus === "authenticated" && !user) {
       router.push("/login");
     }
-  }, [loading, user, router]);
+  }, [authStatus, loading, user, router]);
 
   const initials = useMemo(() => {
     if (!user?.name) {
@@ -251,7 +253,7 @@ export default function UserSessionPage() {
     setStatusTone(null);
 
     try {
-      const token = localStorage.getItem("jwtToken");
+      const token = getStoredAccessToken();
       if (!token) {
         throw new Error("Sessão expirada. Faça login novamente.");
       }
@@ -290,6 +292,8 @@ export default function UserSessionPage() {
     );
   }
 
+  if (authStatus === "expired") return <AuthStateMessage state="expired" />;
+  if (authStatus === "unauthenticated") return <AuthStateMessage state="unauthenticated" />;
   if (!user) {
     return null;
   }
