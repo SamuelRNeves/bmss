@@ -162,16 +162,30 @@ export function StatusBar({ fallbackSummary }: StatusBarProps) {
   }, [formatTimestamp]);
 
   const resolvedSummary = useMemo(() => {
-    if (summary) return summary;
-    if (!fallbackSummary) return null;
+    const fallbackPayload = fallbackSummary
+      ? ({
+          id: "fallback-summary",
+          title: fallbackSummary.title,
+          description: fallbackSummary.description ?? fallbackSummary.title,
+          sentiment: fallbackSummary.sentiment,
+          category: "summary" as const,
+          publishedAt: fallbackSummary.publishedAt,
+        } satisfies NotificationPayload)
+      : null;
+
+    const baseSummary = summary ?? fallbackPayload;
+    if (!baseSummary) return null;
+
+    const shouldEnhanceWithFallback =
+      fallbackPayload && (!baseSummary.description || baseSummary.description === baseSummary.title);
+
+    if (!shouldEnhanceWithFallback) return baseSummary;
 
     return {
-      id: "fallback-summary",
-      title: fallbackSummary.title,
-      description: fallbackSummary.description ?? fallbackSummary.title,
-      sentiment: fallbackSummary.sentiment,
-      category: "summary" as const,
-      publishedAt: fallbackSummary.publishedAt,
+      ...baseSummary,
+      description: fallbackPayload.description,
+      publishedAt: baseSummary.publishedAt ?? fallbackPayload.publishedAt,
+      title: baseSummary.title?.trim() || fallbackPayload.title,
     } satisfies NotificationPayload;
   }, [fallbackSummary, summary]);
 
