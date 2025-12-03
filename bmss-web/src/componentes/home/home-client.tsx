@@ -8,6 +8,7 @@ import React, {
   useState,
   useRef,
 } from "react";
+import Link from "next/link";
 import { StatsCard } from "@/componentes/dashboard/stats-cards";
 import { StatusBar } from "@/componentes/status/status-bar";
 import { ToastNotifier, showToast } from "@/componentes/notifications/toast-notifier";
