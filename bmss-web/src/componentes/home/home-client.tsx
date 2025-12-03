@@ -7,6 +7,7 @@ import React, {
   useState,
   useRef,
 } from "react";
+import { useRouter } from "next/navigation";
 import { StatsCard } from "@/componentes/dashboard/stats-cards";
 import { StatusBar } from "@/componentes/status/status-bar";
 import { ToastNotifier, showToast } from "@/componentes/notifications/toast-notifier";
@@ -831,6 +832,8 @@ export default function HomeClient() {
     };
   }, [analysisTimestamp, recommendationSnapshot]);
 
+  const router = useRouter();
+
   const sentimentBadges = useMemo(
     () => (
       <div className="flex flex-wrap items-center gap-3">
@@ -842,15 +845,23 @@ export default function HomeClient() {
     [stats]
   );
 
-  if (!user) {
-    if (authLoading) {
-      return null;
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.replace("/login");
     }
+  }, [authLoading, user, router]);
 
-    if (typeof window !== "undefined") {
-      window.location.href = "/login";
-    }
-    return null;
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-neutral-950 text-white flex items-center justify-center">
+        <div className="text-center space-y-3">
+          <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-yellow-500/20 text-yellow-300">
+            <RefreshCw size={18} className="animate-spin" />
+          </div>
+          <p className="text-sm text-gray-300">Redirecionando para login...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
