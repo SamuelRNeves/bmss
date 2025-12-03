@@ -1,5 +1,5 @@
 "use client";
-import NextLink from "next/link";
+import Link from "next/link";
 import React, {
   Suspense,
   useCallback,
@@ -871,18 +871,18 @@ export default function HomeClient() {
               </p>
             </div>
             <div className="flex flex-wrap gap-4">
-              <NextLink
+              <Link
                 href="/login"
                 className="inline-flex items-center justify-center rounded-full bg-yellow-400 px-6 py-3 font-semibold text-neutral-900 shadow-lg transition hover:-translate-y-0.5 hover:shadow-yellow-300/40"
               >
                 Fazer login
-              </NextLink>
-              <NextLink
+              </Link>
+              <Link
                 href="/cadastrar"
                 className="inline-flex items-center justify-center rounded-full border border-white/15 px-6 py-3 font-semibold text-white transition hover:border-yellow-200/60 hover:text-yellow-200"
               >
                 Criar conta
-              </NextLink>
+              </Link>
             </div>
           </div>
 
