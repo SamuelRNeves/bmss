@@ -5,12 +5,30 @@ import { useSyncExternalStore } from "react";
 
 const subscribers = new Set<(count: number) => void>();
 let activeCount = 0;
+let lastActivity = Date.now();
+const STALE_REQUEST_TIMEOUT_MS = 20_000;
 
 const emit = () => {
+  lastActivity = Date.now();
   for (const listener of subscribers) {
     listener(activeCount);
   }
 };
+
+const resetIfStuck = () => {
+  if (activeCount === 0) return;
+  const elapsed = Date.now() - lastActivity;
+  if (elapsed > STALE_REQUEST_TIMEOUT_MS) {
+    activeCount = 0;
+    emit();
+    console.warn(
+      "⌛ Tempo de sincronização excedido. Reiniciando indicador de carregamento global.",
+      { elapsed }
+    );
+  }
+};
+
+setInterval(resetIfStuck, STALE_REQUEST_TIMEOUT_MS);
 
 export const trackRequestStart = () => {
   activeCount += 1;
