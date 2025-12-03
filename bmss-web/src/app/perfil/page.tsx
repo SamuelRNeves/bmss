@@ -13,6 +13,7 @@ import {
   Flame,
 } from "lucide-react";
 import { buildApiUrl } from "@/lib/api";
+import { clearStoredTokens, getStoredAccessToken } from "@/lib/tokenStorage";
 
 export default function PerfilPage() {
   const router = useRouter();
@@ -24,7 +25,7 @@ export default function PerfilPage() {
 
   // ✅ useEffect CORRIGIDO - sem loop
   useEffect(() => {
-    const token = localStorage.getItem("jwtToken");
+    const token = getStoredAccessToken();
     if (!token) {
       router.push("/login");
       return;
@@ -51,7 +52,7 @@ export default function PerfilPage() {
       } catch (error) {
         console.error("Erro ao carregar perfil:", error);
         if (mounted) {
-          localStorage.removeItem("jwtToken");
+          clearStoredTokens();
           // ✅ Navigate sem causar re-render
           setTimeout(() => router.push("/login"), 0);
         }
@@ -65,11 +66,11 @@ export default function PerfilPage() {
     return () => {
       mounted = false;
     };
-  }, []); // ✅ Array VAZIO - executa apenas uma vez
+  }, [router]);
 
   const handleSalvar = async () => {
     if (!user) return;
-    const token = localStorage.getItem("jwtToken");
+    const token = getStoredAccessToken();
     setSaving(true);
 
     try {

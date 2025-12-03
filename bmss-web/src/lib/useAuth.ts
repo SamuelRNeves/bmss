@@ -9,7 +9,18 @@ import React, {
   useMemo,
   useState,
 } from "react";
+import type { AxiosError } from "axios";
 import api, { API_BASE_URL } from "@/lib/api";
+import { AUTH_TOKEN_CHANGED_EVENT } from "./authEvents";
+import {
+  AUTH_TOKEN_STORAGE_KEY,
+  clearStoredTokens,
+  decodeJwtExpiration,
+  getStoredAccessToken,
+  getStoredRefreshToken,
+  persistTokens,
+  REFRESH_TOKEN_STORAGE_KEY,
+} from "./tokenStorage";
 
 interface UserData {
   id?: number;
@@ -21,6 +32,7 @@ interface UserData {
 }
 
 type InvestorProfile = "CONSERVADOR" | "MODERADO" | "AGRESSIVO";
+type AuthStatus = "loading" | "authenticated" | "unauthenticated" | "expired";
 
 type UserPatch = Partial<
   Pick<UserData, "investorProfile" | "notificationPreference" | "profileImageUrl">
@@ -102,8 +114,6 @@ const resolveApiBase = (): string => {
 
 // Chaves de storage
 export const INVESTOR_PROFILE_STORAGE_KEY = "bmss:last-investor-profile";
-export const AUTH_TOKEN_STORAGE_KEY = "jwtToken";
-export const AUTH_TOKEN_CHANGED_EVENT = "bmss:auth-token-changed";
 const USER_CACHE_STORAGE_KEY = "bmss:cached-user:v1";
 
 type CachedUserPayload = {
@@ -181,6 +191,8 @@ const persistCachedUser = (value: UserData | null) => {
 interface AuthContextValue {
   user: UserData | null;
   loading: boolean;
+  authStatus: AuthStatus;
+  sessionExpired: boolean;
   logout: () => void;
   updateInvestorProfile: (nextProfile: InvestorProfile) => Promise<void>;
   updateUserSettings: (patch: UserPatch) => Promise<UserPatch>;
@@ -192,15 +204,14 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 // Hook provider
 function useProvideAuth(): AuthContextValue {
   const [user, setUserState] = useState<UserData | null>(() => loadCachedUser());
-  const [loading, setLoading] = useState(true);
+  const [authStatus, setAuthStatus] = useState<AuthStatus>("loading");
   const [tokenVersion, setTokenVersion] = useState(0);
+  const [refreshDisabled, setRefreshDisabled] = useState(false);
+  const [refreshingToken, setRefreshingToken] = useState(false);
 
   const apiBase = useMemo(() => resolveApiBase(), []);
 
-  const notifyAuthTokenChange = useCallback(() => {
-    if (typeof window === "undefined") return;
-    window.dispatchEvent(new Event(AUTH_TOKEN_CHANGED_EVENT));
-  }, []);
+  const loading = authStatus === "loading";
 
   const bumpTokenVersion = useCallback(() => {
     setTokenVersion((prev) => prev + 1);
@@ -217,16 +228,26 @@ function useProvideAuth(): AuthContextValue {
     []
   );
 
+  const handleUnauthenticated = useCallback(() => {
+    clearStoredTokens();
+    setUser(null);
+    setAuthStatus("unauthenticated");
+  }, [setAuthStatus, setUser]);
+
+  const handleSessionExpired = useCallback(() => {
+    clearStoredTokens();
+    setUser(null);
+    setAuthStatus("expired");
+  }, [setAuthStatus, setUser]);
+
   useEffect(() => {
-    const token =
-      typeof window !== "undefined" ? localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) : null;
+    const token = typeof window !== "undefined" ? getStoredAccessToken() : null;
     if (!token) {
-      setUser(null);
-      setLoading(false);
+      handleUnauthenticated();
       return;
     }
 
-    setLoading(true);
+    setAuthStatus("loading");
     let isMounted = true;
 
     api
@@ -245,37 +266,36 @@ function useProvideAuth(): AuthContextValue {
             profileImageUrl: resolvedProfile ?? null,
           };
           setUser(normalizedUser);
+          setAuthStatus("authenticated");
         } else {
-          setUser(null);
+          handleUnauthenticated();
         }
       })
-      .catch((error) => {
-        if (error.response?.status === 401) {
+      .catch((error: unknown) => {
+        if (!isMounted) return;
+        const status = (error as AxiosError)?.response?.status;
+        if (status === 401) {
           console.warn("🔒 Token expirado ou inválido, removendo...");
-          if (typeof window !== "undefined") {
-            localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
-          }
-          notifyAuthTokenChange();
-          if (!isMounted) return;
-          setUser(null);
+          handleSessionExpired();
         } else {
           console.error("⚠️ Erro inesperado em /auth/me:", error);
+          setAuthStatus((prev) => (prev === "loading" ? (user ? "authenticated" : "unauthenticated") : prev));
         }
       })
       .finally(() => {
-        if (isMounted) {
-          setLoading(false);
-        }
+        if (!isMounted) return;
+        setAuthStatus((prev) => (prev === "loading" ? (user ? "authenticated" : "unauthenticated") : prev));
       });
 
     return () => {
       isMounted = false;
     };
-  }, [apiBase, notifyAuthTokenChange, setUser, tokenVersion]);
+  }, [apiBase, handleSessionExpired, handleUnauthenticated, setUser, tokenVersion, user]);
 
   useEffect(() => {
     const handleStorage = (event: StorageEvent) => {
-      if (event.key && event.key !== AUTH_TOKEN_STORAGE_KEY) return;
+      const keysToWatch = [AUTH_TOKEN_STORAGE_KEY, REFRESH_TOKEN_STORAGE_KEY, USER_CACHE_STORAGE_KEY];
+      if (event.key && !keysToWatch.includes(event.key)) return;
       bumpTokenVersion();
     };
 
@@ -289,6 +309,64 @@ function useProvideAuth(): AuthContextValue {
       window.removeEventListener(AUTH_TOKEN_CHANGED_EVENT, handleAuthChange);
     };
   }, [bumpTokenVersion]);
+
+  const refreshAccessToken = useCallback(async (): Promise<boolean> => {
+    const refreshToken = typeof window !== "undefined" ? getStoredRefreshToken() : null;
+    if (!refreshToken || refreshDisabled) return false;
+
+    setRefreshingToken(true);
+    try {
+      const response = await api.post("/auth/refresh", { refreshToken });
+      const data = response.data as { token?: string; accessToken?: string; refreshToken?: string };
+      const nextAccessToken = data?.token || data?.accessToken;
+      const nextRefreshToken = data?.refreshToken || refreshToken;
+
+      if (nextAccessToken && typeof nextAccessToken === "string") {
+        persistTokens({ accessToken: nextAccessToken.trim(), refreshToken: nextRefreshToken });
+        bumpTokenVersion();
+        setAuthStatus("authenticated");
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      const status = (error as AxiosError)?.response?.status;
+      if (status === 401) {
+        handleSessionExpired();
+      } else if (status === 404 || status === 405) {
+        setRefreshDisabled(true);
+      } else {
+        console.warn("Falha ao tentar renovar token:", error);
+      }
+      return false;
+    } finally {
+      setRefreshingToken(false);
+    }
+  }, [bumpTokenVersion, handleSessionExpired, refreshDisabled]);
+
+  useEffect(() => {
+    const sweepToken = () => {
+      const token = typeof window !== "undefined" ? getStoredAccessToken() : null;
+      if (!token) {
+        handleUnauthenticated();
+        return;
+      }
+
+      const exp = decodeJwtExpiration(token);
+      if (exp && exp * 1000 <= Date.now()) {
+        handleSessionExpired();
+        return;
+      }
+
+      if (exp && exp * 1000 - Date.now() < 2 * 60 * 1000 && !refreshingToken) {
+        void refreshAccessToken();
+      }
+    };
+
+    const interval = setInterval(sweepToken, 45_000);
+    sweepToken();
+    return () => clearInterval(interval);
+  }, [handleSessionExpired, handleUnauthenticated, refreshAccessToken, refreshingToken]);
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -363,8 +441,7 @@ function useProvideAuth(): AuthContextValue {
         return applyLocalUpdate(patch);
       }
 
-      const token =
-        typeof window !== "undefined" ? localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) : null;
+      const token = typeof window !== "undefined" ? getStoredAccessToken() : null;
       if (!token) {
         throw new Error("Usuário não autenticado");
       }
@@ -413,8 +490,7 @@ function useProvideAuth(): AuthContextValue {
       }
 
       if (payload && typeof payload.token === "string" && payload.token.trim()) {
-        localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, payload.token.trim());
-        notifyAuthTokenChange();
+        persistTokens({ accessToken: payload.token.trim() });
       }
 
       const normalized: UserPatch = {};
@@ -476,17 +552,23 @@ function useProvideAuth(): AuthContextValue {
   );
 
   const logout = useCallback(() => {
-    if (typeof window !== "undefined") {
-      localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
-      notifyAuthTokenChange();
-    }
+    clearStoredTokens();
     setUser(null);
+    setAuthStatus("unauthenticated");
     if (typeof window !== "undefined") {
       window.location.href = "/login";
     }
-  }, [setUser]);
+  }, [setAuthStatus, setUser]);
 
-  return { user, loading, logout, updateInvestorProfile, updateUserSettings };
+  return {
+    user,
+    loading,
+    authStatus,
+    sessionExpired: authStatus === "expired",
+    logout,
+    updateInvestorProfile,
+    updateUserSettings,
+  };
 }
 
 // Provider component
