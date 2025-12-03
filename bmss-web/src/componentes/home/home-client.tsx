@@ -842,15 +842,11 @@ export default function HomeClient() {
     [stats]
   );
 
-  if (authLoading) {
-    return (
-      <div className="min-h-screen bg-neutral-950 flex items-center justify-center">
-        <p className="text-white text-xl">Carregando autenticação...</p>
-      </div>
-    );
-  }
-
   if (!user) {
+    if (authLoading) {
+      return null;
+    }
+
     if (typeof window !== "undefined") {
       window.location.href = "/login";
     }
