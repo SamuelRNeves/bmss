@@ -162,7 +162,7 @@ export function StatusBar({ fallbackSummary }: StatusBarProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [formatTimestamp]);
+  }, [formatTimestamp, fallbackSummary?.publishedAt]);
 
   const resolvedSummary = useMemo(() => {
     const fallbackPayload = fallbackSummary
@@ -558,5 +558,3 @@ export function StatusBar({ fallbackSummary }: StatusBarProps) {
     </div>
   );
 }
-
-export default StatusBar;
