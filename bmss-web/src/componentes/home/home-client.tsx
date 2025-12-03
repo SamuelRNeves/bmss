@@ -816,7 +816,7 @@ export default function HomeClient() {
         : `Mercado equilibrado ${intensityLabel}`;
 
     const totalLabel = recommendationSnapshot.totalItens
-      ? `${new Intl.NumberFormat("pt-BR").format(recommendationSnapshot.totalItens)} análises recentes`
+      ? `Monitorando ${new Intl.NumberFormat("pt-BR").format(recommendationSnapshot.totalItens)} análises recentes`
       : "Base em atualização";
 
     const description = `${totalLabel}: ${recommendationSnapshot.distribuicao.positivo.toFixed(
@@ -827,9 +827,9 @@ export default function HomeClient() {
       title: headline,
       description,
       sentiment: sentimentMap[recommendationSnapshot.dominante],
-      publishedAt: new Date().toISOString(),
+      publishedAt: analysisTimestamp ?? new Date().toISOString(),
     };
-  }, [recommendationSnapshot]);
+  }, [analysisTimestamp, recommendationSnapshot]);
 
   const sentimentBadges = useMemo(
     () => (
