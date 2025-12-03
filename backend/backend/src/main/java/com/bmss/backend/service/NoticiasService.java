@@ -19,6 +19,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
@@ -783,7 +784,12 @@ public void fetchAndStoreTweets(String keyword) {
 
     try {
         //  TOKEN VÁLIDO DA API DO TWITTER 
-        String bearerToken = "AAAAAAAAAAAAAAAAAAAAAPUm5QEAAAAAsVmaPixVJE0AEiLWHLimAf0Ilw8%3DxcU1G3JVGtiHoyqMcIKgeLamtd2LwqexlO5XTESZYSvOUtWpFi"; // TODO: Colocar token real
+        String bearerToken = "AAAAAAAAAAAAAAAAAAAAAHUr5wEAAAAAhNp1W5et77GzR2gSWHNheKZ4JFE%3DwVFgnbiB7xBmZyhhHr2mVGvTdArwqY0MzJDIqcTvC1sUfqArt5";
+
+        if (bearerToken.isBlank()) {
+            log.error("❌ Token Bearer do X não configurado. Verifique as credenciais.");
+            return;
+        }
         
         String url = "https://api.twitter.com/2/tweets/search/recent?query="
                 + URLEncoder.encode("bitcoin OR criptomoeda", StandardCharsets.UTF_8)
@@ -795,8 +801,29 @@ public void fetchAndStoreTweets(String keyword) {
 
         log.info("🔍 Buscando tweets na API do Twitter...");
 
-        ResponseEntity<Map> response = newsRestTemplate.exchange(
-                url, HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+        ResponseEntity<Map> response;
+        try {
+            response = newsRestTemplate.exchange(
+                    url, HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+        } catch (HttpClientErrorException e) {
+            log.error("❌ Erro ao consultar API do X (status {}): {}", e.getStatusCode(), e.getResponseBodyAsString());
+
+            if (e.getStatusCode().value() == 401 || e.getStatusCode().value() == 403) {
+                log.error("🔐 Possível token inválido/expirado ou permissão insuficiente.");
+            } else if (e.getStatusCode().value() == 429) {
+                log.error("⏳ Limite de requisições do X atingido. Aguarde o reset da janela.");
+            }
+
+            return;
+        } catch (RestClientException e) {
+            log.error("❌ Erro ao chamar API do X: {}", e.getMessage());
+            return;
+        }
+
+        if (!response.getStatusCode().is2xxSuccessful()) {
+            log.warn("⚠️ API do X retornou status {}. Corpo: {}", response.getStatusCode(), response.getBody());
+            return;
+        }
 
         if (response.getBody() == null || !response.getBody().containsKey("data")) {
             log.warn("⚠️ Nenhum tweet retornado pela API do X. Body: {}", response.getBody());
