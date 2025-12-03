@@ -1,22 +1,12 @@
 // app/page.tsx - VERSÃO CORRIGIDA
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
 import HomeClient from "@/componentes/home/home-client";
-import { useEffect } from "react";
+import { AuthStateMessage } from "@/componentes/auth/AuthStateMessage";
 
 export default function Home() {
-  const router = useRouter();
-  const { user, loading } = useAuth();
-
-  // ✅ useEffect para redirecionamento - evita loop
-  useEffect(() => {
-    if (!loading && !user) {
-      console.log("🔀 Redirecionando para login...");
-      router.push("/login");
-    }
-  }, [user, loading, router]);
+  const { loading, authStatus } = useAuth();
 
   // ✅ Mostra loading durante verificação
   if (loading) {
@@ -31,9 +21,8 @@ export default function Home() {
   }
 
   // ✅ Retorna null enquanto redireciona
-  if (!user) {
-    return null;
-  }
+  if (authStatus === "expired") return <AuthStateMessage state="expired" />;
+  if (authStatus === "unauthenticated") return <AuthStateMessage state="unauthenticated" />;
 
   // ✅ Só renderiza HomeClient se usuário estiver autenticado
   return <HomeClient />;

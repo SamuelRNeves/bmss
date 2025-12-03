@@ -12,7 +12,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { buildApiUrl } from "@/lib/api";
-import { AUTH_TOKEN_CHANGED_EVENT } from "@/lib/useAuth";
+import { persistTokens } from "@/lib/tokenStorage";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -46,14 +46,13 @@ export default function LoginPage() {
 
       const data = await response.json();
       const token = data.token;
+      const refreshToken = data.refreshToken;
 
       if (!token) {
         throw new Error("Token não recebido");
       }
 
-      // Salva o token no localStorage
-      localStorage.setItem("jwtToken", token);
-      window.dispatchEvent(new Event(AUTH_TOKEN_CHANGED_EVENT));
+      persistTokens({ accessToken: token, refreshToken });
 
       // Redireciona ao dashboard
       router.push("/");
