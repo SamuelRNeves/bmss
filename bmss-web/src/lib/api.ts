@@ -56,6 +56,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 const api = axios.create({
   ...(API_BASE_URL ? { baseURL: API_BASE_URL } : {}),
+  timeout: 15_000,
 });
 
 // =====================================================
@@ -312,6 +313,55 @@ const HISTORICAL_BASELINE_USD: Record<number, number> = {
   2024: 64500,
 };
 
+const formatUsd = (price: number) =>
+  new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "USD",
+  }).format(price);
+
+function buildStable24hFallback() {
+  const prices = [];
+  const now = new Date();
+  const basePrice = 64500;
+  const startingPrice = basePrice * 0.985;
+
+  for (let i = 23; i >= 0; i--) {
+    const pointDate = new Date(now.getTime() - i * 60 * 60 * 1000);
+    const progress = (23 - i) / 23; // 0 -> 1 ao longo das 24h
+
+    const gentleTrend = startingPrice + progress * basePrice * 0.012; // leve alta ~1.2%
+    const microOscillation = Math.sin(progress * Math.PI * 2) * 90; // ruído pequeno para não ficar "reto"
+
+    const price = Number((gentleTrend + microOscillation).toFixed(2));
+
+    prices.push({
+      timestamp: pointDate.getTime(),
+      time: `${pointDate.getHours().toString().padStart(2, "0")}:${pointDate
+        .getMinutes()
+        .toString()
+        .padStart(2, "0")}`,
+      price,
+      priceFormatted: formatUsd(price),
+    });
+  }
+
+  const primeiroPreco = prices[0]?.price || startingPrice;
+  const ultimoPreco = prices[prices.length - 1]?.price || basePrice;
+  const variacao = ((ultimoPreco - primeiroPreco) / (primeiroPreco || 1)) * 100;
+
+  return {
+    prices,
+    currentPriceUSD: ultimoPreco,
+    currentPriceBRL: null,
+    change24h: variacao.toFixed(2),
+    isFallback: true,
+    source: "Fallback",
+    lastUpdated: now.toISOString(),
+  };
+}
+
+const FALLBACK_24H_DATA = buildStable24hFallback();
+
 // =====================================================
 // 💰 FUNÇÕES DE PREÇO ATUAL (REAIS)
 // =====================================================
@@ -357,6 +407,70 @@ export async function getBitcoinPrice(): Promise<ApiResponse<any>> {
 // =====================================================
 // 📈 FUNÇÕES DE HISTÓRICO 24H
 // =====================================================
+function resolveTimestamp(entry: any): number {
+  if (typeof entry?.timestamp === "number") return entry.timestamp;
+
+  if (typeof entry?.time === "string") {
+    const [hours = "0", minutes = "0"] = entry.time.split(":");
+    const parsedDate = new Date();
+    parsedDate.setHours(Number(hours), Number(minutes), 0, 0);
+    return parsedDate.getTime();
+  }
+
+  return 0;
+}
+
+function normalize24hData(raw: any) {
+  if (!raw || typeof raw !== "object") return raw;
+
+  const prices = Array.isArray(raw.prices) ? raw.prices : [];
+
+  const sortedPrices = prices
+    .map((point) => {
+      const timestamp = resolveTimestamp(point);
+      const numericPrice =
+        typeof point?.price === "number"
+          ? point.price
+          : Number(point?.price ?? 0);
+
+      return {
+        ...point,
+        timestamp,
+        time:
+          point?.time ||
+          new Date(timestamp).toLocaleTimeString("pt-BR", {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+        price: numericPrice,
+        priceFormatted: point?.priceFormatted || formatUsd(numericPrice),
+      };
+    })
+    .sort((a, b) => a.timestamp - b.timestamp);
+
+  const firstPrice = sortedPrices[0]?.price ?? 0;
+  const lastPrice = sortedPrices[sortedPrices.length - 1]?.price ?? firstPrice;
+
+  const changeFromSeries =
+    firstPrice !== 0 ? ((lastPrice - firstPrice) / firstPrice) * 100 : 0;
+
+  const resolvedChange = raw.change24h ?? changeFromSeries;
+  const numericChange =
+    typeof resolvedChange === "string"
+      ? Number(resolvedChange)
+      : resolvedChange;
+
+  return {
+    ...raw,
+    prices: sortedPrices,
+    change24h: Number.isFinite(numericChange)
+      ? numericChange.toFixed(2)
+      : resolvedChange,
+    currentPriceUSD: raw.currentPriceUSD ?? lastPrice,
+    lastUpdated: raw.lastUpdated || new Date().toISOString(),
+  };
+}
+
 export async function getBitcoin24h(): Promise<ApiResponse<any>> {
   try {
     console.group("📈 Buscando dados das últimas 24h (Binance via backend)...");
@@ -368,7 +482,7 @@ export async function getBitcoin24h(): Promise<ApiResponse<any>> {
       throw new Error(payload?.error || "Resposta inválida do backend");
     }
 
-    const data = payload.data;
+    const data = normalize24hData(payload.data);
     const isFallback = Boolean(payload.isFallback || data.isFallback);
     const timestamp =
       payload.timestamp || data.lastUpdated || new Date().toISOString();
@@ -418,43 +532,10 @@ function gerarPrecoFallback() {
 }
 
 function gerarDados24hFallback() {
-  const prices = [];
-  const now = new Date();
-  const basePrice = 64500;
-  
-  // Gerar dados das últimas 24 horas
-  for (let i = 23; i >= 0; i--) {
-    const hora = new Date();
-    hora.setHours(now.getHours() - i);
-    
-    // Variação realista (±2%)
-    const variation = (Math.random() - 0.5) * 0.04;
-    const price = basePrice * (1 + variation);
-    
-    prices.push({
-      timestamp: hora.getTime(),
-      price: Number(price.toFixed(2)),
-      time: `${hora.getHours().toString().padStart(2, '0')}:00`,
-      priceFormatted: new Intl.NumberFormat('pt-BR', {
-        style: 'currency',
-        currency: 'USD'
-      }).format(price)
-    });
-  }
-  
-  // Calcular variação 24h
-  const primeiroPreco = prices[0].price;
-  const ultimoPreco = prices[prices.length - 1].price;
-  const variacao = ((ultimoPreco - primeiroPreco) / primeiroPreco) * 100;
-  
   return {
-    prices,
-    currentPriceUSD: Number(ultimoPreco.toFixed(2)),
-    currentPriceBRL: null,
-    change24h: variacao.toFixed(2),
-    isFallback: true,
-    source: "Fallback",
-    lastUpdated: now.toISOString(),
+    ...FALLBACK_24H_DATA,
+    prices: [...FALLBACK_24H_DATA.prices],
+    lastUpdated: new Date().toISOString(),
   };
 }
 
