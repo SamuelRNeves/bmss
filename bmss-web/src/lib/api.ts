@@ -56,6 +56,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 const api = axios.create({
   ...(API_BASE_URL ? { baseURL: API_BASE_URL } : {}),
+  timeout: 15_000,
 });
 
 // =====================================================
