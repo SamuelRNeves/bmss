@@ -16,7 +16,6 @@ import {
   Upload,
 } from "lucide-react";
 import { useAuth } from "@/lib/useAuth";
-import { AuthStateMessage } from "@/componentes/auth/AuthStateMessage";
 import { buildApiUrl } from "@/lib/api";
 import { getStoredAccessToken } from "@/lib/tokenStorage";
 
@@ -120,8 +119,15 @@ export default function UserSessionPage() {
   });
 
   useEffect(() => {
-    if (!loading && authStatus === "authenticated" && !user) {
-      router.push("/login");
+    if (loading) return;
+    if (authStatus === "expired" || authStatus === "unauthenticated") {
+      const target = authStatus === "expired" ? "/login?expired=1" : "/login";
+      router.replace(target);
+      return;
+    }
+
+    if (authStatus === "authenticated" && !user) {
+      router.replace("/login");
     }
   }, [authStatus, loading, user, router]);
 
@@ -292,8 +298,13 @@ export default function UserSessionPage() {
     );
   }
 
-  if (authStatus === "expired") return <AuthStateMessage state="expired" />;
-  if (authStatus === "unauthenticated") return <AuthStateMessage state="unauthenticated" />;
+  if (authStatus === "expired" || authStatus === "unauthenticated") {
+    return (
+      <main className="min-h-screen bg-gradient-to-b from-neutral-950 via-neutral-900 to-black flex items-center justify-center">
+        <p className="text-sm text-gray-300 animate-pulse">Redirecionando para o login...</p>
+      </main>
+    );
+  }
   if (!user) {
     return null;
   }
