@@ -1,5 +1,5 @@
 
-🚀 Bitcoin Market Sentiment System (BMSS)
+ Bitcoin Market Sentiment System (BMSS)
 
 
 
@@ -16,9 +16,9 @@ O BMSS (Bitcoin Market Sentiment System) é uma aplicação full stack com micro
 
 O objetivo do sistema é transformar grandes volumes de informação do mercado em um indicador visual de sentimento, auxiliando investidores e analistas a entender o humor geral do mercado.
 
-⚠️ O sistema não prevê preço do Bitcoin, apenas analisa o sentimento presente em conteúdos públicos.
+ O sistema não prevê preço do Bitcoin, apenas analisa o sentimento presente em conteúdos públicos.
 
-📊 Demonstração
+ Demonstração
 Dashboard de Sentimento
 
 (adicione aqui um print do sistema)
@@ -28,7 +28,7 @@ Gráfico de tendência de sentimento
 /docs/sentiment-chart.png
 Distribuição de sentimento
 /docs/sentiment-distribution.png
-🏗️ Arquitetura do Sistema
+ Arquitetura do Sistema
 
 O projeto foi desenvolvido utilizando arquitetura de microsserviços, separando responsabilidades entre frontend, backend e IA.
 
@@ -51,11 +51,11 @@ Fluxo do sistema
 5️⃣ Resultado é armazenado no PostgreSQL
 6️⃣ Frontend apresenta os dados em gráficos no dashboard
 
-🧠 Análise de Sentimento
+ Análise de Sentimento
 
 O BMSS utiliza uma estratégia híbrida de análise.
 
-1️⃣ Keyword Engine
+1️ Keyword Engine
 
 Um mecanismo de palavras-chave financeiras analisa o texto atribuindo pontuações positivas ou negativas.
 
@@ -65,7 +65,7 @@ bullish → positivo
 crash → negativo
 surge → positivo
 panic → negativo
-2️⃣ Modelo NLP (Transformers)
+2️ Modelo NLP (Transformers)
 
 Caso o resultado não seja conclusivo, o sistema utiliza um modelo baseado em:
 
@@ -76,7 +76,7 @@ DistilRoBERTa
 Biblioteca utilizada:
 
 Hugging Face Transformers
-3️⃣ Combinação de resultados
+3️ Combinação de resultados
 
 O sistema combina os dois métodos:
 
@@ -137,7 +137,7 @@ NLP
 Deploy:
 
 Render
-🗄️ Banco de Dados
+ Banco de Dados
 
 Principais tabelas:
 
@@ -199,7 +199,7 @@ DATABASE_URL
 DATABASE_USER
 DATABASE_PASSWORD
 SPRING_PROFILES_ACTIVE
-🚀 Deploy
+ Deploy
 
 O sistema está hospedado utilizando plataformas modernas de cloud.
 
@@ -214,7 +214,7 @@ Render
 Microserviço IA
 
 Render
-⚠️ Limitações
+ Limitações
 
 Dependência de APIs externas
 
@@ -222,7 +222,7 @@ Modelos NLP podem interpretar sarcasmo incorretamente
 
 Palavras-chave precisam de manutenção contínua
 
-🔮 Trabalhos Futuros
+ Trabalhos Futuros
 
 Suporte a múltiplas criptomoedas
 
@@ -234,7 +234,7 @@ Sistema de alertas de mercado
 
 Análise de tendências com Machine Learning
 
-👨‍💻 Autor
+ Autor
 
 Samuel Rodrigues de Oliveira Neves
 
