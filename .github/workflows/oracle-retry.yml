@@ -57,8 +57,20 @@ jobs:
           [[ -n "$R" ]] || R="sa-saopaulo-1"
           mkdir -p "$HOME/.oci"
           KEY="$HOME/.oci/key.pem"
-          printf '%s\n' "$OCI_PRIVATE_KEY" | tr -d '\r' > "$KEY"
-          grep -q -- "-----BEGIN" "$KEY" && grep -q -- "-----END" "$KEY" || { echo "❌ OCI_PRIVATE_KEY precisa ter as linhas -----BEGIN ...----- e -----END ...-----"; ok=0; }
+          # Reconstrói o PEM (resolve chave colada numa linha só, com espaços ou recuos)
+          printf '%s' "$OCI_PRIVATE_KEY" | python3 -c '
+          import re, sys, textwrap
+          raw = sys.stdin.read()
+          m = re.search(r"-----BEGIN ([A-Z ]+)-----(.*?)-----END \1-----", raw, re.S)
+          if not m:
+              sys.exit("❌ OCI_PRIVATE_KEY precisa ter as linhas -----BEGIN ...----- e -----END ...-----")
+          kind, body = m.group(1), re.sub(r"\s+", "", m.group(2))
+          if "PUBLIC" in kind:
+              sys.exit("❌ OCI_PRIVATE_KEY contém a chave PÚBLICA; use o arquivo da chave privada")
+          if "ENCRYPTED" in kind or "Proc-Type" in raw:
+              sys.exit("❌ A chave privada está protegida por senha; gere uma sem senha")
+          print(f"-----BEGIN {kind}-----"); print("\n".join(textwrap.wrap(body, 64))); print(f"-----END {kind}-----")
+          ' > "$KEY" || ok=0
           [[ $ok == 1 ]] || exit 1
           grep -q '^OCI_API_KEY$' "$KEY" || echo "OCI_API_KEY" >> "$KEY"
           chmod 600 "$KEY"
