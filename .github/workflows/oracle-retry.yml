@@ -42,17 +42,19 @@ jobs:
           OCI_PRIVATE_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
         run: |
           set -euo pipefail
-          # Limpa espaços, quebras de linha e prefixos como "user=" colados por engano
-          clean() { printf '%s' "$1" | tr -d '\r\n\t ' | sed -E "s/^$2=//"; }
-          U="$(clean "$OCI_USER" user)"
-          T="$(clean "$OCI_TENANCY" tenancy)"
-          F="$(clean "$OCI_FINGERPRINT" fingerprint)"
-          R="$(clean "$OCI_REGION" region)"
+          # Procura cada valor pelo formato em todos os secrets juntos — funciona
+          # mesmo se o bloco inteiro do "Configuration file preview" foi colado
+          # ou se os valores ficaram trocados entre os secrets.
+          ALL="$(printf '%s\n%s\n%s\n%s' "$OCI_USER" "$OCI_TENANCY" "$OCI_FINGERPRINT" "$OCI_REGION" | tr -d '\r')"
+          U="$(grep -oE 'ocid1\.user\.[A-Za-z0-9._-]+' <<<"$ALL" | head -1 || true)"
+          T="$(grep -oE 'ocid1\.tenancy\.[A-Za-z0-9._-]+' <<<"$ALL" | head -1 || true)"
+          F="$(grep -oE '([0-9a-f]{2}:){15}[0-9a-f]{2}' <<<"$ALL" | head -1 || true)"
+          R="$(grep -oE '[a-z]{2}-[a-z]+-[0-9]' <<<"$ALL" | grep -v '^oc' | head -1 || true)"
           ok=1
-          [[ "$U" == ocid1.user.* ]]    || { echo "❌ OCI_USER deve começar com ocid1.user."; ok=0; }
-          [[ "$T" == ocid1.tenancy.* ]] || { echo "❌ OCI_TENANCY deve começar com ocid1.tenancy."; ok=0; }
-          [[ "$F" =~ ^([0-9a-f]{2}:){15}[0-9a-f]{2}$ ]] || { echo "❌ OCI_FINGERPRINT deve ter o formato aa:bb:...(16 pares)"; ok=0; }
-          [[ "$R" =~ ^[a-z]{2}-[a-z]+-[0-9]$ ]] || { echo "❌ OCI_REGION deve ser algo como sa-saopaulo-1"; ok=0; }
+          [[ -n "$U" ]] || { echo "❌ Não achei o OCID do usuário (ocid1.user...) em nenhum secret"; ok=0; }
+          [[ -n "$T" ]] || { echo "❌ Não achei o OCID da tenancy (ocid1.tenancy...) em nenhum secret"; ok=0; }
+          [[ -n "$F" ]] || { echo "❌ Não achei o fingerprint (aa:bb:... 16 pares) em nenhum secret"; ok=0; }
+          [[ -n "$R" ]] || R="sa-saopaulo-1"
           mkdir -p "$HOME/.oci"
           KEY="$HOME/.oci/key.pem"
           printf '%s\n' "$OCI_PRIVATE_KEY" | tr -d '\r' > "$KEY"
