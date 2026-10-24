@@ -20,8 +20,7 @@ public class CorsConfig {
         "https://bmss.com.br", // URL exata do frontend em produção
         "https://*.bmss.com.br", // Subdomínios do domínio principal
         "https://bmss-sytem-*.vercel.app",
-        "https://*.vercel.app", // Todos os subdomínios do Vercel
-        "https://*.onrender.com"
+        "https://*.vercel.app" // Todos os subdomínios do Vercel
     );
 
     @Bean

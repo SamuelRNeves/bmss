@@ -1,1 +1,7 @@
 node_modules
+
+# Arquivos de ambiente com segredos (nunca versionar)
+.env
+*.env
+env
+!.env.example

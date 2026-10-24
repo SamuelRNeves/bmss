@@ -1,0 +1,94 @@
+# =====================================================================
+# BMSS — deploy na VM Always Free da Oracle Cloud (Arm / Ampere A1)
+#
+#   caddy     -> HTTPS automático (Let's Encrypt) na porta 443
+#   backend   -> API Spring Boot (porta 8080, só na rede interna)
+#   sentiment -> microsserviço Python de IA (porta 5000, só na rede interna)
+#   db        -> PostgreSQL 16 (porta 5432, só na rede interna)
+#
+# Uso (dentro de deploy/oracle):
+#   cp .env.example .env   # e preencha os valores
+#   docker compose up -d --build
+# =====================================================================
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: bmss
+      POSTGRES_USER: bmss
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
+      TZ: America/Sao_Paulo
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bmss -d bmss"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  sentiment:
+    build:
+      context: ../../backend/bmss-sentiment
+      dockerfile: dockerfile
+    restart: unless-stopped
+    environment:
+      PYTHONUNBUFFERED: "1"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  backend:
+    build:
+      context: ../../backend/backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      sentiment:
+        condition: service_started
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      TZ: America/Sao_Paulo
+      JAVA_TOOL_OPTIONS: "-Xms256m -Xmx1g"
+      # Banco local do compose. Para usar um banco externo (ex.: Neon),
+      # troque DATABASE_URL/USER/PASSWORD aqui.
+      DATABASE_URL: jdbc:postgresql://db:5432/bmss
+      DATABASE_USER: bmss
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
+      BMSS_SENTIMENT_BASE_URL: http://sentiment:5000
+      JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no .env}
+      NEWSAPI_API_KEY: ${NEWSAPI_API_KEY:?defina NEWSAPI_API_KEY no .env}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-BMSS Alerts <onboarding@resend.dev>}
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
+    volumes:
+      - uploads:/app/uploads
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?defina DOMAIN no .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  pgdata:
+  uploads:
+  caddy_data:
+  caddy_config:
