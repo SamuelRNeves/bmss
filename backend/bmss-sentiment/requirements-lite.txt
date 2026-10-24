@@ -1,0 +1,4 @@
+# Versão leve do serviço de sentimento: só palavras-chave, sem PyTorch/Transformers.
+# Usada pelo Dockerfile.lite (deploy na VM AMD Micro de 1 GB).
+flask
+gunicorn
