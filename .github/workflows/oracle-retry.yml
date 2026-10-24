@@ -61,10 +61,10 @@ jobs:
           printf '%s' "$OCI_PRIVATE_KEY" | python3 -c '
           import re, sys, textwrap
           raw = sys.stdin.read()
-          m = re.search(r"-----BEGIN ([A-Z ]+)-----(.*?)-----END \1-----", raw, re.S)
+          m = re.search(r"-{3,}\s*BEGIN ([A-Z ]+?)\s*-{3,}(.*?)-{3,}\s*END [A-Z ]+?\s*-{3,}", raw, re.S)
           if not m:
               sys.exit("❌ OCI_PRIVATE_KEY precisa ter as linhas -----BEGIN ...----- e -----END ...-----")
-          kind, body = m.group(1), re.sub(r"\s+", "", m.group(2))
+          kind, body = m.group(1).strip(), re.sub(r"[^A-Za-z0-9+/=]", "", m.group(2))
           if "PUBLIC" in kind:
               sys.exit("❌ OCI_PRIVATE_KEY contém a chave PÚBLICA; use o arquivo da chave privada")
           if "ENCRYPTED" in kind or "Proc-Type" in raw:
