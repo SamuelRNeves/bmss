@@ -1,0 +1,63 @@
+# Fica tentando criar a VM Always Free "bmss" na Oracle Cloud até conseguir
+# (até ~5h40 por execução). Roda de graça no GitHub, sem depender do seu computador.
+#
+# Segredos necessários (Settings → Secrets and variables → Actions):
+#   OCI_USER, OCI_TENANCY, OCI_FINGERPRINT, OCI_REGION, OCI_PRIVATE_KEY
+name: Oracle - criar VM
+
+on:
+  push:
+    branches: [oracle-retry]
+    paths:
+      - ".github/workflows/oracle-retry.yml"
+      - "deploy/oracle/retry-create-vm.sh"
+  workflow_dispatch:
+  schedule:
+    - cron: "17 */6 * * *"   # só vale quando estiver na branch padrão
+
+concurrency:
+  group: oracle-retry
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  criar-vm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar OCI CLI
+        run: pip install --quiet oci-cli
+
+      - name: Configurar credenciais
+        env:
+          OCI_USER: ${{ secrets.OCI_USER }}
+          OCI_TENANCY: ${{ secrets.OCI_TENANCY }}
+          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+          OCI_REGION: ${{ secrets.OCI_REGION }}
+          OCI_PRIVATE_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.oci
+          printf '%s\n' "$OCI_PRIVATE_KEY" > ~/.oci/key.pem
+          chmod 600 ~/.oci/key.pem
+          cat > ~/.oci/config <<EOF
+          [DEFAULT]
+          user=${OCI_USER}
+          fingerprint=${OCI_FINGERPRINT}
+          tenancy=${OCI_TENANCY}
+          region=${OCI_REGION}
+          key_file=~/.oci/key.pem
+          EOF
+          chmod 600 ~/.oci/config
+          oci setup repair-file-permissions --file ~/.oci/config >/dev/null 2>&1 || true
+          oci iam region-subscription list --query 'data[0]."region-name"' --raw-output
+
+      - name: Tentar criar a VM até conseguir
+        env:
+          OCI_TENANCY: ${{ secrets.OCI_TENANCY }}
+          SUPPRESS_LABEL_WARNING: "True"
+          OCI_CLI_SUPPRESS_FILE_PERMISSIONS_WARNING: "True"
+        run: bash deploy/oracle/retry-create-vm.sh
