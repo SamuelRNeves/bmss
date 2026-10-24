@@ -7,10 +7,7 @@ name: Oracle - criar VM
 
 on:
   push:
-    branches: [oracle-retry]
-    paths:
-      - ".github/workflows/oracle-retry.yml"
-      - "deploy/oracle/retry-create-vm.sh"
+    branches: [oracle-retry]   # qualquer push nesta branch reinicia as tentativas
   workflow_dispatch:
   schedule:
     - cron: "17 */6 * * *"   # só vale quando estiver na branch padrão
