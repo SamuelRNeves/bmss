@@ -41,24 +41,30 @@ jobs:
           OCI_REGION: ${{ secrets.OCI_REGION }}
           OCI_PRIVATE_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
         run: |
-          mkdir -p ~/.oci
-          printf '%s\n' "$OCI_PRIVATE_KEY" > ~/.oci/key.pem
-          chmod 600 ~/.oci/key.pem
-          cat > ~/.oci/config <<EOF
-          [DEFAULT]
-          user=${OCI_USER}
-          fingerprint=${OCI_FINGERPRINT}
-          tenancy=${OCI_TENANCY}
-          region=${OCI_REGION}
-          key_file=~/.oci/key.pem
-          EOF
-          chmod 600 ~/.oci/config
-          oci setup repair-file-permissions --file ~/.oci/config >/dev/null 2>&1 || true
-          oci iam region-subscription list --tenancy-id "$OCI_TENANCY" --query 'data[0]."region-name"' --raw-output
+          set -euo pipefail
+          # Limpa espaços, quebras de linha e prefixos como "user=" colados por engano
+          clean() { printf '%s' "$1" | tr -d '\r\n\t ' | sed -E "s/^$2=//"; }
+          U="$(clean "$OCI_USER" user)"
+          T="$(clean "$OCI_TENANCY" tenancy)"
+          F="$(clean "$OCI_FINGERPRINT" fingerprint)"
+          R="$(clean "$OCI_REGION" region)"
+          ok=1
+          [[ "$U" == ocid1.user.* ]]    || { echo "❌ OCI_USER deve começar com ocid1.user."; ok=0; }
+          [[ "$T" == ocid1.tenancy.* ]] || { echo "❌ OCI_TENANCY deve começar com ocid1.tenancy."; ok=0; }
+          [[ "$F" =~ ^([0-9a-f]{2}:){15}[0-9a-f]{2}$ ]] || { echo "❌ OCI_FINGERPRINT deve ter o formato aa:bb:...(16 pares)"; ok=0; }
+          [[ "$R" =~ ^[a-z]{2}-[a-z]+-[0-9]$ ]] || { echo "❌ OCI_REGION deve ser algo como sa-saopaulo-1"; ok=0; }
+          mkdir -p "$HOME/.oci"
+          KEY="$HOME/.oci/key.pem"
+          printf '%s\n' "$OCI_PRIVATE_KEY" | tr -d '\r' > "$KEY"
+          grep -q -- "-----BEGIN" "$KEY" && grep -q -- "-----END" "$KEY" || { echo "❌ OCI_PRIVATE_KEY precisa ter as linhas -----BEGIN ...----- e -----END ...-----"; ok=0; }
+          [[ $ok == 1 ]] || exit 1
+          grep -q '^OCI_API_KEY$' "$KEY" || echo "OCI_API_KEY" >> "$KEY"
+          chmod 600 "$KEY"
+          printf '[DEFAULT]\nuser=%s\nfingerprint=%s\ntenancy=%s\nregion=%s\nkey_file=%s\n' "$U" "$F" "$T" "$R" "$KEY" > "$HOME/.oci/config"
+          chmod 600 "$HOME/.oci/config"
+          echo "OCI_TENANCY=$T" >> "$GITHUB_ENV"
+          echo "✓ Formato dos secrets ok. Testando acesso à Oracle..."
+          oci iam region-subscription list --tenancy-id "$T" --query 'data[0]."region-name"' --raw-output
 
       - name: Tentar criar a VM até conseguir
-        env:
-          OCI_TENANCY: ${{ secrets.OCI_TENANCY }}
-          SUPPRESS_LABEL_WARNING: "True"
-          OCI_CLI_SUPPRESS_FILE_PERMISSIONS_WARNING: "True"
         run: bash deploy/oracle/retry-create-vm.sh
