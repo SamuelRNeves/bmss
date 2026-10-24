@@ -4,7 +4,7 @@ Esta é a versão para a VM **VM.Standard.E2.1.Micro**: 1 GB de RAM, x86, gráti
 
 O que muda em relação a `deploy/oracle` (versão Arm):
 
-- **Análise de sentimento só por palavras-chave**, sem PyTorch. O serviço usa uns 35 MB em vez de 1–2 GB. No código original o modelo de IA já era só reserva, com as palavras-chave valendo 80% do peso. Sem ele, textos com palavras-chave inconclusivas são classificados como `neutral`.
+- **Análise de sentimento só por palavras-chave, dentro do próprio back-end Java.** Não há serviço Python nem PyTorch. As regras são as mesmas do `app.py`, e os resultados foram conferidos como idênticos em mais de 1.500 textos. No código original o modelo de IA já era só reserva, com as palavras-chave valendo 80% do peso. Sem ele, textos com palavras-chave inconclusivas são classificados como `neutral`.
 - **As imagens chegam prontas do GitHub** (GHCR), compiladas pelo GitHub Actions. Compilar Java numa VM de 1/8 de CPU levaria muito tempo.
 - **Java e Postgres com limites de memória** para caber em 1 GB, mais 2 GB de swap como folga.
 
@@ -12,7 +12,6 @@ O que muda em relação a `deploy/oracle` (versão Arm):
 Vercel (front) ──HTTPS──► VM AMD Micro (1 GB)
                             ├─ caddy      (HTTPS, 80/443)
                             ├─ backend    (Spring Boot, heap 256 MB)
-                            ├─ sentiment  (palavras-chave, ~35 MB)
                             └─ db         (Postgres, ~100 MB)
 ```
 
@@ -21,7 +20,7 @@ Vercel (front) ──HTTPS──► VM AMD Micro (1 GB)
 ## 0. Antes de tudo: imagens públicas no GitHub
 
 1. Depois do push, o workflow **Imagens Docker** roda sozinho. Acompanhe em **GitHub → Actions**.
-2. Quando ele terminar, abra **github.com/SamuelRNeves?tab=packages**. Em `bmss-backend` e em `bmss-sentiment-lite`, vá em **Package settings → Change visibility → Public**.
+2. Quando ele terminar, abra **github.com/SamuelRNeves?tab=packages**. Em `bmss-backend`, vá em **Package settings → Change visibility → Public**.
 
 As imagens não contêm segredos, porque eles ficam no `.env` da VM. Sem esse passo, a VM precisaria de login no GitHub para baixar as imagens.
 

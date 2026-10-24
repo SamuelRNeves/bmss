@@ -61,6 +61,7 @@ services:
       DATABASE_URL: jdbc:postgresql://db:5432/bmss
       DATABASE_USER: bmss
       DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
+      BMSS_SENTIMENT_MODE: remote
       BMSS_SENTIMENT_BASE_URL: http://sentiment:5000
       JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no .env}
       NEWSAPI_API_KEY: ${NEWSAPI_API_KEY:?defina NEWSAPI_API_KEY no .env}

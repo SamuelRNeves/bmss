@@ -4,7 +4,7 @@
 #
 #   caddy     -> HTTPS automático (Let's Encrypt), portas 80/443
 #   backend   -> Spring Boot (imagem pronta do GHCR, heap limitado)
-#   sentiment -> análise por palavras-chave, sem PyTorch (~35 MB)
+#   (a análise de sentimento roda dentro do back-end, em Java)
 #   db        -> PostgreSQL 16 com configuração de pouca memória
 #
 # As imagens são compiladas pelo GitHub Actions; a VM só baixa.
@@ -38,24 +38,12 @@ services:
       timeout: 5s
       retries: 10
 
-  sentiment:
-    image: ghcr.io/samuelrneves/bmss-sentiment-lite:latest
-    restart: unless-stopped
-    mem_limit: 96m
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health', timeout=5)"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-
   backend:
     image: ghcr.io/samuelrneves/bmss-backend:latest
     restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
-      sentiment:
-        condition: service_started
     mem_limit: 600m
     environment:
       SPRING_PROFILES_ACTIVE: prod
@@ -71,7 +59,7 @@ services:
       DATABASE_URL: jdbc:postgresql://db:5432/bmss
       DATABASE_USER: bmss
       DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
-      BMSS_SENTIMENT_BASE_URL: http://sentiment:5000
+      BMSS_SENTIMENT_MODE: local
       JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no .env}
       NEWSAPI_API_KEY: ${NEWSAPI_API_KEY:?defina NEWSAPI_API_KEY no .env}
       RESEND_API_KEY: ${RESEND_API_KEY:-}

@@ -54,6 +54,10 @@ public class NoticiasService {
     private final RestTemplate flaskRestTemplate;
     private final URI flaskEndpoint;
     private final URI tweetsFlaskEndpoint;
+    private final KeywordSentimentAnalyzer keywordAnalyzer;
+    // "local" = análise por palavras-chave dentro do Java (sem serviço Python)
+    // "remote" = chama o microserviço Python (versão com modelo de IA)
+    private final boolean localSentiment;
     private final Duration newsFreshnessWindow;
     private final int defaultNewsLimit;
     private final Object gnewsRateLock = new Object();
@@ -72,6 +76,8 @@ public class NoticiasService {
             ItemRepository itemRepository,
             SentimentRepository sentimentRepository,
             RestTemplateBuilder restTemplateBuilder,
+            KeywordSentimentAnalyzer keywordAnalyzer,
+            @Value("${bmss.sentiment.mode:local}") String sentimentMode,
             @Value("${bmss.sentiment.flask-url:http://localhost:5000/analyze-batch}") String flaskUrl,
             @Value("${bmss.sentiment.tweets-url:http://localhost:5000/analyze-tweets}") String tweetsFlaskUrl,
             @Value("${bmss.sentiment.connect-timeout:10s}") Duration connectTimeout,
@@ -89,6 +95,9 @@ public class NoticiasService {
                 .build();
         this.flaskEndpoint = URI.create(Objects.requireNonNull(flaskUrl, "Flask URL must not be null"));
         this.tweetsFlaskEndpoint = URI.create(Objects.requireNonNull(tweetsFlaskUrl, "Tweets Flask URL must not be null"));
+        this.keywordAnalyzer = keywordAnalyzer;
+        this.localSentiment = !"remote".equalsIgnoreCase(sentimentMode == null ? "" : sentimentMode.trim());
+        log.info("🧠 Análise de sentimento: {}", localSentiment ? "local (palavras-chave em Java)" : "remota (" + flaskEndpoint + ")");
         this.newsFreshnessWindow = Duration.ofHours(newsWindowHours);
         this.defaultNewsLimit = defaultNewsLimit;
     }
@@ -640,6 +649,11 @@ private String normalizeSentimentToEnglish(String sentiment) {
             return Collections.emptyList();
         }
 
+        if (localSentiment) {
+            log.info("🧠 Analisando {} textos localmente (palavras-chave)", textos.size());
+            return keywordAnalyzer.analyzeNews(textos);
+        }
+
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
@@ -843,41 +857,46 @@ public void fetchAndStoreTweets(String keyword) {
 
         log.info("📨 Enviando {} tweets para análise de sentimento", textos.size());
 
-        // ✅ CORREÇÃO CRÍTICA: Configurar POST JSON corretamente
-        HttpHeaders flaskHeaders = new HttpHeaders();
-        flaskHeaders.setContentType(MediaType.APPLICATION_JSON);
-        flaskHeaders.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
+        List<Map<String, Object>> analises;
+        if (localSentiment) {
+            analises = keywordAnalyzer.analyzeTweets(textos);
+        } else {
+            // ✅ CORREÇÃO CRÍTICA: Configurar POST JSON corretamente
+            HttpHeaders flaskHeaders = new HttpHeaders();
+            flaskHeaders.setContentType(MediaType.APPLICATION_JSON);
+            flaskHeaders.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
 
-        HttpEntity<List<String>> requestEntity = new HttpEntity<>(textos, flaskHeaders);
+            HttpEntity<List<String>> requestEntity = new HttpEntity<>(textos, flaskHeaders);
 
-        log.info("🚀 Chamando Flask em: {}", tweetsFlaskEndpoint);
+            log.info("🚀 Chamando Flask em: {}", tweetsFlaskEndpoint);
 
-        ResponseEntity<List<Map<String, Object>>> flaskResponse;
-        try {
-            flaskResponse = flaskRestTemplate.exchange(
-                    tweetsFlaskEndpoint,
-                    HttpMethod.POST,
-                    requestEntity,
-                    new ParameterizedTypeReference<List<Map<String, Object>>>() {}
-            );
-        } catch (RestClientException e) {
-            log.error("❌ Erro na comunicação com Flask: {}", e.getMessage());
-            return;
+            ResponseEntity<List<Map<String, Object>>> flaskResponse;
+            try {
+                flaskResponse = flaskRestTemplate.exchange(
+                        tweetsFlaskEndpoint,
+                        HttpMethod.POST,
+                        requestEntity,
+                        new ParameterizedTypeReference<List<Map<String, Object>>>() {}
+                );
+            } catch (RestClientException e) {
+                log.error("❌ Erro na comunicação com Flask: {}", e.getMessage());
+                return;
+            }
+
+            // 🔹 VERIFICAÇÃO DETALHADA DA RESPOSTA
+            if (!flaskResponse.getStatusCode().is2xxSuccessful()) {
+                log.error("❌ Flask retornou status HTTP: {}", flaskResponse.getStatusCode());
+                return;
+            }
+
+            analises = flaskResponse.getBody();
+            if (analises == null) {
+                log.error("❌ Flask retornou corpo vazio");
+                return;
+            }
         }
 
-        // 🔹 VERIFICAÇÃO DETALHADA DA RESPOSTA
-        if (!flaskResponse.getStatusCode().is2xxSuccessful()) {
-            log.error("❌ Flask retornou status HTTP: {}", flaskResponse.getStatusCode());
-            return;
-        }
-
-        List<Map<String, Object>> analises = flaskResponse.getBody();
-        if (analises == null) {
-            log.error("❌ Flask retornou corpo vazio");
-            return;
-        }
-
-        log.info("✅ Flask analisou {} tweets com sucesso", analises.size());
+        log.info("✅ {} tweets analisados com sucesso", analises.size());
 
         // ============================================================
         // 🔹 PERSISTÊNCIA CORRIGIDA COM NOVOS CAMPOS
