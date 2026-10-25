@@ -18,11 +18,13 @@ public class Item {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
 
+    @Column(columnDefinition = "TEXT")
     private String title;
 
     @Column(nullable = false, columnDefinition = "TEXT")
     private String text;
 
+    @Column(columnDefinition = "TEXT")
     private String url;
 
     @Column(name = "published_at")
@@ -36,7 +38,7 @@ public class Item {
     @JoinColumn(name = "source_id")
     private Source source;
 
-    @Column(name = "source")
+    @Column(name = "source", columnDefinition = "TEXT")
     private String sourceName;
 
     @OneToMany(mappedBy = "item", cascade = CascadeType.ALL, orphanRemoval = true)
