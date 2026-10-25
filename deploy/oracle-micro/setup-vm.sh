@@ -52,7 +52,12 @@ if [[ ! -f .env ]]; then
   DOMAIN="${IP//./-}.sslip.io"
   echo "  Domínio da API: $DOMAIN"
   echo "  (o que você digitar nas perguntas abaixo não aparece na tela)"
-  read -r -s -p "  Chave NOVA da NewsAPI: " NEWSAPI; echo
+  NEWSAPI=""
+  while [[ -z "$NEWSAPI" ]]; do
+    read -r -s -p "  Chave NOVA da NewsAPI (obrigatória): " NEWSAPI; echo
+    [[ -n "$NEWSAPI" ]] || echo "  ⚠ Vazia — cole a chave (botão direito) e aperte Enter."
+  done
+  echo "  ✓ chave recebida (${#NEWSAPI} caracteres)"
   read -r -s -p "  Chave do Resend (Enter para pular): " RESEND; echo
   read -r -p    "  Cloudinary cloud name (Enter para pular): " CLD_NAME
   read -r -p    "  Cloudinary API key (Enter para pular): " CLD_KEY
@@ -72,6 +77,9 @@ EOF
   echo "  ✓ .env criado (senha do banco e segredo JWT gerados automaticamente)"
 else
   echo "  ✓ .env já existe (mantido)"
+fi
+if ! grep -qE '^NEWSAPI_API_KEY=.+' .env; then
+  echo "  ❌ NEWSAPI_API_KEY está vazia no .env. Edite com: nano $PWD/.env"; exit 1
 fi
 DOMAIN="$(grep '^DOMAIN=' .env | cut -d= -f2)"
 
