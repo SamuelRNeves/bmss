@@ -1,6 +1,5 @@
 from flask import Flask, request, jsonify
-from transformers import pipeline
-import torch
+import os
 import re
 import time
 import logging
@@ -20,18 +19,25 @@ logger = logging.getLogger(__name__)
 # ======================================================
 # 🔹 MODELOS (apenas como fallback)
 # ======================================================
-device = 0 if torch.cuda.is_available() else -1
+# BMSS_DISABLE_MODEL=1 roda só com palavras-chave (versão leve, sem PyTorch).
+# Sem o modelo, textos com palavras-chave inconclusivas ficam como "neutral".
+finbert = None
+if os.environ.get("BMSS_DISABLE_MODEL", "0") == "1":
+    logger.info("🪶 Modo leve: modelo de IA desativado (só palavras-chave)")
+else:
+    try:
+        import torch
+        from transformers import pipeline
 
-try:
-    logger.info("🔄 Carregando modelos...")
-    finbert = pipeline(
-        "sentiment-analysis",
-        model="mrm8488/distilroberta-finetuned-financial-news-sentiment-analysis",
-        device=device
-    )
-except Exception as e:
-    logger.warning(f"⚠️ Modelo não carregado: {e}")
-    finbert = None
+        logger.info("🔄 Carregando modelos...")
+        finbert = pipeline(
+            "sentiment-analysis",
+            model="mrm8488/distilroberta-finetuned-financial-news-sentiment-analysis",
+            device=0 if torch.cuda.is_available() else -1
+        )
+    except Exception as e:
+        logger.warning(f"⚠️ Modelo não carregado, seguindo só com palavras-chave: {e}")
+        finbert = None
 
 # ======================================================
 # 🔹 SISTEMA ULTRA-AGGRESSIVO DE KEYWORDS

@@ -1,4 +1,3 @@
-const DEFAULT_REMOTE_BASE = "https://bmss-backend.onrender.com/api/v1";
 const LOCAL_REMOTE_BASE = "http://localhost:8080/api/v1";
 
 const ensureUrl = (candidate) => {
@@ -54,17 +53,8 @@ const addRemotePattern = (candidate) => {
 [
   process.env.NEXT_PUBLIC_PROFILE_IMAGE_BASE_URL,
   process.env.NEXT_PUBLIC_API_BASE_URL,
-  DEFAULT_REMOTE_BASE,
   LOCAL_REMOTE_BASE,
 ].forEach(addRemotePattern);
-
-if (remotePatterns.length === 0) {
-  remotePatterns.push({
-    protocol: "https",
-    hostname: "bmss-backend.onrender.com",
-    pathname: "/**",
-  });
-}
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {

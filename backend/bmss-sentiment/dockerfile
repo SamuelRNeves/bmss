@@ -18,8 +18,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copiar dependências
 COPY requirements.txt .
 
-# Instalar libs sem GPU (CPU only)
-RUN pip install --upgrade pip && pip install -r requirements.txt
+# Instalar libs sem GPU (CPU only) — funciona em x86_64 e em Arm (Oracle Ampere)
+RUN pip install --upgrade pip && \
+    if [ "$(uname -m)" = "x86_64" ]; then \
+      pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu; \
+    else \
+      pip install torch==2.5.1; \
+    fi && \
+    pip install -r requirements.txt
 
 # 🔥 Baixar o modelo ANTES do runtime (evita delay)
 RUN python - <<EOF
@@ -35,8 +41,7 @@ EOF
 # Copia o app depois do build (boa prática)
 COPY . .
 
-# Porta exposta para o Render
 EXPOSE 5000
 
-# Gunicorn como servidor de produção
-CMD ["gunicorn", "-w", "2", "-b", "0.0.0.0:5000", "app:app"]
+# Gunicorn como servidor de produção (timeout maior para lotes de notícias)
+CMD ["gunicorn", "-w", "2", "--timeout", "120", "-b", "0.0.0.0:5000", "app:app"]

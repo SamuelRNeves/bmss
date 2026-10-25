@@ -4,8 +4,10 @@ gunicorn
 # Transformers (modelo de IA)
 transformers
 
-# PyTorch CPU oficial (compatível com Render)
-torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu
+# PyTorch (CPU) é instalado pelo Dockerfile, conforme a arquitetura:
+#   - x86_64  -> índice CPU oficial do PyTorch
+#   - aarch64 -> PyPI (as rodas Arm do PyPI já são só CPU)
+# Fora do Docker: pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu
 
 # Dependências auxiliares
 numpy

@@ -1,0 +1,93 @@
+# =====================================================================
+# BMSS — versão enxuta para a VM Always Free AMD Micro da Oracle
+# (VM.Standard.E2.1.Micro: 1 GB de RAM, x86)
+#
+#   caddy     -> HTTPS automático (Let's Encrypt), portas 80/443
+#   backend   -> Spring Boot (imagem pronta do GHCR, heap limitado)
+#   (a análise de sentimento roda dentro do back-end, em Java)
+#   db        -> PostgreSQL 16 com configuração de pouca memória
+#
+# As imagens são compiladas pelo GitHub Actions; a VM só baixa.
+# Uso (dentro de deploy/oracle-micro):
+#   cp .env.example .env   # e preencha
+#   docker compose pull && docker compose up -d
+# =====================================================================
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    command: >
+      postgres
+      -c shared_buffers=32MB
+      -c work_mem=2MB
+      -c maintenance_work_mem=16MB
+      -c effective_cache_size=128MB
+      -c max_connections=25
+    environment:
+      POSTGRES_DB: bmss
+      POSTGRES_USER: bmss
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
+      TZ: America/Sao_Paulo
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    mem_limit: 160m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bmss -d bmss"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    image: ghcr.io/samuelrneves/bmss-backend:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    mem_limit: 600m
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      TZ: America/Sao_Paulo
+      # Memória enxuta para caber em 1 GB junto com o resto
+      JAVA_TOOL_OPTIONS: >-
+        -Xms128m -Xmx256m
+        -XX:MaxMetaspaceSize=150m
+        -XX:ReservedCodeCacheSize=48m
+        -Xss512k
+        -XX:+UseSerialGC
+        -XX:TieredStopAtLevel=1
+      DATABASE_URL: jdbc:postgresql://db:5432/bmss
+      DATABASE_USER: bmss
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
+      BMSS_SENTIMENT_MODE: local
+      JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no .env}
+      NEWSAPI_API_KEY: ${NEWSAPI_API_KEY:?defina NEWSAPI_API_KEY no .env}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-BMSS Alerts <onboarding@resend.dev>}
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
+    volumes:
+      - uploads:/app/uploads
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - backend
+    mem_limit: 64m
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?defina DOMAIN no .env}
+    volumes:
+      - ../oracle/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  pgdata:
+  uploads:
+  caddy_data:
+  caddy_config:

@@ -7,18 +7,23 @@ import { getStoredAccessToken } from "./tokenStorage";
 // 🔧 Configuração global do Axios
 // =====================================================
 const DEV_API_BASE = "http://localhost:8080/api/v1";
-const PROD_DEFAULT_API_BASE = "https://bmss-backend.onrender.com/api/v1";
 
 const configuredApiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
 const normalizedConfiguredBase = configuredApiBase
   ? configuredApiBase.replace(/\/+$/, "")
   : undefined;
 
+// Em produção a URL do back-end vem SEMPRE de NEXT_PUBLIC_API_BASE_URL
+// (configurada nas Environment Variables do Vercel).
 export const API_BASE_URL =
   normalizedConfiguredBase ||
-  (process.env.NODE_ENV === "development"
-    ? DEV_API_BASE
-    : PROD_DEFAULT_API_BASE);
+  (process.env.NODE_ENV === "development" ? DEV_API_BASE : "");
+
+if (!API_BASE_URL && typeof window !== "undefined") {
+  console.error(
+    "NEXT_PUBLIC_API_BASE_URL não está definida. Configure-a no Vercel (ex.: https://SEU-IP.sslip.io/api/v1)."
+  );
+}
 
 export function getRequiredApiBaseUrl(): string {
   return API_BASE_URL;
