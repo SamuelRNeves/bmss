@@ -82,7 +82,12 @@ public class NoticiasService {
 
         this.itemRepository = itemRepository;
         this.sentimentRepository = sentimentRepository;
-        this.newsRestTemplate = restTemplateBuilder.build();
+        // Limite de tempo nas APIs externas de notícias: sem isso, uma API lenta
+        // segurava a thread (e a conexão do banco) indefinidamente.
+        this.newsRestTemplate = restTemplateBuilder
+                .setConnectTimeout(Duration.ofSeconds(5))
+                .setReadTimeout(Duration.ofSeconds(10))
+                .build();
         this.flaskRestTemplate = restTemplateBuilder
                 .setConnectTimeout(connectTimeout)
                 .setReadTimeout(readTimeout)
