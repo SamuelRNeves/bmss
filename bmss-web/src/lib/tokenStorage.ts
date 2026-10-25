@@ -105,10 +105,22 @@ export const persistTokens = (payload: { accessToken?: string | null; refreshTok
 export const clearStoredTokens = () => {
   if (!isBrowser()) return;
 
+  // Só avisa a aplicação se havia algo para limpar. Antes o evento era
+  // disparado sempre, e o AuthProvider reagia limpando de novo, em loop
+  // infinito — isso travava toda navegação interna (ex.: ir para /login).
+  const hadTokens = Boolean(
+    localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) ||
+      localStorage.getItem(REFRESH_TOKEN_STORAGE_KEY) ||
+      readCookie(AUTH_COOKIE_NAME) ||
+      readCookie(REFRESH_COOKIE_NAME)
+  );
+
   localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
   localStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
   deleteCookie(AUTH_COOKIE_NAME);
   deleteCookie(REFRESH_COOKIE_NAME);
 
-  window.dispatchEvent(new Event(AUTH_TOKEN_CHANGED_EVENT));
+  if (hadTokens) {
+    window.dispatchEvent(new Event(AUTH_TOKEN_CHANGED_EVENT));
+  }
 };
