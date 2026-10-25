@@ -7,6 +7,7 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import type { AxiosError } from "axios";
@@ -211,6 +212,13 @@ function useProvideAuth(): AuthContextValue {
 
   const apiBase = useMemo(() => resolveApiBase(), []);
 
+  // Referência ao usuário atual para uso dentro do efeito de /auth/me sem
+  // torná-lo dependência: antes, cada resposta de /auth/me criava um novo
+  // objeto de usuário, o efeito rodava de novo e chamava /auth/me outra vez,
+  // em loop (tela piscando em "Carregando sessão...").
+  const userRef = useRef<UserData | null>(user);
+  userRef.current = user;
+
   const loading = authStatus === "loading";
 
   const bumpTokenVersion = useCallback(() => {
@@ -247,7 +255,11 @@ function useProvideAuth(): AuthContextValue {
       return;
     }
 
-    setAuthStatus("loading");
+    // Com usuário em cache, valida a sessão em segundo plano sem voltar
+    // para a tela de carregamento.
+    if (!userRef.current) {
+      setAuthStatus("loading");
+    }
     let isMounted = true;
 
     api
@@ -279,18 +291,18 @@ function useProvideAuth(): AuthContextValue {
           handleSessionExpired();
         } else {
           console.error("⚠️ Erro inesperado em /auth/me:", error);
-          setAuthStatus((prev) => (prev === "loading" ? (user ? "authenticated" : "unauthenticated") : prev));
+          setAuthStatus((prev) => (prev === "loading" ? (userRef.current ? "authenticated" : "unauthenticated") : prev));
         }
       })
       .finally(() => {
         if (!isMounted) return;
-        setAuthStatus((prev) => (prev === "loading" ? (user ? "authenticated" : "unauthenticated") : prev));
+        setAuthStatus((prev) => (prev === "loading" ? (userRef.current ? "authenticated" : "unauthenticated") : prev));
       });
 
     return () => {
       isMounted = false;
     };
-  }, [apiBase, handleSessionExpired, handleUnauthenticated, setUser, tokenVersion, user]);
+  }, [apiBase, handleSessionExpired, handleUnauthenticated, setUser, tokenVersion]);
 
   useEffect(() => {
     const handleStorage = (event: StorageEvent) => {
